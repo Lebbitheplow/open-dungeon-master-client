@@ -44,7 +44,11 @@ export interface AiSetup {
   utilityModel: string;
 }
 
-export type ConnectResult = { ok: true } | { ok: false; needsLogin: boolean; error: string };
+// firstSetup: the shell just auto-provisioned the local profile, so the
+// renderer should offer the one-time AI choice before entering the world.
+export type ConnectResult =
+  | { ok: true; firstSetup?: boolean }
+  | { ok: false; needsLogin: boolean; error: string };
 
 // A tunnel sharing the local world at a public https address. "named" means
 // a broker-issued CODE.play address; "quick" is the trycloudflare fallback.

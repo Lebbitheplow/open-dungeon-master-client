@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+import os from "node:os";
 import { ipcMain } from "electron";
 import type { AiSetup, ConnectResult, LocalStatus, Result, ServerSummary } from "../shared/types";
 import { CODE_SHAPE, normalizeOrigin, originCandidates, type JoinLink } from "../shared/deep-link";
@@ -224,7 +226,7 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     }
   });
 
-  const adoptLocalGrant = (grant: TokenGrant): void => {
+  const adoptLocalGrant = (grant: TokenGrant, secret?: string): void => {
     store.upsert({
       id: LOCAL_SERVER_ID,
       origin: "local",
@@ -232,7 +234,30 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
       username: grant.username,
       token: grant.token,
       tokenExpiresAt: grant.expiresAt,
+      secret,
     });
+  };
+
+  // The OS username makes a friendly default profile name; the server only
+  // accepts letters, digits, _ and - at 3 to 24 characters.
+  const localProfileName = (): string => {
+    const name = os.userInfo().username.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24);
+    return name.length >= 3 ? name : "player";
+  };
+
+  // A local profile should feel like no account at all: on a fresh world the
+  // shell registers the owner itself with a random password it keeps (so an
+  // expired token re-logs silently), and the player never sees a form.
+  const provisionLocalProfile = async (): Promise<TokenGrant> => {
+    const secret = randomBytes(24).toString("base64url");
+    const grant = await registerAccount(local.origin, {
+      username: localProfileName(),
+      password: secret,
+      inviteCode: "",
+    });
+    adoptLocalGrant(grant, secret);
+    await ensureLocalVoice();
+    return grant;
   };
 
   ipcMain.handle("local:create-account", async (_event, input: Record<string, unknown>) => {
@@ -295,6 +320,9 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
   });
 
   ipcMain.handle("local:play", async (_event, joinCode: unknown): Promise<ConnectResult> => {
+    // Read before start(): booting the server creates the database, which is
+    // the "has this world ever existed" signal.
+    const freshWorld = local.status(localHasAccount()).firstRun;
     try {
       await local.start();
     } catch (err) {
@@ -305,9 +333,38 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     // A model was installed: warm the AI server in the background. The first
     // AI turn simply waits for the load if the player beats it.
     void localAi.start();
+    let token = store.token(LOCAL_SERVER_ID);
+    if (token && !(await tokenIsValid(local.origin, token))) token = null;
+    if (!token) {
+      const entry = store.get(LOCAL_SERVER_ID);
+      const secret = store.secret(LOCAL_SERVER_ID);
+      if (entry && secret) {
+        // The session token expired; the stored profile password signs back
+        // in without bothering the player.
+        try {
+          const grant = await loginForToken(local.origin, entry.username, secret);
+          adoptLocalGrant(grant);
+          token = grant.token;
+        } catch {
+          // Password rejected (changed inside the game?); fall through.
+        }
+      }
+      if (!token && freshWorld) {
+        try {
+          await provisionLocalProfile();
+        } catch (err) {
+          return { ok: false, needsLogin: false, error: fail(err).error };
+        }
+        // Do not attach yet: the renderer offers the one-time AI choice
+        // first, then calls back in to play.
+        return { ok: true, firstSetup: true };
+      }
+      if (!token) {
+        return { ok: false, needsLogin: true, error: "Sign in to your local account." };
+      }
+    }
     const entry = store.get(LOCAL_SERVER_ID);
-    const token = store.token(LOCAL_SERVER_ID);
-    if (!entry || !token || !(await tokenIsValid(local.origin, token))) {
+    if (!entry) {
       return { ok: false, needsLogin: true, error: "Sign in to your local account." };
     }
     await applySessionCookie(

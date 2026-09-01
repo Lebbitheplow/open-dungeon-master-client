@@ -18,6 +18,40 @@ function freshStore() {
 const future = new Date(Date.now() + 86_400_000).toISOString();
 const past = new Date(Date.now() - 1000).toISOString();
 
+test("the local profile secret is stored encrypted and survives token refreshes", () => {
+  const { store } = freshStore();
+  store.upsert({
+    id: LOCAL_SERVER_ID,
+    origin: "local",
+    name: "This computer",
+    username: "kaleb",
+    token: "tok1",
+    tokenExpiresAt: future,
+    secret: "profile-password",
+  });
+  assert.equal(store.secret(LOCAL_SERVER_ID), "profile-password");
+  // A token refresh without a secret must not drop the stored password.
+  store.upsert({
+    id: LOCAL_SERVER_ID,
+    origin: "local",
+    name: "This computer",
+    username: "kaleb",
+    token: "tok2",
+    tokenExpiresAt: future,
+  });
+  assert.equal(store.secret(LOCAL_SERVER_ID), "profile-password");
+  assert.equal(store.token(LOCAL_SERVER_ID), "tok2");
+  // Servers without a stored secret report null, not a decryption error.
+  const remote = store.upsert({
+    origin: "https://r.example",
+    name: "R",
+    username: "kaleb",
+    token: "tok",
+    tokenExpiresAt: future,
+  });
+  assert.equal(store.secret(remote.id), null);
+});
+
 test("upsert dedupes remote servers by origin and keeps the id", () => {
   const { store } = freshStore();
   const first = store.upsert({

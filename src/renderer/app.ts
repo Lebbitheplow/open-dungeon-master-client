@@ -116,8 +116,13 @@ function localCard(): HTMLElement {
   if (local.state === "starting") {
     card.append(el("span", "badge", "Starting"));
   } else if (local.state !== "unavailable") {
-    const btn = el("button", "primary", local.firstRun ? "Set up offline play" : "Play offline");
+    const btn = el("button", "primary", local.firstRun ? "Start playing" : "Play offline");
     btn.addEventListener("click", () => void playLocal(btn));
+    if (!local.firstRun) {
+      const ai = el("button", "ghost", "Story AI");
+      ai.addEventListener("click", () => renderLocalAi(true));
+      card.append(ai);
+    }
     card.append(btn);
   }
   return card;
@@ -125,12 +130,20 @@ function localCard(): HTMLElement {
 
 async function playLocal(btn: HTMLButtonElement): Promise<void> {
   btn.disabled = true;
-  const wasFirstRun = local.firstRun;
   const result = await window.odm.localPlay(joinIntent?.code);
   btn.disabled = false;
-  if (result.ok) return;
+  if (result.ok) {
+    if (result.firstSetup) {
+      // The shell just created the local profile; the only choice worth a
+      // screen is who tells the story.
+      renderLocalAi();
+      return;
+    }
+    joinIntent = null;
+    return;
+  }
   if (result.needsLogin) {
-    renderLocalAccount(wasFirstRun ? "create" : "login");
+    renderLocalAccount("login");
   } else {
     await refresh();
     renderHome();
@@ -409,13 +422,13 @@ function renderLocalAccount(mode: "create" | "login"): void {
   show(backButton("Back", () => renderHome()), title, sub, form);
 }
 
-function renderLocalAi(): void {
+function renderLocalAi(fromHome = false): void {
   screenName = "local-ai";
   const title = el("h2", "", "Who runs your games?");
   const sub = el(
     "p",
     "sub",
-    "You can change this any time in the server settings inside the app.",
+    "You can change this any time from the Story AI button on the home screen.",
   );
   const choices = el("div", "choices");
 
@@ -441,7 +454,11 @@ function renderLocalAi(): void {
   localAi.addEventListener("click", () => void startLocalAiFlow());
 
   choices.append(human, openai, localAi);
-  show(title, sub, choices);
+  if (fromHome) {
+    show(backButton("Back", () => renderHome()), title, sub, choices);
+  } else {
+    show(title, sub, choices);
+  }
 }
 
 // ---------- local AI installer ----------

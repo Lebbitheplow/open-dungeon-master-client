@@ -9,6 +9,9 @@ export const LOCAL_SERVER_ID = "local";
 
 // One remembered server. The session token is stored encrypted (OS keychain
 // via safeStorage where available); everything else is plain JSON.
+// secretCipher holds the auto-provisioned local profile's password so the
+// shell can sign back in when the session token expires; remote servers
+// never store passwords.
 export interface StoredServer {
   id: string;
   origin: string;
@@ -17,6 +20,7 @@ export interface StoredServer {
   lastUsedAt: string;
   tokenCipher: string;
   tokenExpiresAt: string;
+  secretCipher?: string;
 }
 
 // Injected so tests can run without Electron's safeStorage.
@@ -92,6 +96,7 @@ export class ServerStore {
     username: string;
     token: string;
     tokenExpiresAt: string;
+    secret?: string;
   }): StoredServer {
     const registry = this.load();
     const existing = registry.servers.find((server) =>
@@ -105,6 +110,9 @@ export class ServerStore {
       lastUsedAt: new Date().toISOString(),
       tokenCipher: this.crypt.encrypt(input.token),
       tokenExpiresAt: input.tokenExpiresAt,
+      // A token refresh must not drop the stored local password.
+      secretCipher:
+        input.secret !== undefined ? this.crypt.encrypt(input.secret) : existing?.secretCipher,
     };
     if (existing) {
       registry.servers[registry.servers.indexOf(existing)] = entry;
@@ -122,6 +130,13 @@ export class ServerStore {
     if (!server || !server.tokenCipher) return null;
     if (server.tokenExpiresAt && Date.parse(server.tokenExpiresAt) <= Date.now()) return null;
     return this.crypt.decrypt(server.tokenCipher);
+  }
+
+  // The stored local profile password, or null when absent or undecryptable.
+  secret(id: string): string | null {
+    const server = this.get(id);
+    if (!server?.secretCipher) return null;
+    return this.crypt.decrypt(server.secretCipher);
   }
 
   touch(id: string): void {
