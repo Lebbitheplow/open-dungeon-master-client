@@ -1,0 +1,34 @@
+# Maintainer: Kaleb Lutterman
+# AUR template repacking the released Linux tar.gz. Per release: bump pkgver,
+# fill the real source URL once the GitHub repo is public, update sha256sums.
+pkgname=open-dungeon-master-client-bin
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Desktop client for Open Dungeon Master, the self-hostable TTRPG platform"
+arch=('x86_64')
+url="https://opendungeonmaster.com"
+license=('MIT')
+depends=('gtk3' 'nss' 'alsa-lib' 'libxss')
+provides=('open-dungeon-master-client')
+options=('!strip')
+source=("open-dungeon-master-client-${pkgver}-x64.tar.gz::https://opendungeonmaster.com/downloads/open-dungeon-master-client-${pkgver}-x64.tar.gz")
+sha256sums=('SKIP')
+
+package() {
+  install -dm755 "$pkgdir/opt/open-dungeon-master"
+  cp -a "$srcdir"/*/. "$pkgdir/opt/open-dungeon-master/"
+  install -dm755 "$pkgdir/usr/bin"
+  ln -s "/opt/open-dungeon-master/open-dungeon-master-client" \
+    "$pkgdir/usr/bin/open-dungeon-master-client"
+  install -Dm644 /dev/stdin \
+    "$pkgdir/usr/share/applications/open-dungeon-master-client.desktop" <<'EOF'
+[Desktop Entry]
+Name=Open Dungeon Master
+Comment=Multiplayer TTRPG campaigns with an AI or human Dungeon Master
+Exec=/opt/open-dungeon-master/open-dungeon-master-client %u
+Terminal=false
+Type=Application
+Categories=Game;
+MimeType=x-scheme-handler/odm;
+EOF
+}

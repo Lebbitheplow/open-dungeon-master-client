@@ -1,0 +1,29 @@
+appId: com.opendungeonmaster.client
+productName: Open Dungeon Master
+directories:
+  output: release
+files:
+  - dist/**
+  - package.json
+extraResources:
+  - from: vendor/server
+    to: server
+asar: true
+# Registers odm:// on macOS (Info.plist), Windows (installer) and Linux
+# (.desktop MimeType), so invite links open the app.
+protocols:
+  - name: Open Dungeon Master invite
+    schemes: [odm]
+linux:
+  target: [AppImage, deb, rpm, tar.gz]
+  category: Game
+  synopsis: Multiplayer TTRPG campaigns with an AI or human Dungeon Master
+  artifactName: ${name}-${version}-${arch}.${ext}
+mac:
+  target: [dmg, zip]
+  category: public.app-category.games
+win:
+  target: [nsis, portable]
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
