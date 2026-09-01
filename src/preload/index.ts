@@ -19,6 +19,8 @@ const bridge: OdmBridge = {
   localLogin: (input) => ipcRenderer.invoke("local:login", input),
   localConfigureAi: (setup: AiSetup) => ipcRenderer.invoke("local:configure-ai", setup),
   localPlay: (joinCode?: string) => ipcRenderer.invoke("local:play", joinCode),
+  shareStart: () => ipcRenderer.invoke("share:start"),
+  shareStop: () => ipcRenderer.invoke("share:stop"),
   onEvent: (listener) => {
     ipcRenderer.on("odm:event", (_event, payload: ShellEvent) => listener(payload));
   },

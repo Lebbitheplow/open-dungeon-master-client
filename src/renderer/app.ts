@@ -1,4 +1,10 @@
-import type { AiSetup, LocalStatus, ServerProbe, ServerSummary } from "../shared/types";
+import type {
+  AiSetup,
+  LocalStatus,
+  ServerProbe,
+  ServerSummary,
+  TunnelStatus,
+} from "../shared/types";
 
 // The shell UI: a small screen machine rendered into #app. Only type imports
 // above, so the compiled file stays a classic script the page can load
@@ -21,6 +27,7 @@ let local: LocalStatus = {
   serverVersion: "",
   error: "",
 };
+let tunnel: TunnelStatus = { state: "stopped", url: "", error: "" };
 let joinIntent: JoinIntent | null = null;
 let screenName = "home";
 
@@ -69,6 +76,23 @@ async function refresh(): Promise<void> {
   const data = await window.odm.listServers();
   servers = data.servers;
   local = data.local;
+  tunnel = data.tunnel;
+}
+
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // Clipboard API can be refused; the selection trick still works.
+  }
+  const area = document.createElement("textarea");
+  area.value = text;
+  document.body.append(area);
+  area.select();
+  const worked = document.execCommand("copy");
+  area.remove();
+  return worked;
 }
 
 // ---------- home ----------
@@ -109,6 +133,53 @@ async function playLocal(btn: HTMLButtonElement): Promise<void> {
     await refresh();
     renderHome();
   }
+}
+
+function shareCard(): HTMLElement {
+  const card = el("div", "card");
+  const grow = el("div", "grow");
+  grow.append(el("div", "name", "Share this world online"));
+  card.append(grow);
+  if (tunnel.state === "running") {
+    grow.append(el("div", "detail", tunnel.url));
+    const copy = el("button", "ghost", "Copy link");
+    copy.addEventListener("click", () => {
+      void copyText(tunnel.url).then((worked) => {
+        copy.textContent = worked ? "Copied" : "Copy failed";
+        setTimeout(() => (copy.textContent = "Copy link"), 1500);
+      });
+    });
+    const stop = el("button", "quiet", "Stop");
+    stop.addEventListener("click", () => {
+      stop.disabled = true;
+      void window.odm.shareStop();
+    });
+    card.append(copy, stop);
+  } else if (tunnel.state === "starting") {
+    grow.append(el("div", "detail", "Opening a public address..."));
+    card.append(el("span", "badge", "Starting"));
+  } else {
+    grow.append(
+      el(
+        "div",
+        "detail",
+        tunnel.state === "error"
+          ? tunnel.error
+          : "Friends join from anywhere in their browser. The address lives while the app runs.",
+      ),
+    );
+    const start = el("button", "ghost", tunnel.state === "error" ? "Try again" : "Share online");
+    start.addEventListener("click", () => {
+      start.disabled = true;
+      void window.odm.shareStart().then(async (result) => {
+        if (!result.ok) tunnel = { state: "error", url: "", error: result.error };
+        await refresh().catch(() => undefined);
+        if (screenName === "home") renderHome();
+      });
+    });
+    card.append(start);
+  }
+  return card;
 }
 
 function serverCard(server: ServerSummary): HTMLElement {
@@ -162,6 +233,9 @@ function renderHome(): void {
   // Connect-only shells (Android) have no bundled server; skip the dead card.
   if (!(window.odm.platform === "android" && local.state === "unavailable")) {
     cards.append(localCard());
+  }
+  if (window.odm.platform === "desktop" && local.state === "running") {
+    cards.append(shareCard());
   }
   for (const server of servers) cards.append(serverCard(server));
   const addCard = el("div", "card");
@@ -415,6 +489,9 @@ window.odm.onEvent((event) => {
     void refresh().then(() => renderHome());
   } else if (event.kind === "local-status") {
     local = event.status;
+    if (screenName === "home") renderHome();
+  } else if (event.kind === "tunnel-status") {
+    tunnel = event.status;
     if (screenName === "home") renderHome();
   } else if (event.kind === "join-request") {
     joinIntent = { origin: event.origin, code: event.code, knownServerId: event.knownServerId };

@@ -46,15 +46,23 @@ export interface AiSetup {
 
 export type ConnectResult = { ok: true } | { ok: false; needsLogin: boolean; error: string };
 
+// A quick tunnel sharing the local world at a public https address.
+export interface TunnelStatus {
+  state: "stopped" | "starting" | "running" | "error";
+  url: string;
+  error: string;
+}
+
 export type ShellEvent =
   | { kind: "show-manager" }
   | { kind: "join-request"; origin: string; code: string; knownServerId: string }
-  | { kind: "local-status"; status: LocalStatus };
+  | { kind: "local-status"; status: LocalStatus }
+  | { kind: "tunnel-status"; status: TunnelStatus };
 
 export interface OdmBridge {
   // Lets the shared shell UI adapt copy and layout per shell.
   platform: "desktop" | "android";
-  listServers(): Promise<{ servers: ServerSummary[]; local: LocalStatus }>;
+  listServers(): Promise<{ servers: ServerSummary[]; local: LocalStatus; tunnel: TunnelStatus }>;
   probeServer(origin: string): Promise<Result<{ probe: ServerProbe }>>;
   login(input: {
     origin: string;
@@ -79,5 +87,7 @@ export interface OdmBridge {
   localLogin(input: { username: string; password: string }): Promise<Result<{ status: LocalStatus }>>;
   localConfigureAi(setup: AiSetup): Promise<Result>;
   localPlay(joinCode?: string): Promise<ConnectResult>;
+  shareStart(): Promise<Result<{ tunnel: TunnelStatus }>>;
+  shareStop(): Promise<Result<{ tunnel: TunnelStatus }>>;
   onEvent(listener: (event: ShellEvent) => void): void;
 }

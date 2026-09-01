@@ -12,6 +12,7 @@ import {
 import type {
   ConnectResult,
   LocalStatus,
+  TunnelStatus,
   OdmBridge,
   Result,
   ServerProbe,
@@ -289,6 +290,8 @@ const LOCAL_UNAVAILABLE: LocalStatus = {
   error: "",
 };
 
+const TUNNEL_STOPPED: TunnelStatus = { state: "stopped", url: "", error: "" };
+
 const notLocal = async (): Promise<Result<{ status: LocalStatus }>> => ({
   ok: false,
   error: "Offline play lives in the desktop app for now.",
@@ -300,7 +303,7 @@ const bridge: OdmBridge = {
   async listServers() {
     const servers = await loadServers();
     servers.sort((a, b) => b.lastUsedAt.localeCompare(a.lastUsedAt));
-    return { servers: servers.map(summaryOf), local: LOCAL_UNAVAILABLE };
+    return { servers: servers.map(summaryOf), local: LOCAL_UNAVAILABLE, tunnel: TUNNEL_STOPPED };
   },
 
   async probeServer(raw: string) {
@@ -361,6 +364,8 @@ const bridge: OdmBridge = {
     needsLogin: false,
     error: "Offline play lives in the desktop app for now.",
   }),
+  shareStart: async () => fail(new Error("Hosting online is desktop-only for now.")),
+  shareStop: async () => fail(new Error("Hosting online is desktop-only for now.")),
 
   onEvent(listener) {
     listeners.add(listener);

@@ -12,6 +12,7 @@ import {
 } from "./odm-api";
 import { LOCAL_SERVER_ID, type ServerStore, type StoredServer } from "./servers";
 import { applySessionCookie, clearPartition, partitionFor } from "./session-cookies";
+import type { QuickTunnel } from "./tunnel";
 import type { ShellWindow } from "./window";
 
 const OPENAI_BASE_URL = "https://api.openai.com/v1";
@@ -21,6 +22,7 @@ export interface ShellContext {
   store: ServerStore;
   window: ShellWindow;
   local: LocalServer;
+  tunnel: QuickTunnel;
 }
 
 export interface ShellIpc {
@@ -53,12 +55,26 @@ function summaryOf(entry: StoredServer): ServerSummary {
 }
 
 export function registerIpc(ctx: ShellContext): ShellIpc {
-  const { store, window: win, local } = ctx;
+  const { store, window: win, local, tunnel } = ctx;
 
   const localHasAccount = (): boolean => store.token(LOCAL_SERVER_ID) !== null;
   const localStatus = (): LocalStatus => local.status(localHasAccount());
 
   local.onStatus(() => win.sendEvent({ kind: "local-status", status: localStatus() }));
+  tunnel.onStatus(() => win.sendEvent({ kind: "tunnel-status", status: tunnel.status() }));
+
+  // Keeps the local server's publicUrl matching reality, so invite links and
+  // QR codes generated inside the game point at the tunnel while one runs
+  // (the host plays on 127.0.0.1, an address guests cannot reach) and go
+  // back to normal when it stops. Best effort: links, not correctness.
+  const syncPublicUrl = async (): Promise<void> => {
+    const token = store.token(LOCAL_SERVER_ID);
+    if (!token || !local.origin) return;
+    const status = tunnel.status();
+    await patchAdminSettings(local.origin, token, {
+      publicUrl: status.state === "running" ? status.url : "",
+    }).catch(() => undefined);
+  };
 
   const attachRemote = async (
     entry: StoredServer,
@@ -107,7 +123,32 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     return { ok: true, server: summaryOf(entry) };
   };
 
-  ipcMain.handle("servers:list", () => ({ servers: store.summaries(), local: localStatus() }));
+  ipcMain.handle("servers:list", () => ({
+    servers: store.summaries(),
+    local: localStatus(),
+    tunnel: tunnel.status(),
+  }));
+
+  ipcMain.handle("share:start", async () => {
+    try {
+      await local.start();
+      const port = Number(new URL(local.origin).port);
+      const status = await tunnel.start(port);
+      if (status.state !== "running") {
+        return fail(new Error(status.error || "Sharing failed."));
+      }
+      await syncPublicUrl();
+      return { ok: true, tunnel: status };
+    } catch (err) {
+      return fail(err);
+    }
+  });
+
+  ipcMain.handle("share:stop", async () => {
+    await tunnel.stop();
+    await syncPublicUrl();
+    return { ok: true, tunnel: tunnel.status() };
+  });
 
   ipcMain.handle("servers:probe", async (_event, raw: unknown) => {
     let lastError: unknown = null;
@@ -242,6 +283,8 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     } catch (err) {
       return { ok: false, needsLogin: false, error: fail(err).error };
     }
+    // A crash while sharing can leave a stale publicUrl behind; heal it.
+    void syncPublicUrl();
     const entry = store.get(LOCAL_SERVER_ID);
     const token = store.token(LOCAL_SERVER_ID);
     if (!entry || !token || !(await tokenIsValid(local.origin, token))) {

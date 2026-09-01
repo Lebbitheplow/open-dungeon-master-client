@@ -4,6 +4,7 @@ import { joinLinkFromArgv, parseJoinLink, type JoinLink } from "../shared/deep-l
 import { LocalServer } from "./local-server";
 import { registerIpc, type ShellIpc } from "./ipc";
 import { ServerStore, type TokenCrypt } from "./servers";
+import { QuickTunnel } from "./tunnel";
 import { ShellWindow } from "./window";
 
 // Session tokens go through the OS keychain when one is available. The
@@ -76,16 +77,24 @@ function main(): void {
       ? path.join(process.resourcesPath, "server")
       : path.join(app.getAppPath(), "vendor", "server");
     const local = new LocalServer(payloadDir, app.getPath("userData"));
+    const tunnel = new QuickTunnel(
+      path.join(app.getPath("userData"), "bin"),
+      path.join(app.getPath("userData"), "tunnel.log"),
+    );
 
     win = new ShellWindow();
     win.create();
-    ipc = registerIpc({ store, window: win, local });
+    ipc = registerIpc({ store, window: win, local, tunnel });
 
     app.on("before-quit", () => {
+      void tunnel.stop();
       void local.stop();
     });
     app.on("window-all-closed", () => {
-      void local.stop().finally(() => app.quit());
+      void tunnel
+        .stop()
+        .then(() => local.stop())
+        .finally(() => app.quit());
     });
 
     await win.whenPageReady();
