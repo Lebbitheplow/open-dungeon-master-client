@@ -19,7 +19,13 @@ const DEFAULT_PORT = 3210;
 
 // Player-made data living inside the server tree that must survive a payload
 // upgrade. The database itself lives outside the tree (SQLITE_DB_PATH).
-const PRESERVED = ["public/uploads", "public/generated", "public/generated-audio", "models"];
+const PRESERVED = [
+  "public/uploads",
+  "public/generated",
+  "public/generated-audio",
+  "public/ambience",
+  "models",
+];
 
 function readPayloadInfo(dir: string): PayloadInfo | null {
   try {
