@@ -19,10 +19,17 @@ function openExternally(url: string): void {
   if (url.startsWith("https:") || url.startsWith("http:")) void shell.openExternal(url);
 }
 
-// Server pages get microphone (voice chat), clipboard and fullscreen, and
-// nothing else. Requests from any other origin are denied outright.
+// Server pages get microphone (voice chat), notifications (session
+// reminders and turn alerts), clipboard and fullscreen, and nothing else.
+// Requests from any other origin are denied outright.
 function hardenPartition(partition: string, origin: string): void {
-  const allowed = new Set(["media", "clipboard-sanitized-write", "fullscreen", "pointerLock"]);
+  const allowed = new Set([
+    "media",
+    "notifications",
+    "clipboard-sanitized-write",
+    "fullscreen",
+    "pointerLock",
+  ]);
   session.fromPartition(partition).setPermissionRequestHandler((_wc, permission, callback, details) => {
     callback(allowed.has(permission) && details.requestingUrl.startsWith(origin));
   });
