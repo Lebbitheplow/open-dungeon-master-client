@@ -15,6 +15,23 @@ const URL_SHAPE = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/;
 const URL_WAIT_MS = 45_000;
 const REACHABLE_WAIT_MS = 90_000;
 
+// The broker Worker that mints CODE.play.opendungeonmaster.com sessions
+// (workers/tunnel-broker in the server repo). When it cannot help (offline,
+// rate limited, not configured), hosting falls back to a quick tunnel.
+const DEFAULT_BROKER_URL = "https://odm-tunnel-broker.tunnel-broker.workers.dev";
+
+interface BrokerSession {
+  code: string;
+  url: string;
+  hostname: string;
+  tunnelToken: string;
+  secret: string;
+}
+
+function brokerUrl(): string {
+  return process.env.ODM_BROKER_URL || DEFAULT_BROKER_URL;
+}
+
 // cloudflared is a single static binary. It is fetched once per install from
 // Cloudflare's official GitHub releases and never auto-updates itself
 // (--no-autoupdate). macOS publishes a .tgz instead of a bare binary; that
@@ -35,6 +52,8 @@ export class QuickTunnel {
   private startPromise: Promise<TunnelStatus> | null = null;
   private state: TunnelStatus["state"] = "stopped";
   private url = "";
+  private mode: TunnelStatus["mode"] = "";
+  private session: BrokerSession | null = null;
   private error = "";
   private readonly listeners = new Set<() => void>();
 
@@ -44,7 +63,12 @@ export class QuickTunnel {
   ) {}
 
   status(): TunnelStatus {
-    return { state: this.state, url: this.state === "running" ? this.url : "", error: this.error };
+    return {
+      state: this.state,
+      url: this.state === "running" ? this.url : "",
+      mode: this.state === "running" ? this.mode : "",
+      error: this.error,
+    };
   }
 
   onStatus(listener: () => void): void {
@@ -78,6 +102,50 @@ export class QuickTunnel {
     );
     fs.renameSync(partial, target);
     return target;
+  }
+
+  // Asks the broker for a named CODE.play session. Any failure (offline,
+  // rate limit, broker unconfigured) returns null and the quick-tunnel
+  // fallback takes over.
+  private async requestBrokerSession(localPort: number): Promise<BrokerSession | null> {
+    try {
+      const response = await fetch(`${brokerUrl()}/session`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ port: localPort }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!response.ok) return null;
+      const body = (await response.json()) as Partial<BrokerSession>;
+      if (!body?.tunnelToken || !body?.hostname || !body?.code || !body?.secret) return null;
+      return {
+        code: body.code,
+        url: body.url || `https://${body.hostname}`,
+        hostname: body.hostname,
+        tunnelToken: body.tunnelToken,
+        secret: body.secret,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private async releaseBrokerSession(): Promise<void> {
+    const session = this.session;
+    this.session = null;
+    if (!session) return;
+    await fetch(`${brokerUrl()}/session/${session.code}`, {
+      method: "DELETE",
+      headers: { "x-session-secret": session.secret },
+      signal: AbortSignal.timeout(10_000),
+    }).catch(() => undefined);
+  }
+
+  private attachLog(child: ChildProcess): void {
+    const log = fs.createWriteStream(this.logFile, { flags: "a" });
+    child.stdout?.on("data", (chunk) => log.write(chunk));
+    child.stderr?.on("data", (chunk) => log.write(chunk));
+    child.once("exit", () => log.end());
   }
 
   // Watches cloudflared's log output for the assigned public URL.
@@ -164,13 +232,20 @@ export class QuickTunnel {
     this.setState("starting");
     try {
       const bin = await this.ensureBinary();
-      const child = spawn(
-        bin,
-        ["tunnel", "--url", `http://127.0.0.1:${localPort}`, "--no-autoupdate"],
-        { stdio: ["ignore", "pipe", "pipe"] },
-      );
+      const session = await this.requestBrokerSession(localPort);
+      const args = session
+        ? ["tunnel", "--no-autoupdate", "run", "--token", session.tunnelToken]
+        : ["tunnel", "--no-autoupdate", "--url", `http://127.0.0.1:${localPort}`];
+      const child = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
       this.child = child;
-      this.url = await this.captureUrl(child);
+      this.session = session;
+      this.mode = session ? "named" : "quick";
+      if (session) {
+        this.url = session.url;
+        this.attachLog(child);
+      } else {
+        this.url = await this.captureUrl(child);
+      }
       child.once("exit", () => {
         if (this.child === child) {
           this.child = null;
@@ -191,6 +266,7 @@ export class QuickTunnel {
     const child = this.child;
     this.child = null;
     this.url = "";
+    this.mode = "";
     if (child && child.exitCode === null) {
       child.kill("SIGTERM");
       await new Promise<void>((resolve) => {
@@ -201,6 +277,7 @@ export class QuickTunnel {
         });
       });
     }
+    await this.releaseBrokerSession();
     this.setState("stopped");
   }
 }

@@ -290,7 +290,7 @@ const LOCAL_UNAVAILABLE: LocalStatus = {
   error: "",
 };
 
-const TUNNEL_STOPPED: TunnelStatus = { state: "stopped", url: "", error: "" };
+const TUNNEL_STOPPED: TunnelStatus = { state: "stopped", url: "", mode: "", error: "" };
 
 const notLocal = async (): Promise<Result<{ status: LocalStatus }>> => ({
   ok: false,

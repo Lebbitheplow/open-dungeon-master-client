@@ -27,7 +27,7 @@ let local: LocalStatus = {
   serverVersion: "",
   error: "",
 };
-let tunnel: TunnelStatus = { state: "stopped", url: "", error: "" };
+let tunnel: TunnelStatus = { state: "stopped", url: "", mode: "", error: "" };
 let joinIntent: JoinIntent | null = null;
 let screenName = "home";
 
@@ -172,7 +172,7 @@ function shareCard(): HTMLElement {
     start.addEventListener("click", () => {
       start.disabled = true;
       void window.odm.shareStart().then(async (result) => {
-        if (!result.ok) tunnel = { state: "error", url: "", error: result.error };
+        if (!result.ok) tunnel = { state: "error", url: "", mode: "", error: result.error };
         await refresh().catch(() => undefined);
         if (screenName === "home") renderHome();
       });

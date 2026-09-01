@@ -76,6 +76,16 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     }).catch(() => undefined);
   };
 
+  // Local worlds always run mesh voice: no media port to open, and it is the
+  // only transport that survives a tunnel. Idempotent and best effort.
+  const ensureLocalVoice = async (): Promise<void> => {
+    const token = store.token(LOCAL_SERVER_ID);
+    if (!token || !local.origin) return;
+    await patchAdminSettings(local.origin, token, {
+      voiceChat: { enabled: "on", mode: "mesh" },
+    }).catch(() => undefined);
+  };
+
   const attachRemote = async (
     entry: StoredServer,
     token: string,
@@ -138,6 +148,9 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
         return fail(new Error(status.error || "Sharing failed."));
       }
       await syncPublicUrl();
+      // Older local worlds predate mesh voice; sharing is the moment it
+      // matters, so heal the setting here too.
+      await ensureLocalVoice();
       return { ok: true, tunnel: status };
     } catch (err) {
       return fail(err);
@@ -228,6 +241,7 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
         inviteCode: "",
       });
       adoptLocalGrant(grant);
+      await ensureLocalVoice();
       return { ok: true, status: localStatus() };
     } catch (err) {
       return fail(err);

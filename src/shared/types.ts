@@ -46,10 +46,12 @@ export interface AiSetup {
 
 export type ConnectResult = { ok: true } | { ok: false; needsLogin: boolean; error: string };
 
-// A quick tunnel sharing the local world at a public https address.
+// A tunnel sharing the local world at a public https address. "named" means
+// a broker-issued CODE.play address; "quick" is the trycloudflare fallback.
 export interface TunnelStatus {
   state: "stopped" | "starting" | "running" | "error";
   url: string;
+  mode: "" | "named" | "quick";
   error: string;
 }
 
