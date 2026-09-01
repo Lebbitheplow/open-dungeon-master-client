@@ -1,6 +1,7 @@
 import path from "node:path";
 import { app, safeStorage } from "electron";
 import { joinLinkFromArgv, parseJoinLink, type JoinLink } from "../shared/deep-link";
+import { LocalAiManager } from "./local-ai/manager";
 import { LocalServer } from "./local-server";
 import { registerIpc, type ShellIpc } from "./ipc";
 import { ServerStore, type TokenCrypt } from "./servers";
@@ -81,18 +82,21 @@ function main(): void {
       path.join(app.getPath("userData"), "bin"),
       path.join(app.getPath("userData"), "tunnel.log"),
     );
+    const localAi = new LocalAiManager(path.join(app.getPath("userData"), "local-ai"));
 
     win = new ShellWindow();
     win.create();
-    ipc = registerIpc({ store, window: win, local, tunnel });
+    ipc = registerIpc({ store, window: win, local, tunnel, localAi });
 
     app.on("before-quit", () => {
       void tunnel.stop();
+      void localAi.stop();
       void local.stop();
     });
     app.on("window-all-closed", () => {
       void tunnel
         .stop()
+        .then(() => localAi.stop())
         .then(() => local.stop())
         .finally(() => app.quit());
     });

@@ -134,6 +134,21 @@ input:focus { outline: 1px solid var(--gold-deep); }
 .choice .title { font-weight: 600; display: block; }
 .choice .desc { color: var(--ink-dim); font-size: 0.85rem; }
 
+.progress {
+  height: 0.7rem;
+  border-radius: 0.4rem;
+  background: #141019;
+  border: 1px solid var(--panel-edge);
+  overflow: hidden;
+  margin-top: 1rem;
+}
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #fde68a, #f59e0b);
+  transition: width 0.3s ease;
+}
+
 .row { display: flex; gap: 0.6rem; align-items: center; }
 .back { margin-bottom: 1rem; }
 .badge {

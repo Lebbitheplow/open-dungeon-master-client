@@ -366,6 +366,16 @@ const bridge: OdmBridge = {
   }),
   shareStart: async () => fail(new Error("Hosting online is desktop-only for now.")),
   shareStop: async () => fail(new Error("Hosting online is desktop-only for now.")),
+  localAiScan: async () => fail(new Error("Local AI is desktop-only.")),
+  localAiInstall: async () => fail(new Error("Local AI is desktop-only.")),
+  localAiStatus: async () => ({
+    supported: false,
+    installedTierId: "",
+    running: false,
+    busy: "" as const,
+    progress: null,
+    error: "",
+  }),
 
   onEvent(listener) {
     listeners.add(listener);

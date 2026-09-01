@@ -1,5 +1,7 @@
 import type {
   AiSetup,
+  HardwareInfo,
+  LocalAiTier,
   LocalStatus,
   ServerProbe,
   ServerSummary,
@@ -432,14 +434,98 @@ function renderLocalAi(): void {
   openai.addEventListener("click", () => renderOpenAiForm());
 
   const localAi = el("button", "choice");
-  localAi.disabled = true;
   localAi.append(
     el("span", "title", "Local AI on this machine"),
-    el("span", "desc", "Coming in a later update: a guided installer sized to your hardware."),
+    el("span", "desc", "Free and private: a guided install sized to your hardware. Needs a beefy machine."),
   );
+  localAi.addEventListener("click", () => void startLocalAiFlow());
 
   choices.append(human, openai, localAi);
   show(title, sub, choices);
+}
+
+// ---------- local AI installer ----------
+
+async function startLocalAiFlow(): Promise<void> {
+  screenName = "local-ai-scan";
+  show(
+    el("h2", "", "Checking this machine"),
+    el("p", "sub", "Measuring memory and graphics hardware..."),
+  );
+  const result = await window.odm.localAiScan();
+  if (!result.ok) {
+    renderError(result.error);
+    return;
+  }
+  renderLocalAiTiers(result.hardware, result.tiers);
+}
+
+function renderLocalAiTiers(hardware: HardwareInfo, tiers: LocalAiTier[]): void {
+  screenName = "local-ai-tiers";
+  const title = el("h2", "", "Pick your storyteller");
+  const gpu = hardware.gpuName || "This machine";
+  const memory = hardware.unifiedMemory
+    ? `${hardware.ramGb} GB unified memory`
+    : `${hardware.vramGb} GB graphics memory, ${hardware.ramGb} GB RAM`;
+  const sub = el("p", "sub", `${gpu}: ${memory}. Greyed-out choices need more memory.`);
+  const choices = el("div", "choices");
+  for (const tier of tiers) {
+    const button = el("button", "choice");
+    button.disabled = !tier.fits;
+    const suffix = tier.installed
+      ? " (installed)"
+      : tier.recommended
+        ? " (recommended)"
+        : "";
+    button.append(
+      el("span", "title", `${tier.label}${suffix}`),
+      el(
+        "span",
+        "desc",
+        `${tier.detail} ${tier.sizeGb} GB download${
+          tier.fits ? "" : `; needs about ${tier.needsGb} GB of memory`
+        }.`,
+      ),
+    );
+    if (tier.fits) {
+      button.addEventListener("click", () => renderLocalAiInstall(tier));
+    }
+    choices.append(button);
+  }
+  show(backButton("Back", () => renderLocalAi()), title, sub, choices);
+}
+
+let aiProgress: { fill: HTMLElement; label: HTMLElement } | null = null;
+
+function renderLocalAiInstall(tier: LocalAiTier): void {
+  screenName = "local-ai-install";
+  const title = el("h2", "", `Setting up ${tier.label.toLowerCase()}`);
+  const sub = el(
+    "p",
+    "sub",
+    "Keep the app open. Large downloads resume where they left off if interrupted.",
+  );
+  const bar = el("div", "progress");
+  const fill = el("div", "progress-fill");
+  bar.append(fill);
+  const label = el("p", "hint", "Starting...");
+  const error = el("p", "error");
+  aiProgress = { fill, label };
+  show(title, sub, bar, label, error);
+  void window.odm.localAiInstall(tier.id).then((result) => {
+    aiProgress = null;
+    if (result.ok) {
+      void window.odm.localPlay(joinIntent?.code);
+      joinIntent = null;
+    } else {
+      error.textContent = result.error;
+      show(
+        backButton("Back", () => void startLocalAiFlow()),
+        title,
+        el("p", "error", result.error),
+      );
+    }
+  });
 }
 
 function renderOpenAiForm(): void {
@@ -493,6 +579,11 @@ window.odm.onEvent((event) => {
   } else if (event.kind === "tunnel-status") {
     tunnel = event.status;
     if (screenName === "home") renderHome();
+  } else if (event.kind === "local-ai-progress") {
+    if (screenName === "local-ai-install" && aiProgress && event.status.progress) {
+      aiProgress.fill.style.width = `${event.status.progress.percent}%`;
+      aiProgress.label.textContent = `${event.status.progress.label} (${event.status.progress.percent}%)`;
+    }
   } else if (event.kind === "join-request") {
     joinIntent = { origin: event.origin, code: event.code, knownServerId: event.knownServerId };
     void refresh().then(() => {

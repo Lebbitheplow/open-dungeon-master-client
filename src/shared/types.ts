@@ -55,11 +55,45 @@ export interface TunnelStatus {
   error: string;
 }
 
+// What the hardware scan learned; sizes in whole GB.
+export interface HardwareInfo {
+  platform: string;
+  arch: string;
+  ramGb: number;
+  // 0 when no GPU signal was found. On unified-memory machines (Apple
+  // Silicon) this equals ramGb.
+  vramGb: number;
+  gpuName: string;
+  unifiedMemory: boolean;
+}
+
+// One entry of the curated model catalog, sized against this machine.
+export interface LocalAiTier {
+  id: string;
+  label: string;
+  detail: string;
+  sizeGb: number;
+  needsGb: number;
+  fits: boolean;
+  recommended: boolean;
+  installed: boolean;
+}
+
+export interface LocalAiStatus {
+  supported: boolean;
+  installedTierId: string;
+  running: boolean;
+  busy: "" | "scanning" | "downloading" | "starting";
+  progress: { label: string; percent: number } | null;
+  error: string;
+}
+
 export type ShellEvent =
   | { kind: "show-manager" }
   | { kind: "join-request"; origin: string; code: string; knownServerId: string }
   | { kind: "local-status"; status: LocalStatus }
-  | { kind: "tunnel-status"; status: TunnelStatus };
+  | { kind: "tunnel-status"; status: TunnelStatus }
+  | { kind: "local-ai-progress"; status: LocalAiStatus };
 
 export interface OdmBridge {
   // Lets the shared shell UI adapt copy and layout per shell.
@@ -91,5 +125,8 @@ export interface OdmBridge {
   localPlay(joinCode?: string): Promise<ConnectResult>;
   shareStart(): Promise<Result<{ tunnel: TunnelStatus }>>;
   shareStop(): Promise<Result<{ tunnel: TunnelStatus }>>;
+  localAiScan(): Promise<Result<{ hardware: HardwareInfo; tiers: LocalAiTier[] }>>;
+  localAiInstall(tierId: string): Promise<Result<{ status: LocalAiStatus }>>;
+  localAiStatus(): Promise<LocalAiStatus>;
   onEvent(listener: (event: ShellEvent) => void): void;
 }

@@ -1,6 +1,7 @@
 import { ipcMain } from "electron";
 import type { AiSetup, ConnectResult, LocalStatus, Result, ServerSummary } from "../shared/types";
 import { CODE_SHAPE, normalizeOrigin, originCandidates, type JoinLink } from "../shared/deep-link";
+import type { LocalAiManager } from "./local-ai/manager";
 import type { LocalServer } from "./local-server";
 import {
   loginForToken,
@@ -23,6 +24,7 @@ export interface ShellContext {
   window: ShellWindow;
   local: LocalServer;
   tunnel: QuickTunnel;
+  localAi: LocalAiManager;
 }
 
 export interface ShellIpc {
@@ -55,13 +57,14 @@ function summaryOf(entry: StoredServer): ServerSummary {
 }
 
 export function registerIpc(ctx: ShellContext): ShellIpc {
-  const { store, window: win, local, tunnel } = ctx;
+  const { store, window: win, local, tunnel, localAi } = ctx;
 
   const localHasAccount = (): boolean => store.token(LOCAL_SERVER_ID) !== null;
   const localStatus = (): LocalStatus => local.status(localHasAccount());
 
   local.onStatus(() => win.sendEvent({ kind: "local-status", status: localStatus() }));
   tunnel.onStatus(() => win.sendEvent({ kind: "tunnel-status", status: tunnel.status() }));
+  localAi.onStatus(() => win.sendEvent({ kind: "local-ai-progress", status: localAi.status() }));
 
   // Keeps the local server's publicUrl matching reality, so invite links and
   // QR codes generated inside the game point at the tunnel while one runs
@@ -299,6 +302,9 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     }
     // A crash while sharing can leave a stale publicUrl behind; heal it.
     void syncPublicUrl();
+    // A model was installed: warm the AI server in the background. The first
+    // AI turn simply waits for the load if the player beats it.
+    void localAi.start();
     const entry = store.get(LOCAL_SERVER_ID);
     const token = store.token(LOCAL_SERVER_ID);
     if (!entry || !token || !(await tokenIsValid(local.origin, token))) {
@@ -313,6 +319,47 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     const code = joinCodeOf(joinCode);
     win.attachView(local.origin, partitionFor(LOCAL_SERVER_ID), code ? `/join/${code}` : "/");
     return { ok: true };
+  });
+
+  ipcMain.handle("local-ai:status", () => localAi.status());
+
+  ipcMain.handle("local-ai:scan", async () => {
+    try {
+      const result = await localAi.scan();
+      return { ok: true, ...result };
+    } catch (err) {
+      return fail(err);
+    }
+  });
+
+  ipcMain.handle("local-ai:install", async (_event, tierId: unknown) => {
+    try {
+      await localAi.install(str(tierId, 40));
+      // Point the local world's AI at the freshly installed model. The base
+      // URL is the ODM server's own local default; the alias tells it which
+      // model name to request from the llama-server preset.
+      const token = store.token(LOCAL_SERVER_ID);
+      const alias = localAi.installedAlias();
+      if (token && local.origin && alias) {
+        const base = "http://127.0.0.1:8001/v1";
+        await patchAdminSettings(local.origin, token, {
+          text: {
+            provider: "custom",
+            customBaseUrl: base,
+            customModel: alias,
+            customApiKey: "",
+            utilityProvider: "custom",
+            utilityBaseUrl: base,
+            utilityModel: alias,
+            utilityApiKey: "",
+          },
+        }).catch(() => undefined);
+      }
+      void localAi.start();
+      return { ok: true, status: localAi.status() };
+    } catch (err) {
+      return fail(err);
+    }
   });
 
   return {

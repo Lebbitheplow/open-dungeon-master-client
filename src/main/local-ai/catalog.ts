@@ -1,0 +1,216 @@
+import type { HardwareInfo, LocalAiTier } from "../../shared/types";
+
+// The curated local AI catalog: one story model in a quant ladder, plus a
+// small dense fallback for machines the ladder cannot reach. Deliberately
+// tiny; the point is a working table, not a model browser.
+//
+// The story model is Qwen3.6-35B-A3B, the same model the ODM server's
+// defaults were tuned against. A3B means ~3B active parameters per token
+// (mixture of experts), which is what makes big-model quality viable on
+// modest hardware: experts that do not fit in VRAM can sit in system RAM
+// (cpu-moe) at a tolerable speed cost. All files are Unsloth Dynamic quants
+// from an ungated repo, so downloads need no Hugging Face account.
+
+const QWEN_BASE = "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF/resolve/main";
+const GEMMA_BASE = "https://huggingface.co/unsloth/gemma-4-12b-it-qat-GGUF/resolve/main";
+
+// Pinned llama.cpp build. Vulkan on Linux/Windows covers AMD, NVIDIA and
+// Intel with one binary; macOS arm64 uses Metal. Pinned rather than latest
+// because the generated server preset depends on this build's flags.
+export const LLAMA_TAG = "b10621";
+const LLAMA_BASE = `https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_TAG}`;
+
+export function llamaArchiveUrl(platform: string, arch: string): string | null {
+  if (platform === "linux" && arch === "x64") {
+    return `${LLAMA_BASE}/llama-${LLAMA_TAG}-bin-ubuntu-vulkan-x64.tar.gz`;
+  }
+  if (platform === "win32" && arch === "x64") {
+    return `${LLAMA_BASE}/llama-${LLAMA_TAG}-bin-win-vulkan-x64.zip`;
+  }
+  if (platform === "darwin" && arch === "arm64") {
+    return `${LLAMA_BASE}/llama-${LLAMA_TAG}-bin-macos-arm64.tar.gz`;
+  }
+  return null;
+}
+
+export interface CatalogEntry {
+  id: string;
+  label: string;
+  detail: string;
+  // The model alias the OpenAI-compatible API serves; becomes the preset
+  // section name and the ODM server's configured model.
+  alias: string;
+  url: string;
+  file: string;
+  sizeGb: number;
+  // File size plus KV cache and runtime overhead at the shipped context.
+  needsGb: number;
+  moe: boolean;
+}
+
+export const CATALOG: CatalogEntry[] = [
+  {
+    id: "qwen-q8",
+    label: "Story model, full quality",
+    detail: "Qwen3.6-35B-A3B at Q8: what the AI DM was tuned on, effectively lossless.",
+    alias: "qwen3.6-35b",
+    url: `${QWEN_BASE}/Qwen3.6-35B-A3B-UD-Q8_K_XL.gguf`,
+    file: "Qwen3.6-35B-A3B-UD-Q8_K_XL.gguf",
+    sizeGb: 38.5,
+    needsGb: 45,
+    moe: true,
+  },
+  {
+    id: "qwen-q6",
+    label: "Story model, high quality",
+    detail: "Qwen3.6-35B-A3B at Q6: indistinguishable from full quality at most tables.",
+    alias: "qwen3.6-35b",
+    url: `${QWEN_BASE}/Qwen3.6-35B-A3B-UD-Q6_K_XL.gguf`,
+    file: "Qwen3.6-35B-A3B-UD-Q6_K_XL.gguf",
+    sizeGb: 31.9,
+    needsGb: 38,
+    moe: true,
+  },
+  {
+    id: "qwen-q4",
+    label: "Story model, standard",
+    detail: "Qwen3.6-35B-A3B at Q4: the sweet spot of quality per gigabyte.",
+    alias: "qwen3.6-35b",
+    url: `${QWEN_BASE}/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`,
+    file: "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    sizeGb: 22.2,
+    needsGb: 28,
+    moe: true,
+  },
+  {
+    id: "qwen-q3",
+    label: "Story model, compact",
+    detail: "Qwen3.6-35B-A3B at Q3: noticeably compressed, still the real model.",
+    alias: "qwen3.6-35b",
+    url: `${QWEN_BASE}/Qwen3.6-35B-A3B-UD-Q3_K_XL.gguf`,
+    file: "Qwen3.6-35B-A3B-UD-Q3_K_XL.gguf",
+    sizeGb: 16.9,
+    needsGb: 22,
+    moe: true,
+  },
+  {
+    id: "qwen-q2",
+    label: "Story model, minimum",
+    detail: "Qwen3.6-35B-A3B at Q2: rough edges, but big-model reasoning survives.",
+    alias: "qwen3.6-35b",
+    url: `${QWEN_BASE}/Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf`,
+    file: "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+    sizeGb: 12.3,
+    needsGb: 17,
+    moe: true,
+  },
+  {
+    id: "gemma-12b",
+    label: "Small machine fallback",
+    detail: "Gemma 4 12B (quantization-aware): a capable narrator when the story model cannot fit.",
+    alias: "gemma-4-12b-qat",
+    url: `${GEMMA_BASE}/gemma-4-12B-it-qat-UD-Q4_K_XL.gguf`,
+    file: "gemma-4-12B-it-qat-UD-Q4_K_XL.gguf",
+    sizeGb: 6.8,
+    needsGb: 10,
+    moe: false,
+  },
+];
+
+// How much model this machine can carry. MoE with cpu-moe means system RAM
+// genuinely counts: attention lives on the GPU and the expert weights
+// stream from RAM at ~3B active parameters per token.
+export function memoryBudgetGb(hardware: HardwareInfo): number {
+  if (hardware.unifiedMemory) {
+    return hardware.ramGb * 0.8;
+  }
+  if (hardware.vramGb >= 4) {
+    return hardware.vramGb + hardware.ramGb * 0.5;
+  }
+  // CPU-only: the OS, the ODM server and a browser share the same RAM, but
+  // a 16GB machine should still clear the small fallback model.
+  return hardware.ramGb * 0.65;
+}
+
+export function sizeTiers(
+  hardware: HardwareInfo,
+  installedTierId: string,
+): LocalAiTier[] {
+  const budget = memoryBudgetGb(hardware);
+  const tiers = CATALOG.map((entry) => ({
+    id: entry.id,
+    label: entry.label,
+    detail: entry.detail,
+    sizeGb: entry.sizeGb,
+    needsGb: entry.needsGb,
+    fits: entry.needsGb <= budget,
+    recommended: false,
+    installed: entry.id === installedTierId,
+  }));
+  const best = tiers.find((tier) => tier.fits);
+  if (best) {
+    best.recommended = true;
+  }
+  return tiers;
+}
+
+export function catalogEntry(tierId: string): CatalogEntry | null {
+  return CATALOG.find((entry) => entry.id === tierId) ?? null;
+}
+
+// The llama-server models preset for an installed tier. The Qwen section is
+// a transcript of a long-lived production tuning for exactly this model and
+// use (ODM narration): non-thinking sampling with presence penalty 1.5,
+// KV at q8_0, thinking allowed per-request but hard-budgeted so a runaway
+// deliberation cannot stall a turn for minutes.
+export function presetFor(
+  entry: CatalogEntry,
+  modelPath: string,
+  hardware: HardwareInfo,
+): string {
+  // Experts to RAM when the file cannot live in VRAM. Never on unified
+  // memory, where the distinction does not exist.
+  const offload =
+    entry.moe && !hardware.unifiedMemory && entry.sizeGb > Math.max(hardware.vramGb - 2, 0);
+  const lines = [
+    "version = 1",
+    "",
+    `; Generated by the Open Dungeon Master app for ${entry.file}.`,
+    "; Regenerated on every launch; edits belong in the app, not here.",
+    `[${entry.alias}]`,
+    `model = ${modelPath}`,
+    "ngl = 99",
+    "fa = on",
+    "jinja = true",
+    "load-on-startup = true",
+  ];
+  if (offload) {
+    lines.push("cpu-moe = true");
+  }
+  if (entry.moe) {
+    lines.push(
+      "c = 65536",
+      "ctk = q8_0",
+      "ctv = q8_0",
+      "temp = 0.7",
+      "top-p = 0.95",
+      "top-k = 20",
+      "min-p = 0.0",
+      "presence-penalty = 1.5",
+      "reasoning = off",
+      "reasoning-budget = 2048",
+      "reasoning-budget-message = Enough deliberation. Decide now: emit the exact tool calls the rules require, or answer directly.",
+    );
+  } else {
+    lines.push(
+      "c = 32768",
+      "ctk = q8_0",
+      "ctv = q8_0",
+      "temp = 1.0",
+      "top-p = 0.95",
+      "top-k = 64",
+      "min-p = 0.0",
+    );
+  }
+  return `${lines.join("\n")}\n`;
+}

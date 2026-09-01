@@ -21,6 +21,9 @@ const bridge: OdmBridge = {
   localPlay: (joinCode?: string) => ipcRenderer.invoke("local:play", joinCode),
   shareStart: () => ipcRenderer.invoke("share:start"),
   shareStop: () => ipcRenderer.invoke("share:stop"),
+  localAiScan: () => ipcRenderer.invoke("local-ai:scan"),
+  localAiInstall: (tierId: string) => ipcRenderer.invoke("local-ai:install", tierId),
+  localAiStatus: () => ipcRenderer.invoke("local-ai:status"),
   onEvent: (listener) => {
     ipcRenderer.on("odm:event", (_event, payload: ShellEvent) => listener(payload));
   },
