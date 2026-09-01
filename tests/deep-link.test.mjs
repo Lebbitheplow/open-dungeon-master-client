@@ -6,7 +6,7 @@ import {
   normalizeOrigin,
   originCandidates,
   parseJoinLink,
-} from "../dist/main/deep-link.js";
+} from "../dist/shared/deep-link.js";
 
 test("normalizeOrigin keeps clean http(s) origins", () => {
   assert.equal(normalizeOrigin("https://play.example.com/lobby?x=1"), "https://play.example.com");

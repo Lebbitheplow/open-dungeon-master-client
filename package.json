@@ -9,10 +9,10 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.main.json && tsc -p tsconfig.renderer.json && node scripts/copy-assets.mjs",
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.main.json && tsc -p tsconfig.renderer.json && node scripts/copy-assets.mjs",
     "start": "npm run build && electron .",
     "test": "npm run build && node --test \"tests/*.test.mjs\"",
-    "lint": "eslint src scripts",
+    "lint": "eslint src scripts mobile/src mobile/scripts",
     "bundle-server": "node scripts/bundle-server.mjs",
     "smoke-local": "node scripts/smoke-local-server.mjs",
     "dist:linux": "npm run build && electron-builder --linux",

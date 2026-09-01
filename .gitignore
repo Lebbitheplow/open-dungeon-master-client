@@ -4,5 +4,7 @@ release/
 # The bundled server payload is produced by scripts/bundle-server.mjs from a
 # checkout of the server repo; it is a build artifact, never committed.
 vendor/server/
+# Built by mobile/scripts/build-www.mjs from the shared renderer sources.
+mobile/www/
 *.log
 .DS_Store

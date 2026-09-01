@@ -1,6 +1,6 @@
 import path from "node:path";
 import { app, safeStorage } from "electron";
-import { joinLinkFromArgv, parseJoinLink, type JoinLink } from "./deep-link";
+import { joinLinkFromArgv, parseJoinLink, type JoinLink } from "../shared/deep-link";
 import { LocalServer } from "./local-server";
 import { registerIpc, type ShellIpc } from "./ipc";
 import { ServerStore, type TokenCrypt } from "./servers";

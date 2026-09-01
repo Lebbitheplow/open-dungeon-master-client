@@ -6,6 +6,7 @@ import type { AiSetup, OdmBridge, ShellEvent } from "../shared/types";
 // connected servers' pages, which run in separate partitions with no bridge.
 
 const bridge: OdmBridge = {
+  platform: "desktop",
   listServers: () => ipcRenderer.invoke("servers:list"),
   probeServer: (origin: string) => ipcRenderer.invoke("servers:probe", origin),
   login: (input) => ipcRenderer.invoke("servers:login", input),

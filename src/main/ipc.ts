@@ -1,6 +1,6 @@
 import { ipcMain } from "electron";
 import type { AiSetup, ConnectResult, LocalStatus, Result, ServerSummary } from "../shared/types";
-import { CODE_SHAPE, normalizeOrigin, originCandidates, type JoinLink } from "./deep-link";
+import { CODE_SHAPE, normalizeOrigin, originCandidates, type JoinLink } from "../shared/deep-link";
 import type { LocalServer } from "./local-server";
 import {
   loginForToken,

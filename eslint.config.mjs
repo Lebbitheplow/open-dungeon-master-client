@@ -2,11 +2,21 @@ import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist/**", "release/**", "vendor/**", "node_modules/**"] },
+  {
+    ignores: [
+      "dist/**",
+      "release/**",
+      "vendor/**",
+      "node_modules/**",
+      "mobile/android/**",
+      "mobile/www/**",
+      "mobile/node_modules/**",
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ["scripts/**/*.mjs", "tests/**/*.mjs"],
+    files: ["scripts/**/*.mjs", "tests/**/*.mjs", "mobile/scripts/**/*.mjs"],
     languageOptions: {
       globals: {
         process: "readonly",

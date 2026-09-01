@@ -151,9 +151,18 @@ async function connectServer(server: ServerSummary, btn: HTMLButtonElement): Pro
 function renderHome(): void {
   screenName = "home";
   const title = el("h1", "", "Open Dungeon Master");
-  const sub = el("p", "sub", "Pick a server, or play offline. Ctrl+M brings you back here.");
+  const sub = el(
+    "p",
+    "sub",
+    window.odm.platform === "android"
+      ? "Pick a server to play."
+      : "Pick a server, or play offline. Ctrl+M brings you back here.",
+  );
   const cards = el("div", "cards");
-  cards.append(localCard());
+  // Connect-only shells (Android) have no bundled server; skip the dead card.
+  if (!(window.odm.platform === "android" && local.state === "unavailable")) {
+    cards.append(localCard());
+  }
   for (const server of servers) cards.append(serverCard(server));
   const addCard = el("div", "card");
   const grow = el("div", "grow");

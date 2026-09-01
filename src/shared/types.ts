@@ -52,6 +52,8 @@ export type ShellEvent =
   | { kind: "local-status"; status: LocalStatus };
 
 export interface OdmBridge {
+  // Lets the shared shell UI adapt copy and layout per shell.
+  platform: "desktop" | "android";
   listServers(): Promise<{ servers: ServerSummary[]; local: LocalStatus }>;
   probeServer(origin: string): Promise<Result<{ probe: ServerProbe }>>;
   login(input: {
