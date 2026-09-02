@@ -4,6 +4,11 @@
   "private": true,
   "description": "Desktop client for Open Dungeon Master: connect to any server, or play fully offline",
   "license": "MIT",
+  "author": {
+    "name": "Kaleb Lutterman",
+    "email": "kaleblutterman@gmail.com"
+  },
+  "homepage": "https://opendungeonmaster.com",
   "repository": {
     "type": "git",
     "url": "https://github.com/Lebbitheplow/open-dungeon-master-client.git"
