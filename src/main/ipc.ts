@@ -159,6 +159,15 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
       // Older local worlds predate mesh voice; sharing is the moment it
       // matters, so heal the setting here too.
       await ensureLocalVoice();
+      // Going public must not mean open registration on a personal machine.
+      // Invite mode still lets invited friends sign up: a live campaign room
+      // code vouches for them. Best effort; the admin panel can loosen it.
+      const token = store.token(LOCAL_SERVER_ID);
+      if (token && local.origin) {
+        await patchAdminSettings(local.origin, token, { signupMode: "invite" }).catch(
+          () => undefined,
+        );
+      }
       return { ok: true, tunnel: status };
     } catch (err) {
       return fail(err);
@@ -298,6 +307,13 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     try {
       const token = store.token(LOCAL_SERVER_ID);
       if (!token || !local.origin) return fail(new Error("Set up the local account first."));
+      if (setup?.choice === "human") {
+        // Recorded positively so the game's capability checks can say "this
+        // world has a human storyteller" instead of failing against the
+        // default local backend that nothing listens on.
+        await patchAdminSettings(local.origin, token, { text: { provider: "none" } });
+        return { ok: true };
+      }
       if (setup?.choice !== "openai") return { ok: true };
       const apiKey = str(setup.apiKey, 400).trim();
       if (!apiKey) return fail(new Error("Enter the API key."));
