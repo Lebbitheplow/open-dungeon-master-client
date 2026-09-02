@@ -5,10 +5,13 @@ import {
   CapacitorBarcodeScannerTypeHint,
 } from "@capacitor/barcode-scanner";
 import { CapacitorCookies, CapacitorHttp } from "@capacitor/core";
+import { Directory, Filesystem } from "@capacitor/filesystem";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { Preferences } from "@capacitor/preferences";
-import { InAppBrowser, ToolBarType } from "@capgo/inappbrowser";
+import { Share } from "@capacitor/share";
+import { BackgroundColor, InAppBrowser, ToolBarType } from "@capgo/inappbrowser";
 import { createBleRelay } from "./ble-relay";
+import { createDownloadRelay } from "./download-relay";
 import {
   CODE_SHAPE,
   normalizeOrigin,
@@ -236,15 +239,58 @@ const bleRelay = createBleRelay({
   },
 });
 
-// The manager UI ships the polyfill as a sibling asset; missing or failing
-// to load it must never block connecting, it only disables dice pairing.
-let blePolyfill: Promise<string> | null = null;
+// ---------- file exports (download bridge for the game webview) ----------
+// The game webview has no download handler, so an <a download> click there
+// (character-sheet PDF, workshop bundle, story export) would do nothing. A
+// shim (built to www/download-shim.js) injected next to the BLE polyfill
+// fetches the file inside the page and posts its bytes here; the relay parks
+// them in the app cache and opens the system share sheet, where the player
+// saves to Files or Drive or sends the file on. The cache folder is covered
+// by the FileProvider the app manifest already declares (res/xml/file_paths).
+const downloadRelay = createDownloadRelay({
+  async writeCache(path, data) {
+    const written = await Filesystem.writeFile({
+      path,
+      data,
+      directory: Directory.Cache,
+      recursive: true,
+    });
+    return written.uri;
+  },
+  async clearCache(path) {
+    await Filesystem.rmdir({ path, directory: Directory.Cache, recursive: true });
+  },
+  async share(title, uri) {
+    await Share.share({ title, files: [uri] });
+  },
+  // The manager UI sits hidden under the game webview, so the message goes
+  // back down to the page, where the shim renders it as a toast.
+  notify(message) {
+    void InAppBrowser.postMessage({
+      detail: { type: "odm-download-notice", message },
+    }).catch(() => undefined);
+  },
+});
 
-function loadBlePolyfill(): Promise<string> {
-  blePolyfill ??= fetch("ble-polyfill.js")
-    .then((response) => (response.ok ? response.text() : ""))
-    .catch(() => "");
-  return blePolyfill;
+// The manager UI ships the game-page scripts as sibling assets. Each is a
+// self-contained IIFE, so they concatenate into one preShowScript; a missing
+// or failing one must never block connecting, it only disables its feature
+// (dice pairing, file exports, the account menu's way back to this list).
+const INJECTED_SCRIPTS = ["ble-polyfill.js", "download-shim.js", "shell-hook.js"];
+
+// The game's own night background, painted behind the status bar and the
+// navigation bar so the page and the system chrome read as one surface.
+const NIGHT = "#0a0817";
+let injectedScripts: Promise<string> | null = null;
+function loadInjectedScripts(): Promise<string> {
+  injectedScripts ??= Promise.all(
+    INJECTED_SCRIPTS.map((name) =>
+      fetch(name)
+        .then((response) => (response.ok ? response.text() : ""))
+        .catch(() => ""),
+    ),
+  ).then((parts) => parts.filter((part) => part.length > 0).join("\n;\n"));
+  return injectedScripts;
 }
 
 async function openServer(server: StoredServer, joinCode: string): Promise<void> {
@@ -253,10 +299,18 @@ async function openServer(server: StoredServer, joinCode: string): Promise<void>
     key: "odm_session",
     value: server.token,
   });
-  const preShowScript = await loadBlePolyfill();
+  const preShowScript = await loadInjectedScripts();
+  // No toolbar: the page is the app. The status bar and navigation bar keep
+  // their space (the WebView cannot see them itself), the hardware back
+  // button walks the page's own history, and at its root it closes the
+  // page, landing here. The page's account menu offers the same door.
   await InAppBrowser.openWebView({
     url: `${server.origin}${joinCode ? `/join/${joinCode}` : "/"}`,
-    toolbarType: ToolBarType.COMPACT,
+    toolbarType: ToolBarType.BLANK,
+    toolbarColor: NIGHT,
+    backgroundColor: BackgroundColor.BLACK,
+    enabledSafeBottomMargin: true,
+    activeNativeNavigationForWebview: true,
     title: server.name,
     // documentStart injection needs the present-after-load mode; the game's
     // Bluetooth feature detection must run after the polyfill exists.
@@ -353,6 +407,7 @@ const LOCAL_UNAVAILABLE: LocalStatus = {
   origin: "",
   firstRun: false,
   hasAccount: false,
+  username: "",
   serverVersion: "",
   error: "",
 };
@@ -504,9 +559,36 @@ window.odm = bridge;
 // Closing the server webview lands back on the manager.
 void InAppBrowser.addListener("closeEvent", () => emit({ kind: "show-manager" }));
 
-// GATT traffic from the injected Web Bluetooth polyfill.
+// Traffic from the injected game-page scripts: GATT calls from the Web
+// Bluetooth polyfill and file exports from the download shim. The plugin
+// copies the posted object's top-level keys onto the event, so a message
+// posted as { detail: {...} } arrives under event.detail while one posted
+// bare (the BLE polyfill's shape) is the event itself; accept both.
+async function routeWebviewMessage(event: unknown): Promise<void> {
+  const wrapped = event as { detail?: unknown } | null;
+  const detail =
+    wrapped && typeof wrapped === "object" && wrapped.detail !== undefined ? wrapped.detail : event;
+  if (isShellRequest(detail)) {
+    // "Switch server" from the page's account menu (shell-hook.js). The
+    // plugin fires closeEvent for toolbar and back-button closes only, so
+    // the manager is shown explicitly here.
+    await InAppBrowser.close().catch(() => undefined);
+    emit({ kind: "show-manager" });
+    return;
+  }
+  if (await bleRelay.handleMessage(detail)) return;
+  await downloadRelay.handleMessage(detail);
+}
+
+function isShellRequest(detail: unknown): boolean {
+  return (
+    !!detail &&
+    typeof detail === "object" &&
+    (detail as { odmShell?: unknown }).odmShell === "servers"
+  );
+}
 void InAppBrowser.addListener("messageFromWebview", (event) => {
-  void bleRelay.handleMessage(event.detail);
+  void routeWebviewMessage(event);
 });
 
 // Deep links: while running, and the one that may have launched the app.

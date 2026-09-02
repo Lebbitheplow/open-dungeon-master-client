@@ -31,6 +31,9 @@ export interface LocalStatus {
   origin: string;
   firstRun: boolean;
   hasAccount: boolean;
+  // The on-device profile's name, "" until one exists. Shown on the home
+  // screen so the default door says who it opens for.
+  username: string;
   serverVersion: string;
   error: string;
 }

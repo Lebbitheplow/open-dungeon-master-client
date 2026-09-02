@@ -71,7 +71,12 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
   const { store, window: win, local, tunnel, localAi, updater } = ctx;
 
   const localHasAccount = (): boolean => store.token(LOCAL_SERVER_ID) !== null;
-  const localStatus = (): LocalStatus => local.status(localHasAccount());
+  const localStatus = (): LocalStatus =>
+    local.status(localHasAccount(), store.get(LOCAL_SERVER_ID)?.username ?? "");
+
+  // The "Switch server" entry the game's account menu shows inside the app
+  // (src/preload/game.ts): drop the world's view and land on the server list.
+  ipcMain.on("shell:show-servers", () => win.showManager());
 
   local.onStatus(() => win.sendEvent({ kind: "local-status", status: localStatus() }));
   tunnel.onStatus(() => win.sendEvent({ kind: "tunnel-status", status: tunnel.status() }));

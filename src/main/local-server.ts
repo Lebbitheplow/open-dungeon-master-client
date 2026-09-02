@@ -80,13 +80,14 @@ export class LocalServer {
     for (const listener of this.listeners) listener();
   }
 
-  status(hasAccount: boolean): LocalStatus {
+  status(hasAccount: boolean, username = ""): LocalStatus {
     const info = readPayloadInfo(this.payloadDir) ?? readPayloadInfo(this.runDir);
     return {
       state: info ? this.state : "unavailable",
       origin: this.state === "running" ? this.origin : "",
       firstRun: !fs.existsSync(this.dbPath),
       hasAccount,
+      username,
       serverVersion: info?.serverVersion ?? "",
       error: this.error,
     };

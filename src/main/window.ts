@@ -1,6 +1,7 @@
 import path from "node:path";
 import { BrowserWindow, Menu, WebContentsView, session, shell } from "electron";
 import type { ShellEvent } from "../shared/types";
+import { appIconPath } from "./app-icon";
 import { autoConfirmBluetoothPairing, wireBluetoothChooser } from "./bluetooth";
 import { isShellCookieWrite } from "./session-cookies";
 
@@ -61,7 +62,8 @@ export class ShellWindow {
       height: 800,
       minWidth: 900,
       minHeight: 600,
-      backgroundColor: "#181420",
+      backgroundColor: "#0a0817",
+      icon: appIconPath(),
       autoHideMenuBar: true,
       webPreferences: {
         preload: path.join(__dirname, "../preload/index.js"),
@@ -139,8 +141,16 @@ export class ShellWindow {
     if (!this.win) return;
     this.detachView();
     hardenPartition(partition, origin);
+    // The game preload exposes one thing, window.odmShell.showServers, so
+    // the server's own account menu can offer the way back here.
     const view = new WebContentsView({
-      webPreferences: { partition, sandbox: true, contextIsolation: true, nodeIntegration: false },
+      webPreferences: {
+        partition,
+        sandbox: true,
+        contextIsolation: true,
+        nodeIntegration: false,
+        preload: path.join(__dirname, "../preload/game.js"),
+      },
     });
     this.view = view;
     this.currentOrigin = origin;

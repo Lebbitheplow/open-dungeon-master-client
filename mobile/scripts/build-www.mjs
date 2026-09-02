@@ -22,26 +22,42 @@ await build({
   outfile: path.join(www, "bridge.js"),
 });
 
-// The Web Bluetooth polyfill is not loaded by the manager UI; the bridge
-// fetches it as text and injects it into the game webview (preShowScript).
-await build({
-  entryPoints: [path.join(mobile, "src", "ble-polyfill.ts")],
-  bundle: true,
-  format: "iife",
-  platform: "browser",
-  target: "es2022",
-  outfile: path.join(www, "ble-polyfill.js"),
-});
+// The game-page scripts (Web Bluetooth polyfill, download shim, shell menu
+// hook) are not loaded by the manager UI; the bridge fetches them as text
+// and injects them into the game webview (preShowScript).
+for (const name of ["ble-polyfill", "download-shim", "shell-hook"]) {
+  await build({
+    entryPoints: [path.join(mobile, "src", `${name}.ts`)],
+    bundle: true,
+    format: "iife",
+    platform: "browser",
+    target: "es2022",
+    outfile: path.join(www, `${name}.js`),
+  });
+}
 
-await build({
-  entryPoints: [path.join(repo, "src", "renderer", "app.ts")],
-  bundle: true,
-  format: "iife",
-  platform: "browser",
-  target: "es2022",
-  outfile: path.join(www, "app.js"),
-});
+for (const name of ["app", "topo"]) {
+  await build({
+    entryPoints: [path.join(repo, "src", "renderer", `${name}.ts`)],
+    bundle: true,
+    format: "iife",
+    platform: "browser",
+    target: "es2022",
+    outfile: path.join(www, `${name}.js`),
+  });
+}
 
-fs.copyFileSync(path.join(repo, "src", "renderer", "style.css"), path.join(www, "style.css"));
+for (const name of ["style.css", "story.png"]) {
+  fs.copyFileSync(path.join(repo, "src", "renderer", name), path.join(www, name));
+}
 fs.copyFileSync(path.join(mobile, "src", "index.html"), path.join(www, "index.html"));
+
+// Same display face as the desktop shell, vendored from the repo root's
+// @fontsource package (the mobile package has no font dependency of its own).
+const fontSource = path.join(repo, "node_modules", "@fontsource", "cinzel", "files");
+fs.mkdirSync(path.join(www, "fonts"), { recursive: true });
+for (const weight of ["400", "600", "700"]) {
+  const name = `cinzel-latin-${weight}-normal.woff2`;
+  fs.copyFileSync(path.join(fontSource, name), path.join(www, "fonts", name));
+}
 console.log("www built");

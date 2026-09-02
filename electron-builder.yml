@@ -8,7 +8,14 @@ files:
 extraResources:
   - from: vendor/server
     to: server
+  # The window and taskbar icon at runtime (src/main/window.ts); the
+  # platform icons below are derived from the same file by electron-builder.
+  - from: build/icon.png
+    to: icon.png
 asar: true
+# One 1024px source, rendered from build/icon.svg by scripts/make-icons.mjs;
+# electron-builder converts it to .icns and .ico itself.
+icon: build/icon.png
 # Releases live on GitHub; the in-app updater reads the latest release's
 # latest.yml (NSIS) and latest-linux.yml (AppImage) straight from its
 # assets, no token needed once the repo is public. Other targets (deb, rpm,

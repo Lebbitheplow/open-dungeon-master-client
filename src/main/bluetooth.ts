@@ -1,5 +1,6 @@
 import path from "node:path";
 import { BrowserWindow, ipcMain, type Session, type WebContents } from "electron";
+import { appIconPath } from "./app-icon";
 
 // Web Bluetooth plumbing for the server view. The game UI pairs Pixels dice
 // through navigator.bluetooth, but Electron ships no device chooser: without
@@ -52,6 +53,7 @@ function ensurePicker(parent: BrowserWindow | null): void {
     maximizable: false,
     autoHideMenuBar: true,
     backgroundColor: "#181420",
+    icon: appIconPath(),
     title: "Connect a Bluetooth die",
     webPreferences: {
       preload: path.join(__dirname, "../preload/bluetooth-picker.js"),

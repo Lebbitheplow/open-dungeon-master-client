@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The game's arcane-night palette, so the window behind the system
+         bars (edge-to-edge on Android 15+) matches the page it frames. -->
+    <color name="odm_night">#0a0817</color>
+    <color name="colorPrimary">#d4ab3a</color>
+    <color name="colorPrimaryDark">#0a0817</color>
+    <color name="colorAccent">#d4ab3a</color>
+</resources>
