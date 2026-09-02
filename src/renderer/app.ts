@@ -45,6 +45,15 @@ let updateNote = "";
 
 const isAndroid = window.odm.platform === "android";
 
+// The hosted world a phone starts in when it has no server of its own: the
+// phone cannot run the server (native pieces with no Android builds), so
+// first launch makes an account here and the player is in. Inline rather
+// than imported because this file must stay a classic script on desktop.
+const OFFICIAL_SERVER = {
+  origin: "https://dungeon.lebbi.org",
+  name: "the Open Dungeon Master server",
+};
+
 // ---------- DOM helpers ----------
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -582,6 +591,12 @@ function footer(): HTMLElement {
 }
 
 function renderHome(): void {
+  // A phone with nothing saved yet gets the first-launch screen instead of
+  // an empty list; an invite in flight still goes through the banner flow.
+  if (isAndroid && servers.length === 0 && !joinIntent) {
+    renderWelcome();
+    return;
+  }
   screenName = "home";
   const nodes: (HTMLElement | null)[] = [joinBanner()];
   const cards = el("div", "cards");
@@ -618,6 +633,158 @@ function renderHome(): void {
   }
   nodes.push(cards, footer());
   show("wide", ...nodes);
+}
+
+// ---------- first launch on a phone ----------
+
+// One probe of the official server per welcome visit; null while pending.
+let officialProbe: { probe: ServerProbe | null; error: string } | null = null;
+
+function renderWelcome(): void {
+  screenName = "welcome";
+  if (!officialProbe) {
+    void window.odm.probeServer(OFFICIAL_SERVER.origin).then((result) => {
+      officialProbe = result.ok ? { probe: result.probe, error: "" } : { probe: null, error: result.error };
+      if (screenName === "welcome") renderWelcome();
+    });
+  }
+  const card = el("div", "glass grain form-card");
+  const state = officialProbe;
+  if (!state) {
+    const line = el("div", "status-line");
+    line.append(spinner(), document.createTextNode("Reaching the server..."));
+    card.append(line);
+  } else if (!state.probe) {
+    card.append(el("p", "error", state.error));
+    card.append(
+      el("p", "hint", "The Open Dungeon Master server could not be reached. Check your connection, or connect to a server of your own below."),
+    );
+    const retry = button("secondary", "Try again", () => {
+      officialProbe = null;
+      renderWelcome();
+    });
+    retry.classList.add("block");
+    retry.style.marginTop = "0.75rem";
+    card.append(retry);
+  } else {
+    card.append(...welcomeDoors(state.probe));
+  }
+
+  const links = el("div", "links");
+  if (window.odm.scanInvite) {
+    const scan = el("button", "link");
+    scan.type = "button";
+    scan.append(icon("qr"), document.createTextNode("Scan an invite"));
+    scan.addEventListener("click", () => void scanInvite(scan));
+    links.append(scan);
+  }
+  const own = el("button", "link");
+  own.type = "button";
+  own.append(icon("server"), document.createTextNode("I run my own server"));
+  own.addEventListener("click", () => renderAdd(""));
+  links.append(own);
+
+  show(
+    "narrow",
+    intro(
+      "Welcome, adventurer",
+      `Pick a name and you are in. Your characters, campaigns and workshop live on ${OFFICIAL_SERVER.name}, where friends can join you from anywhere.`,
+    ),
+    card,
+    links,
+    footer(),
+  );
+}
+
+// The doors the official server offers right now: a name-and-password
+// account when signups are open, Discord when the server has it, and a
+// plain sign-in for anyone who already has an account there.
+function welcomeDoors(probe: ServerProbe): HTMLElement[] {
+  const parts: HTMLElement[] = [];
+  const error = el("p", "error");
+  if (probe.signupMode === "open") {
+    const form = el("form");
+    const [nameLabel, nameField] = input("Your name", "text");
+    nameField.placeholder = "How the table will know you";
+    nameField.autocomplete = "username";
+    nameField.maxLength = 24;
+    const [passLabel, passField] = input("Password", "password");
+    passField.autocomplete = "new-password";
+    const submit = button("primary", "Start playing", undefined, "play");
+    submit.type = "submit";
+    submit.classList.add("block");
+    form.append(nameLabel, passLabel, error, submit);
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      submit.disabled = true;
+      error.textContent = "";
+      void window.odm
+        .register({
+          origin: probe.origin,
+          username: nameField.value.trim(),
+          password: passField.value,
+          inviteCode: "",
+        })
+        .then(async (result) => {
+          submit.disabled = false;
+          if (result.ok) {
+            officialProbe = null;
+            await refresh();
+            renderHome();
+          } else {
+            error.textContent = result.error;
+          }
+        });
+    });
+    parts.push(form);
+  } else {
+    parts.push(
+      el(
+        "p",
+        "hint",
+        probe.signupMode === "invite"
+          ? "The server is invite-only right now: sign in if you have an account, or ask a friend there for an invite."
+          : "The server is not taking new accounts right now. Sign in if you already have one.",
+      ),
+      error,
+    );
+  }
+
+  if (probe.discord) {
+    if (probe.signupMode === "open") parts.push(el("div", "divider", "or"));
+    const discord = button(
+      "secondary",
+      "Continue with Discord",
+      (btn) => {
+        btn.disabled = true;
+        error.textContent = "";
+        void window.odm
+          .discordLogin({ origin: probe.origin })
+          .then(async (result) => {
+            btn.disabled = false;
+            if (result.ok) {
+              officialProbe = null;
+              await refresh();
+              renderHome();
+            } else {
+              error.textContent = result.error;
+            }
+          });
+      },
+      "discord",
+    );
+    discord.classList.add("block");
+    parts.push(discord);
+  }
+
+  const existing = el("p", "hint center");
+  existing.append(document.createTextNode("Already have an account there? "));
+  const signIn = el("button", "link", "Sign in");
+  signIn.type = "button";
+  signIn.addEventListener("click", () => renderAuth(probe, "login", ""));
+  existing.append(signIn);
+  parts.push(existing);
+  return parts;
 }
 
 function renderError(message: string): void {
