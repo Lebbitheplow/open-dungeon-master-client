@@ -289,6 +289,29 @@ function aboutCard(): HTMLElement {
   return card;
 }
 
+// In-app QR scanning, on shells that carry a camera scanner (Android). A
+// scanned invite flows through the same join-request path as a deep link.
+function scanCard(): HTMLElement | null {
+  const scan = window.odm.scanInvite;
+  if (!scan) return null;
+  const card = el("div", "card");
+  const grow = el("div", "grow");
+  grow.append(el("div", "name", "Scan a QR invite"));
+  const detail = el("div", "detail", "Point the camera at a campaign invite code.");
+  grow.append(detail);
+  card.append(grow);
+  const btn = el("button", "ghost", "Scan");
+  btn.addEventListener("click", () => {
+    btn.disabled = true;
+    void scan().then((result) => {
+      btn.disabled = false;
+      if (!result.ok) detail.textContent = result.error;
+    });
+  });
+  card.append(btn);
+  return card;
+}
+
 function renderHome(): void {
   screenName = "home";
   const title = el("h1", "", "Open Dungeon Master");
@@ -317,6 +340,8 @@ function renderHome(): void {
   addBtn.addEventListener("click", () => renderAdd(joinIntent?.origin ?? ""));
   addCard.append(addBtn);
   cards.append(addCard);
+  const scanner = scanCard();
+  if (scanner) cards.append(scanner);
   cards.append(aboutCard());
   show(title, sub, joinBanner(), cards);
 }
@@ -343,16 +368,22 @@ function renderAdd(prefill: string): void {
     event.preventDefault();
     submit.disabled = true;
     error.textContent = "";
-    void window.odm.probeServer(originField.value).then((result) => {
+    void (async () => {
+      // A pasted invite link takes the exact deep-link path: auto-connect on
+      // a known server, or a join-request event that re-renders this screen
+      // with the banner and the origin filled in.
+      if (await window.odm.openInviteLink(originField.value)) return;
+      const result = await window.odm.probeServer(originField.value);
       submit.disabled = false;
       if (result.ok) {
         renderAuth(result.probe, "login", "");
       } else {
         error.textContent = result.error;
       }
-    });
+    })();
   });
-  show(backButton("Back", () => renderHome()), title, joinBanner(), form);
+  const hint = el("p", "hint", "An invite link or QR link pasted here works too.");
+  show(backButton("Back", () => renderHome()), title, joinBanner(), form, hint);
 }
 
 function authTabs(

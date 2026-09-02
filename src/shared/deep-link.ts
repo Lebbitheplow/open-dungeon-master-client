@@ -63,6 +63,29 @@ export function parseJoinLink(raw: string): JoinLink | null {
   return { origin, code };
 }
 
+// Any invite shape a person might paste, scan, or open: the odm:// link, or
+// the https interstitial link the QR codes carry
+// (https://opendungeonmaster.com/j?s=...&c=CODE, also /j/CODE?s=...).
+export function parseAnyLink(raw: string): JoinLink | null {
+  const direct = parseJoinLink(raw);
+  if (direct) return direct;
+  if (typeof raw !== "string" || raw.length > 700) return null;
+  let url: URL;
+  try {
+    url = new URL(raw.trim());
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" || url.host !== "opendungeonmaster.com") return null;
+  if (!url.pathname.startsWith("/j")) return null;
+  const origin = normalizeOrigin(url.searchParams.get("s") ?? "");
+  const code = (url.searchParams.get("c") ?? url.pathname.split("/")[2] ?? "")
+    .trim()
+    .toUpperCase();
+  if (!origin || !CODE_SHAPE.test(code)) return null;
+  return { origin, code };
+}
+
 // Picks the odm:// link out of a process argv, if one is present.
 export function joinLinkFromArgv(argv: readonly string[]): JoinLink | null {
   for (const arg of argv) {

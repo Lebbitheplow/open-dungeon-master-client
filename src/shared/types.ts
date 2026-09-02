@@ -169,6 +169,12 @@ export interface OdmBridge {
     joinCode?: string;
   }): Promise<Result<{ server: ServerSummary }>>;
   connect(serverId: string, joinCode?: string): Promise<ConnectResult>;
+  // Feeds a pasted invite link (odm:// or the https /j shape) into the same
+  // flow as a clicked deep link. False means the text was not an invite link.
+  openInviteLink(raw: string): Promise<boolean>;
+  // Present only where a camera scanner exists (Android). Scans one QR code
+  // and routes a recognized invite into the join flow.
+  scanInvite?(): Promise<Result>;
   removeServer(serverId: string): Promise<void>;
   localStart(): Promise<Result<{ status: LocalStatus }>>;
   localCreateAccount(input: {

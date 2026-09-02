@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- usesCleartextTraffic: self-hosted servers on a LAN are commonly
          plain http; the connect flow tries https first. -->
@@ -33,9 +34,9 @@
                 <data android:scheme="odm" />
             </intent-filter>
 
-            <!-- App Links for /j invite pages and QR codes. autoVerify needs
-                 /.well-known/assetlinks.json served on the domain (planned:
-                 a route on the /j Cloudflare Worker). -->
+            <!-- App Links for /j invite pages and QR codes. autoVerify checks
+                 /.well-known/assetlinks.json, served by the /j Cloudflare
+                 Worker from its ANDROID_CERT_SHA256 fingerprint list. -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -68,4 +69,15 @@
     <!-- Session reminders and turn alerts; Android 13+ also needs the
          runtime grant the bridge requests after the first connect. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- The Scan a QR invite card; the scanner plugin asks at runtime. Not
+         required, so camera-less devices can still install the app. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- Pixels dice pairing. The BLE plugin's manifest brings the Bluetooth
+         permissions; this override only marks scanning as never used for
+         location, so Android 12+ skips the location prompt entirely. -->
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation"
+        tools:node="replace" />
 </manifest>

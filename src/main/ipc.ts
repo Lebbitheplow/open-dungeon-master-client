@@ -2,7 +2,13 @@ import { randomBytes } from "node:crypto";
 import os from "node:os";
 import { app, ipcMain } from "electron";
 import type { AiSetup, ConnectResult, LocalStatus, Result, ServerSummary } from "../shared/types";
-import { CODE_SHAPE, normalizeOrigin, originCandidates, type JoinLink } from "../shared/deep-link";
+import {
+  CODE_SHAPE,
+  normalizeOrigin,
+  originCandidates,
+  parseAnyLink,
+  type JoinLink,
+} from "../shared/deep-link";
 import type { LocalAiManager } from "./local-ai/manager";
 import { wireImageAi, wireTextAi } from "./local-ai/wiring";
 import type { LocalServer } from "./local-server";
@@ -141,6 +147,31 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     await attachRemote(entry, grant.token, joinCode);
     return { ok: true, server: summaryOf(entry) };
   };
+
+  const handleJoinLink = async (link: JoinLink): Promise<void> => {
+    win.focus();
+    const known = store.findByOrigin(link.origin);
+    if (known) {
+      const result = await connectRemote(known.id, link.code);
+      if (result.ok) return;
+    }
+    win.showManager();
+    win.sendEvent({
+      kind: "join-request",
+      origin: link.origin,
+      code: link.code,
+      knownServerId: known?.id ?? "",
+    });
+  };
+
+  // Paste-an-invite support: the same links QR codes carry, typed or pasted
+  // into the Add a server screen, behave exactly like a clicked deep link.
+  ipcMain.handle("servers:open-invite", async (_event, raw: unknown) => {
+    const link = parseAnyLink(str(raw, 700));
+    if (!link) return false;
+    await handleJoinLink(link);
+    return true;
+  });
 
   ipcMain.handle("servers:list", () => ({
     servers: store.summaries(),
@@ -478,21 +509,5 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     }
   });
 
-  return {
-    async handleJoinLink(link: JoinLink): Promise<void> {
-      win.focus();
-      const known = store.findByOrigin(link.origin);
-      if (known) {
-        const result = await connectRemote(known.id, link.code);
-        if (result.ok) return;
-      }
-      win.showManager();
-      win.sendEvent({
-        kind: "join-request",
-        origin: link.origin,
-        code: link.code,
-        knownServerId: known?.id ?? "",
-      });
-    },
-  };
+  return { handleJoinLink };
 }

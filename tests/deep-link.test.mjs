@@ -5,6 +5,7 @@ import {
   joinLinkFromArgv,
   normalizeOrigin,
   originCandidates,
+  parseAnyLink,
   parseJoinLink,
 } from "../dist/shared/deep-link.js";
 
@@ -41,6 +42,35 @@ test("parseJoinLink rejects bad codes, schemes and actions", () => {
   assert.equal(parseJoinLink("odm://steal?s=https://x.com&c=ABCD2345"), null);
   assert.equal(parseJoinLink("https://join?s=https://x.com&c=ABCD2345"), null);
   assert.equal(parseJoinLink("odm://join?s=ftp://x.com&c=ABCD2345"), null);
+});
+
+test("parseAnyLink accepts both the odm and https invite shapes", () => {
+  const expected = { origin: "https://play.example.com", code: "ABCD2345" };
+  assert.deepEqual(
+    parseAnyLink("odm://join?s=https%3A%2F%2Fplay.example.com&c=ABCD2345"),
+    expected,
+  );
+  assert.deepEqual(
+    parseAnyLink("https://opendungeonmaster.com/j?s=https%3A%2F%2Fplay.example.com&c=abcd2345"),
+    expected,
+  );
+  assert.deepEqual(
+    parseAnyLink("https://opendungeonmaster.com/j/abcd2345?s=https%3A%2F%2Fplay.example.com"),
+    expected,
+  );
+  assert.deepEqual(
+    parseAnyLink("  https://opendungeonmaster.com/j?s=https%3A%2F%2Fplay.example.com&c=ABCD2345 "),
+    expected,
+  );
+});
+
+test("parseAnyLink rejects lookalike hosts, plain http and bad codes", () => {
+  assert.equal(parseAnyLink("https://evil.com/j?s=https%3A%2F%2Fx.com&c=ABCD2345"), null);
+  assert.equal(parseAnyLink("http://opendungeonmaster.com/j?s=https%3A%2F%2Fx.com&c=ABCD2345"), null);
+  assert.equal(parseAnyLink("https://opendungeonmaster.com/other?s=https%3A%2F%2Fx.com&c=ABCD2345"), null);
+  assert.equal(parseAnyLink("https://opendungeonmaster.com/j?s=https%3A%2F%2Fx.com&c=ABCD01"), null);
+  assert.equal(parseAnyLink("https://opendungeonmaster.com/j?c=ABCD2345"), null);
+  assert.equal(parseAnyLink("play.example.com"), null);
 });
 
 test("joinLinkFromArgv finds the deep link among flags", () => {

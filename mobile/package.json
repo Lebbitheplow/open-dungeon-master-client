@@ -6,12 +6,15 @@
   "license": "MIT",
   "scripts": {
     "build": "node scripts/build-www.mjs",
+    "test": "node scripts/run-tests.mjs",
     "typecheck": "tsc --noEmit",
     "sync": "npm run build && cap sync android"
   },
   "dependencies": {
+    "@capacitor-community/bluetooth-le": "^7.3.2",
     "@capacitor/android": "^7.0.0",
     "@capacitor/app": "^7.0.0",
+    "@capacitor/barcode-scanner": "^2.2.6",
     "@capacitor/core": "^7.0.0",
     "@capacitor/local-notifications": "^7.0.7",
     "@capacitor/preferences": "^7.0.0",

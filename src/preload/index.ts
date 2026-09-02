@@ -14,6 +14,7 @@ const bridge: OdmBridge = {
   connect: (serverId: string, joinCode?: string) =>
     ipcRenderer.invoke("servers:connect", serverId, joinCode),
   removeServer: (serverId: string) => ipcRenderer.invoke("servers:remove", serverId),
+  openInviteLink: (raw: string) => ipcRenderer.invoke("servers:open-invite", raw),
   localStart: () => ipcRenderer.invoke("local:start"),
   localCreateAccount: (input) => ipcRenderer.invoke("local:create-account", input),
   localLogin: (input) => ipcRenderer.invoke("local:login", input),

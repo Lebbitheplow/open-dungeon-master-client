@@ -1,6 +1,7 @@
 import path from "node:path";
 import { BrowserWindow, Menu, WebContentsView, session, shell } from "electron";
 import type { ShellEvent } from "../shared/types";
+import { autoConfirmBluetoothPairing, wireBluetoothChooser } from "./bluetooth";
 import { isShellCookieWrite } from "./session-cookies";
 
 // One window. Its own page is the shell UI (server picker, login, wizard);
@@ -31,9 +32,13 @@ function hardenPartition(partition: string, origin: string): void {
     "fullscreen",
     "pointerLock",
   ]);
-  session.fromPartition(partition).setPermissionRequestHandler((_wc, permission, callback, details) => {
+  const ses = session.fromPartition(partition);
+  ses.setPermissionRequestHandler((_wc, permission, callback, details) => {
     callback(allowed.has(permission) && details.requestingUrl.startsWith(origin));
   });
+  // Web Bluetooth (Pixels dice) skips the permission handler; its chooser
+  // and pairing prompts are wired per view in attachView.
+  autoConfirmBluetoothPairing(ses);
 }
 
 export class ShellWindow {
@@ -140,6 +145,9 @@ export class ShellWindow {
     this.view = view;
     this.currentOrigin = origin;
     this.watchForLogout(partition, origin);
+    // The game UI pairs Pixels dice over Web Bluetooth; the shell provides
+    // the device chooser Electron does not ship.
+    wireBluetoothChooser(view.webContents, () => this.win);
     view.webContents.setWindowOpenHandler(({ url }) => {
       if (sameOrigin(url, origin)) {
         void view.webContents.loadURL(url);

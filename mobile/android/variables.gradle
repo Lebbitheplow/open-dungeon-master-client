@@ -1,5 +1,7 @@
 ext {
-    minSdkVersion = 23
+    // 26 (Android 8.0): the QR scanner library's floor, and Capacitor 8's
+    // default going forward.
+    minSdkVersion = 26
     compileSdkVersion = 35
     targetSdkVersion = 35
     androidxActivityVersion = '1.9.2'

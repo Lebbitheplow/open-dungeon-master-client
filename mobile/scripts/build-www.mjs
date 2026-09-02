@@ -22,6 +22,17 @@ await build({
   outfile: path.join(www, "bridge.js"),
 });
 
+// The Web Bluetooth polyfill is not loaded by the manager UI; the bridge
+// fetches it as text and injects it into the game webview (preShowScript).
+await build({
+  entryPoints: [path.join(mobile, "src", "ble-polyfill.ts")],
+  bundle: true,
+  format: "iife",
+  platform: "browser",
+  target: "es2022",
+  outfile: path.join(www, "ble-polyfill.js"),
+});
+
 await build({
   entryPoints: [path.join(repo, "src", "renderer", "app.ts")],
   bundle: true,

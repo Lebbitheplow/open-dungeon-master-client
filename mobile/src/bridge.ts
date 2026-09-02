@@ -1,13 +1,19 @@
 import { App } from "@capacitor/app";
+import { BleClient } from "@capacitor-community/bluetooth-le";
+import {
+  CapacitorBarcodeScanner,
+  CapacitorBarcodeScannerTypeHint,
+} from "@capacitor/barcode-scanner";
 import { CapacitorCookies, CapacitorHttp } from "@capacitor/core";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { Preferences } from "@capacitor/preferences";
 import { InAppBrowser, ToolBarType } from "@capgo/inappbrowser";
+import { createBleRelay } from "./ble-relay";
 import {
   CODE_SHAPE,
   normalizeOrigin,
   originCandidates,
-  parseJoinLink,
+  parseAnyLink,
   type JoinLink,
 } from "../../src/shared/deep-link";
 import type {
@@ -205,16 +211,62 @@ async function ensureNotificationPermission(): Promise<void> {
   }
 }
 
+// ---------- Bluetooth dice (Web Bluetooth bridge for the game webview) ----------
+
+// The game pairs Pixels dice via navigator.bluetooth, which the Android
+// WebView lacks. A polyfill (built to www/ble-polyfill.js) is injected into
+// every server page before its scripts run; it relays GATT calls here over
+// the InAppBrowser message channel and this relay runs them natively.
+const GRANTED_DICE_KEY = "odm-ble-granted";
+
+const bleRelay = createBleRelay({
+  ble: BleClient,
+  send: (detail) => void InAppBrowser.postMessage({ detail }).catch(() => undefined),
+  async loadGranted() {
+    try {
+      const { value } = await Preferences.get({ key: GRANTED_DICE_KEY });
+      const parsed = value ? (JSON.parse(value) as string[]) : [];
+      return Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string") : [];
+    } catch {
+      return [];
+    }
+  },
+  async saveGranted(ids) {
+    await Preferences.set({ key: GRANTED_DICE_KEY, value: JSON.stringify(ids) });
+  },
+});
+
+// The manager UI ships the polyfill as a sibling asset; missing or failing
+// to load it must never block connecting, it only disables dice pairing.
+let blePolyfill: Promise<string> | null = null;
+
+function loadBlePolyfill(): Promise<string> {
+  blePolyfill ??= fetch("ble-polyfill.js")
+    .then((response) => (response.ok ? response.text() : ""))
+    .catch(() => "");
+  return blePolyfill;
+}
+
 async function openServer(server: StoredServer, joinCode: string): Promise<void> {
   await CapacitorCookies.setCookie({
     url: server.origin,
     key: "odm_session",
     value: server.token,
   });
+  const preShowScript = await loadBlePolyfill();
   await InAppBrowser.openWebView({
     url: `${server.origin}${joinCode ? `/join/${joinCode}` : "/"}`,
     toolbarType: ToolBarType.COMPACT,
     title: server.name,
+    // documentStart injection needs the present-after-load mode; the game's
+    // Bluetooth feature detection must run after the polyfill exists.
+    ...(preShowScript
+      ? {
+          isPresentAfterPageLoad: true,
+          preShowScript,
+          preShowScriptInjectionTime: "documentStart" as const,
+        }
+      : {}),
   });
   // The system dialog renders above the webview, so asking after the open
   // never delays the connect itself.
@@ -274,25 +326,7 @@ function cleanCode(value: unknown): string {
 
 // ---------- deep links (odm:// and https://opendungeonmaster.com/j) ----------
 
-function parseAnyLink(raw: string): JoinLink | null {
-  const direct = parseJoinLink(raw);
-  if (direct) return direct;
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    return null;
-  }
-  if (url.protocol !== "https:" || url.host !== "opendungeonmaster.com") return null;
-  if (!url.pathname.startsWith("/j")) return null;
-  const origin = normalizeOrigin(url.searchParams.get("s") ?? "");
-  const code = cleanCode(url.searchParams.get("c") ?? url.pathname.split("/")[2] ?? "");
-  return origin && code ? { origin, code } : null;
-}
-
-async function handleLink(raw: string): Promise<void> {
-  const link = parseAnyLink(raw);
-  if (!link) return;
+async function handleJoinLink(link: JoinLink): Promise<void> {
   const servers = await loadServers();
   const known = servers.find((entry) => entry.origin === link.origin);
   if (known) {
@@ -305,6 +339,11 @@ async function handleLink(raw: string): Promise<void> {
     code: link.code,
     knownServerId: known?.id ?? "",
   });
+}
+
+async function handleLink(raw: string): Promise<void> {
+  const link = parseAnyLink(raw);
+  if (link) await handleJoinLink(link);
 }
 
 // ---------- the bridge ----------
@@ -374,6 +413,36 @@ const bridge: OdmBridge = {
 
   connect: (serverId, joinCode) => connectById(String(serverId), cleanCode(joinCode)),
 
+  async openInviteLink(raw) {
+    const link = parseAnyLink(String(raw ?? ""));
+    if (!link) return false;
+    await handleJoinLink(link);
+    return true;
+  },
+
+  // The in-app QR path for invite codes; the plugin owns the camera UI and
+  // its runtime permission prompt.
+  async scanInvite() {
+    try {
+      const result = await CapacitorBarcodeScanner.scanBarcode({
+        hint: CapacitorBarcodeScannerTypeHint.QR_CODE,
+      });
+      const raw = String(result.ScanResult ?? "").trim();
+      if (!raw) return { ok: true };
+      const link = parseAnyLink(raw);
+      if (!link) {
+        return { ok: false, error: "That QR code is not an Open Dungeon Master invite." };
+      }
+      await handleJoinLink(link);
+      return { ok: true };
+    } catch (err) {
+      // Backing out of the scanner is not an error worth showing.
+      const message = err instanceof Error ? err.message : "";
+      if (/cancel/i.test(message)) return { ok: true };
+      return fail(err);
+    }
+  },
+
   async removeServer(serverId) {
     const servers = await loadServers();
     const server = servers.find((entry) => entry.id === serverId);
@@ -434,6 +503,11 @@ window.odm = bridge;
 
 // Closing the server webview lands back on the manager.
 void InAppBrowser.addListener("closeEvent", () => emit({ kind: "show-manager" }));
+
+// GATT traffic from the injected Web Bluetooth polyfill.
+void InAppBrowser.addListener("messageFromWebview", (event) => {
+  void bleRelay.handleMessage(event.detail);
+});
 
 // Deep links: while running, and the one that may have launched the app.
 void App.addListener("appUrlOpen", ({ url }) => void handleLink(url));
