@@ -7,7 +7,7 @@ import type {
   ShellEvent,
 } from "../../src/shared/types";
 
-// The phone-hosted world: the same server the desktop app bundles, run by a
+// The device-hosted world: the same server the desktop app bundles, run by a
 // Node runtime inside this app (see android/.../WorldRuntime.java) and
 // reached over http://127.0.0.1. This module mirrors the desktop shell's
 // local flow (src/main/ipc.ts): a profile that feels like no account at
@@ -63,6 +63,9 @@ export interface LocalWorldDeps {
   open(origin: string, token: string, joinCode: string): Promise<void>;
   emit(event: ShellEvent): void;
   randomSecret(): string;
+  // The public address while the world is shared through a tunnel, "" when
+  // it is not; invite links prefer it over the Wi-Fi address.
+  currentShareUrl?(): string;
 }
 
 const OPENAI_BASE_URL = "https://api.openai.com/v1";
@@ -123,14 +126,40 @@ export function createLocalWorld(deps: LocalWorldDeps) {
     }
   }
 
-  // Phone worlds always run mesh voice (no media server on a phone) and
-  // point invite links at the phone's Wi-Fi address. Best effort, like the
-  // desktop shell's equivalents.
-  async function settleWorldSettings(origin: string, token: string): Promise<void> {
+  // Where invite links and QR codes made inside the game should point: the
+  // tunnel while one runs (the host plays on 127.0.0.1, an address guests
+  // cannot reach), otherwise the device's Wi-Fi address.
+  async function publicAddress(): Promise<string> {
+    const shared = deps.currentShareUrl?.() ?? "";
+    if (shared) return shared;
     const world = await deps.plugin.status().catch(() => null);
+    return world?.lanOrigin ?? "";
+  }
+
+  // Device worlds always run mesh voice (no media server here, and it is
+  // the only transport that survives a tunnel) and keep publicUrl true.
+  // Best effort, like the desktop shell's equivalents.
+  async function settleWorldSettings(origin: string, token: string): Promise<void> {
     const patch: Record<string, unknown> = { voiceChat: { enabled: "on", mode: "mesh" } };
-    if (world?.lanOrigin) patch.publicUrl = world.lanOrigin;
+    const address = await publicAddress();
+    if (address) patch.publicUrl = address;
     await deps.patchAdminSettings(origin, token, patch).catch(() => undefined);
+  }
+
+  // Called by the share tunnel as it comes and goes. Going public must not
+  // mean open registration on a personal device: invite mode still lets
+  // invited friends sign up, since a live room code vouches for them.
+  async function publish(shareUrl: string): Promise<void> {
+    const world = await deps.plugin.status().catch(() => null);
+    if (!world || world.state !== "running" || !world.origin) return;
+    const profile = await liveToken(world.origin);
+    if (!profile) return;
+    const patch: Record<string, unknown> = {
+      publicUrl: shareUrl || world.lanOrigin || "",
+      voiceChat: { enabled: "on", mode: "mesh" },
+    };
+    if (shareUrl) patch.signupMode = "invite";
+    await deps.patchAdminSettings(world.origin, profile.token, patch).catch(() => undefined);
   }
 
   async function adopt(grant: TokenGrant, secret: string): Promise<LocalProfile> {
@@ -259,5 +288,5 @@ export function createLocalWorld(deps: LocalWorldDeps) {
     await announce();
   }
 
-  return { status, start, play, createAccount, login, configureAi, stop };
+  return { status, start, play, createAccount, login, configureAi, stop, publish };
 }

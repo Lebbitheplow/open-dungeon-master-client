@@ -133,6 +133,16 @@ export class ShellWindow {
     this.win?.webContents.send("odm:event", event);
   }
 
+  // The origin of the server page on top, "" when the manager is showing.
+  viewOrigin(): string {
+    return this.view ? this.currentOrigin : "";
+  }
+
+  // Pushes to the game page's preload (src/preload/game.ts).
+  sendToGame(channel: string, payload: unknown): void {
+    this.view?.webContents.send(channel, payload);
+  }
+
   private layout(): void {
     if (!this.win || !this.view) return;
     const [width, height] = this.win.getContentSize();

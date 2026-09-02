@@ -115,10 +115,7 @@ function chip(name: keyof typeof ICONS): HTMLElement {
 function spinner(big = false): HTMLElement {
   const wrap = el("span", big ? "spinner big" : "spinner");
   const faces = [20, 7, 13, 2, 18, 11]
-    .map(
-      (n, i) =>
-        `<text class="face" x="12" y="12.6" style="animation-delay: calc(${i} * -0.4s)">${n}</text>`,
-    )
+    .map((n) => `<text class="face" x="12" y="12.6">${n}</text>`)
     .join("");
   wrap.innerHTML =
     '<svg viewBox="0 0 24 24" aria-hidden="true">' +
@@ -129,6 +126,12 @@ function spinner(big = false): HTMLElement {
     "</g>" +
     `<g fill="currentColor" font-size="6" font-weight="700" text-anchor="middle" dominant-baseline="central">${faces}</g>` +
     "</svg>";
+  // Staggered through the CSSOM rather than a style attribute: the page's
+  // CSP (style-src 'self') blocks inline style attributes, which left every
+  // face on the same beat.
+  wrap.querySelectorAll<SVGTextElement>("text.face").forEach((face, i) => {
+    face.style.animationDelay = `${i * -0.4}s`;
+  });
   return wrap;
 }
 
@@ -268,10 +271,10 @@ async function copyText(text: string): Promise<boolean> {
 // ---------- home ----------
 
 // The device's own world is the default door: it sits first, largest, and
-// names the profile it opens so nobody has to wonder who they are. On a
-// phone the world runs inside the app too (a bundled server), so the same
+// names the profile it opens so nobody has to wonder who they are. On
+// Android the world runs inside the app too (a bundled server), so the same
 // card serves both, with the device named honestly.
-const DEVICE = isAndroid ? "This phone" : "This computer";
+const DEVICE = isAndroid ? "This device" : "This computer";
 
 function localHero(): HTMLElement {
   const hero = el("div", "panel ornate grain hero");
@@ -300,9 +303,7 @@ function localHero(): HTMLElement {
 
   if (local.firstRun) {
     body.append(el("h2", "", "Begin your world"));
-    who.textContent = isAndroid
-      ? "No server needed. Your world lives on this phone, and friends on your Wi-Fi can join it."
-      : "No server needed. Your world lives on this computer, and you can share it online with friends whenever you like.";
+    who.textContent = `No server needed. Your world lives on this ${isAndroid ? "device" : "computer"}, and friends can join from anywhere once you invite them.`;
     body.append(who);
     if (local.state === "starting") {
       actions.append(spinner(), badge("Starting"));
@@ -336,28 +337,8 @@ function localHero(): HTMLElement {
     );
   }
   hero.append(body, actions);
-  if (local.state === "running") hero.append(isAndroid ? lanRow() : shareRow());
+  if (local.state === "running") hero.append(shareRow());
   return hero;
-}
-
-// A phone world is reachable by everyone on the same Wi-Fi at the phone's
-// address; that address is the invitation.
-function lanRow(): HTMLElement {
-  const row = el("div", "hero-actions stacked");
-  if (!local.lanOrigin) {
-    row.append(el("span", "status-line", "Join a Wi-Fi network and friends nearby can play in your world."));
-    return row;
-  }
-  row.append(badge("On your Wi-Fi", true));
-  row.append(el("span", "status-line", local.lanOrigin));
-  const copy = button("secondary", "Copy address", () => {
-    void copyText(local.lanOrigin).then((worked) => {
-      copy.lastChild!.textContent = worked ? "Copied" : "Copy failed";
-      setTimeout(() => (copy.lastChild!.textContent = "Copy address"), 1500);
-    });
-  }, "link");
-  row.append(copy);
-  return row;
 }
 
 async function playLocal(btn: HTMLButtonElement): Promise<void> {
@@ -366,7 +347,7 @@ async function playLocal(btn: HTMLButtonElement): Promise<void> {
   btn.disabled = false;
   if (result.ok) {
     if (result.needsName) {
-      // A fresh phone world: who is playing comes first, then who narrates.
+      // A fresh device world: who is playing comes first, then who narrates.
       renderLocalName();
       return;
     }
@@ -389,6 +370,8 @@ async function playLocal(btn: HTMLButtonElement): Promise<void> {
 
 // Sharing lives inside the local hero: it only means anything while the
 // world runs, and it is a property of that world rather than a peer of it.
+// Inviting players from a campaign lobby starts it too, so this row is the
+// overview and the off switch more than the usual way in.
 function shareRow(): HTMLElement {
   const row = el("div", "hero-actions stacked");
   if (tunnel.state === "running") {
@@ -412,13 +395,10 @@ function shareRow(): HTMLElement {
     row.append(spinner(), el("span", "status-line", "Opening a public address..."));
     return row;
   }
-  const line = el(
-    "span",
-    "status-line",
-    tunnel.state === "error"
-      ? tunnel.error
-      : "Friends can join from anywhere in their browser while the app runs.",
-  );
+  const idle = local.lanOrigin
+    ? `On your Wi-Fi at ${local.lanOrigin}. Share online, or invite players from a campaign lobby, and friends anywhere can join.`
+    : "Friends can join from anywhere while the app runs. Inviting players from a campaign lobby shares it for you.";
+  const line = el("span", "status-line", tunnel.state === "error" ? tunnel.error : idle);
   const start = button(
     "secondary",
     tunnel.state === "error" ? "Try sharing again" : "Share online",
@@ -619,7 +599,7 @@ function renderHome(): void {
   let listed = servers;
 
   if (isAndroid && local.state === "unavailable") {
-    // No runtime for this phone (unsupported CPU): connect-only, with the
+    // No runtime for this device (unsupported CPU): connect-only, with the
     // most recent server up front.
     const [latest] = servers;
     if (latest) {
@@ -863,7 +843,7 @@ function renderLocalAccount(mode: "create" | "login"): void {
   (mode === "login" && local.username ? passField : userField).focus();
 }
 
-// First launch of a phone world: the name the table will know the player
+// First launch of a device world: the name the table will know the player
 // by. The shell mints and keeps the password, so this is the whole form.
 function renderLocalName(): void {
   screenName = "local-name";
@@ -898,7 +878,7 @@ function renderLocalName(): void {
     backLink("Servers", () => void refresh().then(() => renderHome())),
     intro(
       "Name your adventurer",
-      "Your world lives on this phone. Pick the name friends will see at the table; letters, digits, _ and - only.",
+      "Your world lives on this device. Pick the name friends will see at the table; letters, digits, _ and - only.",
     ),
     formCard(form, el("p", "hint center", "You can add a password later in the game's settings.")),
   );

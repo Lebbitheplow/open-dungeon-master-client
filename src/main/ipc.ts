@@ -1,7 +1,15 @@
 import { randomBytes } from "node:crypto";
 import os from "node:os";
-import { app, ipcMain } from "electron";
-import type { AiSetup, ConnectResult, LocalStatus, Result, ServerSummary } from "../shared/types";
+import { app, ipcMain, type IpcMainInvokeEvent } from "electron";
+import type {
+  AiSetup,
+  ConnectResult,
+  LocalStatus,
+  Result,
+  ServerSummary,
+  ShellShareStatus,
+  TunnelStatus,
+} from "../shared/types";
 import {
   CODE_SHAPE,
   normalizeOrigin,
@@ -80,7 +88,10 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
   ipcMain.on("shell:show-servers", () => win.showManager());
 
   local.onStatus(() => win.sendEvent({ kind: "local-status", status: localStatus() }));
-  tunnel.onStatus(() => win.sendEvent({ kind: "tunnel-status", status: tunnel.status() }));
+  tunnel.onStatus(() => {
+    win.sendEvent({ kind: "tunnel-status", status: tunnel.status() });
+    if (localPageShowing()) win.sendToGame("odm:share-status", shellShareStatus());
+  });
   localAi.onStatus(() => win.sendEvent({ kind: "local-ai-progress", status: localAi.status() }));
   updater.onStatus(() => win.sendEvent({ kind: "update-progress", progress: updater.progress() }));
 
@@ -185,7 +196,10 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     tunnel: tunnel.status(),
   }));
 
-  ipcMain.handle("share:start", async () => {
+  // Sharing the local world on the internet: reachable from the home
+  // screen's hero and from the game's own lobby (the invite dialog starts
+  // it, since inviting people is the moment it matters).
+  const startSharing = async (): Promise<Result<{ tunnel: TunnelStatus }>> => {
     try {
       await local.start();
       const port = Number(new URL(local.origin).port);
@@ -210,12 +224,54 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     } catch (err) {
       return fail(err);
     }
-  });
+  };
+
+  ipcMain.handle("share:start", () => startSharing());
 
   ipcMain.handle("share:stop", async () => {
     await tunnel.stop();
     await syncPublicUrl();
     return { ok: true, tunnel: tunnel.status() };
+  });
+
+  // The same switch for the game page's preload (src/preload/game.ts), only
+  // honored while the page on top is the local world itself: a remote
+  // server's page gets "unsupported" and draws nothing.
+  const SHARE_UNSUPPORTED: ShellShareStatus = {
+    supported: false,
+    state: "stopped",
+    url: "",
+    mode: "",
+    error: "",
+    lanUrl: "",
+  };
+  const shellShareStatus = (): ShellShareStatus => ({
+    supported: true,
+    ...tunnel.status(),
+    lanUrl: "",
+  });
+  const localPageShowing = (): boolean => !!local.origin && win.viewOrigin() === local.origin;
+  const fromLocalPage = (event: IpcMainInvokeEvent): boolean => {
+    try {
+      return !!local.origin && new URL(event.sender.getURL()).origin === local.origin;
+    } catch {
+      return false;
+    }
+  };
+  ipcMain.handle("shell:share-status", (event) =>
+    fromLocalPage(event) ? shellShareStatus() : SHARE_UNSUPPORTED,
+  );
+  ipcMain.handle("shell:share-start", async (event) => {
+    if (!fromLocalPage(event)) return SHARE_UNSUPPORTED;
+    const result = await startSharing();
+    const status = shellShareStatus();
+    return result.ok || status.error ? status : { ...status, state: "error", error: result.error };
+  });
+  ipcMain.handle("shell:share-stop", async (event) => {
+    if (!fromLocalPage(event)) return SHARE_UNSUPPORTED;
+    await tunnel.stop();
+    await syncPublicUrl();
+    return shellShareStatus();
   });
 
   ipcMain.handle("servers:probe", async (_event, raw: unknown) => {

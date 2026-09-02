@@ -13,6 +13,7 @@ import { BackgroundColor, InAppBrowser, ToolBarType } from "@capgo/inappbrowser"
 import { createBleRelay } from "./ble-relay";
 import { createDownloadRelay } from "./download-relay";
 import { createLocalWorld, LocalWorld, type LocalProfile } from "./local-world";
+import { createShareTunnel, type SharePlugin } from "./share-tunnel";
 import {
   CODE_SHAPE,
   normalizeOrigin,
@@ -22,8 +23,8 @@ import {
 } from "../../src/shared/deep-link";
 import type {
   ConnectResult,
-  TunnelStatus,
   OdmBridge,
+  ShellShareStatus,
   Result,
   ServerProbe,
   ServerSummary,
@@ -35,8 +36,8 @@ import type {
 // UI as the desktop shell; here the privileged side is Capacitor. Server
 // pages open in a separate native WebView (no Capacitor bridge injected),
 // logged in by planting the odm_session cookie in the shared CookieManager.
-// Connect-only: the bundled offline server is desktop-only, so local play
-// reports "unavailable" and the UI hides the card.
+// The device hosts its own world too (local-world.ts) and can share it on
+// the internet through a tunnel (share-tunnel.ts), like the desktop shell.
 
 interface StoredServer {
   id: string;
@@ -333,10 +334,11 @@ async function openServer(server: StoredServer, joinCode: string): Promise<void>
     key: "odm_session",
     value: server.token,
   });
+  worldPageOpen = false;
   await openGameWebView(`${server.origin}${joinCode ? `/join/${joinCode}` : "/"}`, server.name);
 }
 
-// ---------- the phone-hosted world ----------
+// ---------- the device-hosted world ----------
 
 // The on-device profile lives beside the server list in app-private
 // Preferences; the world's data itself is the server's SQLite file in the
@@ -376,11 +378,107 @@ const localWorld = createLocalWorld({
   patchAdminSettings,
   async open(origin, token, joinCode) {
     await CapacitorCookies.setCookie({ url: origin, key: "odm_session", value: token });
-    await openGameWebView(`${origin}${joinCode ? `/join/${joinCode}` : "/"}`, "This phone");
+    worldPageOpen = true;
+    await openGameWebView(`${origin}${joinCode ? `/join/${joinCode}` : "/"}`, "This device");
   },
   emit,
   randomSecret,
+  currentShareUrl: () => shareTunnel.snapshot().url,
 });
+
+// ---------- sharing the world on the internet ----------
+
+// True while the game webview shows this device's own world; only then may
+// a page's odmShell.share requests do anything.
+let worldPageOpen = false;
+
+const shareTunnel = createShareTunnel({
+  plugin: LocalWorld as unknown as SharePlugin,
+  async fetchJson(url, init = {}) {
+    const timeout = init.timeoutMs ?? TIMEOUT_MS;
+    const response = await CapacitorHttp.request({
+      url,
+      method: init.method ?? "GET",
+      headers: {
+        ...(init.body !== undefined ? { "content-type": "application/json" } : {}),
+        ...(init.headers ?? {}),
+      },
+      data: init.body,
+      connectTimeout: timeout,
+      readTimeout: timeout,
+      responseType: "json",
+    });
+    let data: unknown = response.data;
+    if (typeof data === "string") {
+      try {
+        data = JSON.parse(data);
+      } catch {
+        // Not JSON (a health page, an error body); the caller only needs the status then.
+      }
+    }
+    return { status: response.status, data };
+  },
+  brokerUrl: () => "",
+  async worldPort() {
+    const origin = await localWorld.start();
+    return Number(new URL(origin).port);
+  },
+  publish: (url) => localWorld.publish(url),
+  emit,
+  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  now: () => Date.now(),
+});
+
+const SHARE_UNSUPPORTED: ShellShareStatus = {
+  supported: false,
+  state: "stopped",
+  url: "",
+  mode: "",
+  error: "",
+  lanUrl: "",
+};
+
+async function shellShareStatus(): Promise<ShellShareStatus> {
+  if (!worldPageOpen) return SHARE_UNSUPPORTED;
+  const [status, world] = await Promise.all([shareTunnel.status(), localWorld.status()]);
+  return { supported: true, ...status, lanUrl: world.lanOrigin };
+}
+
+// Down to the game page's shell hook (shell-hook.ts): an answer to one
+// request when id is given, otherwise a broadcast to its subscribers.
+function pushShareStatus(id: number | undefined, status: ShellShareStatus): void {
+  void InAppBrowser.postMessage({
+    detail: { type: "odm-share-status", id, status },
+  }).catch(() => undefined);
+}
+
+listeners.add((event) => {
+  if (event.kind !== "tunnel-status" || !worldPageOpen) return;
+  void localWorld.status().then((world) => {
+    pushShareStatus(undefined, { supported: true, ...event.status, lanUrl: world.lanOrigin });
+  });
+});
+
+// The lobby's invite dialog asks to share the world (or stop). A start is
+// answered at once with the "starting" snapshot; the outcome reaches the
+// page through the broadcast above, since a tunnel can take longer to come
+// up than a page should wait on one request.
+async function handleShareRequest(request: { action: string; id?: number }): Promise<void> {
+  const id = typeof request.id === "number" ? request.id : undefined;
+  if (!worldPageOpen) {
+    pushShareStatus(id, SHARE_UNSUPPORTED);
+    return;
+  }
+  if (request.action === "start") {
+    void shareTunnel.start();
+    pushShareStatus(id, { ...(await shellShareStatus()), state: "starting", error: "" });
+    return;
+  }
+  if (request.action === "stop") {
+    await shareTunnel.stop();
+  }
+  pushShareStatus(id, await shellShareStatus());
+}
 
 // ---------- Discord sign-in (the server's own OAuth, in the game webview) ----------
 
@@ -556,10 +654,6 @@ async function handleLink(raw: string): Promise<void> {
 
 // ---------- the bridge ----------
 
-// Sharing beyond the local network (the desktop's tunnel) has no phone
-// equivalent yet; friends on the same Wi-Fi use the address in LocalStatus.
-const TUNNEL_STOPPED: TunnelStatus = { state: "stopped", url: "", mode: "", error: "" };
-
 const bridge: OdmBridge = {
   platform: "android",
 
@@ -569,7 +663,7 @@ const bridge: OdmBridge = {
     return {
       servers: servers.map(summaryOf),
       local: await localWorld.status(),
-      tunnel: TUNNEL_STOPPED,
+      tunnel: await shareTunnel.status(),
     };
   },
 
@@ -682,9 +776,12 @@ const bridge: OdmBridge = {
     }),
   localConfigureAi: (setup) => localWorld.configureAi(setup),
   localPlay: (joinCode) => localWorld.play(cleanCode(joinCode)),
-  shareStart: async () =>
-    fail(new Error("Sharing beyond your Wi-Fi is not available on phones yet.")),
-  shareStop: async () => fail(new Error("Nothing is being shared.")),
+  async shareStart() {
+    const status = await shareTunnel.start();
+    if (status.state !== "running") return fail(new Error(status.error || "Sharing failed."));
+    return { ok: true, tunnel: status };
+  },
+  shareStop: async () => ({ ok: true, tunnel: await shareTunnel.stop() }),
   localAiScan: async () => fail(new Error("Local AI is desktop-only.")),
   localAiInstall: async () => fail(new Error("Local AI is desktop-only.")),
   localAiInstallComfy: async () => fail(new Error("Local AI is desktop-only.")),
@@ -726,6 +823,7 @@ window.odm = bridge;
 // Closing the server webview lands back on the manager; closing it in the
 // middle of a Discord sign-in is a cancel.
 void InAppBrowser.addListener("closeEvent", () => {
+  worldPageOpen = false;
   settleDiscord(fail(new Error("Sign-in cancelled.")));
   emit({ kind: "show-manager" });
 });
@@ -752,8 +850,14 @@ async function routeWebviewMessage(event: unknown): Promise<void> {
     // "Switch server" from the page's account menu (shell-hook.js). The
     // plugin fires closeEvent for toolbar and back-button closes only, so
     // the manager is shown explicitly here.
+    worldPageOpen = false;
     await InAppBrowser.close().catch(() => undefined);
     emit({ kind: "show-manager" });
+    return;
+  }
+  const share = shareRequestOf(detail);
+  if (share) {
+    await handleShareRequest(share);
     return;
   }
   if (await bleRelay.handleMessage(detail)) return;
@@ -766,6 +870,13 @@ function isShellRequest(detail: unknown): boolean {
     typeof detail === "object" &&
     (detail as { odmShell?: unknown }).odmShell === "servers"
   );
+}
+
+function shareRequestOf(detail: unknown): { action: string; id?: number } | null {
+  if (!detail || typeof detail !== "object") return null;
+  const message = detail as { odmShell?: unknown; action?: unknown; id?: unknown };
+  if (message.odmShell !== "share" || typeof message.action !== "string") return null;
+  return { action: message.action, id: typeof message.id === "number" ? message.id : undefined };
 }
 void InAppBrowser.addListener("messageFromWebview", (event) => {
   void routeWebviewMessage(event);

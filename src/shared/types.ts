@@ -36,8 +36,8 @@ export interface LocalStatus {
   username: string;
   serverVersion: string;
   error: string;
-  // Where friends on the same network reach a phone-hosted world ("" when
-  // not hosting or not on a network). Desktop shares through a tunnel.
+  // Where friends on the same network reach a device-hosted world ("" when
+  // not hosting or not on a network). Both shells share through a tunnel.
   lanOrigin: string;
 }
 
@@ -65,6 +65,16 @@ export interface TunnelStatus {
   url: string;
   mode: "" | "named" | "quick";
   error: string;
+}
+
+// What a game page inside the shell learns about sharing through
+// window.odmShell.share (the server's src/lib/shell-host.ts mirrors this).
+// supported is false on pages of remote servers: only the shell's own world
+// can be shared from here.
+export interface ShellShareStatus extends TunnelStatus {
+  supported: boolean;
+  // The Wi-Fi address of a device-hosted world, "" when there is none.
+  lanUrl: string;
 }
 
 // What the hardware scan learned; sizes in whole GB.

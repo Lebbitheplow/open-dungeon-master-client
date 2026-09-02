@@ -154,11 +154,14 @@ jobs:
     # APK upload. The phone hosts worlds itself: the APK carries the same
     # server payload (minus native modules) plus a Node runtime built for
     # Android, published once as a release of its own (see
-    # mobile/scripts/build-node-android.sh) and fetched here by tag.
+    # mobile/scripts/build-node-android.sh) and fetched here by tag; likewise
+    # cloudflared for Android (mobile/scripts/build-cloudflared-android.sh),
+    # which shares the device's world on the internet.
     needs: [payload, desktop]
     runs-on: ubuntu-latest
     env:
       NODE_ANDROID_RELEASE: node-android-v24.20.0
+      CLOUDFLARED_ANDROID_RELEASE: cloudflared-android-2026.8.3
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -180,14 +183,16 @@ jobs:
         run: |
           mkdir -p vendor && tar -C vendor -xzf server-payload.tgz
           node scripts/alias-server-modules.mjs
-      - name: Fetch the Node runtime for Android
+      - name: Fetch the Node runtime and cloudflared for Android
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p mobile/runtime
           gh release download "$NODE_ANDROID_RELEASE" --pattern '*.tar.gz' --dir mobile/runtime
-          tar -C mobile/runtime -xzf mobile/runtime/*.tar.gz
-          ls mobile/runtime/node-android
+          tar -C mobile/runtime -xzf "mobile/runtime/$NODE_ANDROID_RELEASE.tar.gz"
+          gh release download "$CLOUDFLARED_ANDROID_RELEASE" --pattern '*.tar.gz' --dir mobile/runtime
+          tar -C mobile/runtime -xzf "mobile/runtime/$CLOUDFLARED_ANDROID_RELEASE.tar.gz"
+          ls mobile/runtime/node-android mobile/runtime/cloudflared-android
       - name: Stage the server payload and runtime into the app
         working-directory: mobile
         run: npm run bundle-payload

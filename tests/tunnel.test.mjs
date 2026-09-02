@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseBrokerSession } from "../dist/main/tunnel.js";
+import { parseBrokerSession } from "../dist/shared/broker.js";
 
 const good = {
   code: "ABCD1234",

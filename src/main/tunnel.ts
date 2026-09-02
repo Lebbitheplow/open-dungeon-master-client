@@ -3,6 +3,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import {
+  DEFAULT_BROKER_URL,
+  QUICK_URL_SHAPE,
+  parseBrokerSession,
+  type BrokerSession,
+} from "../shared/broker";
 import type { TunnelStatus } from "../shared/types";
 
 // Hosts an offline world on the public internet through a Cloudflare quick
@@ -11,17 +17,9 @@ import type { TunnelStatus } from "../shared/types";
 // as the app keeps the tunnel up. The pretty play-CODE.opendungeonmaster.com
 // names come from the broker Worker; the plumbing here is the same.
 
-const URL_SHAPE = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/;
 const URL_WAIT_MS = 45_000;
 const REACHABLE_WAIT_MS = 90_000;
 const DOWNLOAD_TIMEOUT_MS = 10 * 60_000;
-
-// Named sessions from the default broker are play-CODE one label under the
-// official zone (one level so the free Universal SSL wildcard covers them);
-// a broker that hands back anything else does not get its hostname shown to
-// the user or written into the server's publicUrl.
-const BROKER_HOST_SHAPE = /^play-[a-z0-9]+\.opendungeonmaster\.com$/;
-const HOSTNAME_SHAPE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
 
 // ELF on Linux, MZ on Windows: enough to reject an HTML error page that
 // arrived with a 200.
@@ -36,41 +34,6 @@ function looksLikeExecutable(file: string): boolean {
   } catch {
     return false;
   }
-}
-
-// The broker Worker that mints CODE.play.opendungeonmaster.com sessions
-// (workers/tunnel-broker in the server repo). When it cannot help (offline,
-// rate limited, not configured), hosting falls back to a quick tunnel.
-const DEFAULT_BROKER_URL = "https://odm-tunnel-broker.tunnel-broker.workers.dev";
-
-interface BrokerSession {
-  code: string;
-  url: string;
-  hostname: string;
-  tunnelToken: string;
-  secret: string;
-}
-
-// The hostname becomes the user's share link and the server's publicUrl, so
-// a broker reply is not taken on faith: it must be a plain DNS name, and
-// sessions from the default broker must sit under the official play domain.
-// A custom broker (requireOfficialSuffix false) may use its own domain.
-export function parseBrokerSession(
-  body: unknown,
-  requireOfficialSuffix: boolean,
-): BrokerSession | null {
-  const raw = body as Partial<BrokerSession> | null;
-  if (!raw?.tunnelToken || !raw?.hostname || !raw?.code || !raw?.secret) return null;
-  const hostname = String(raw.hostname).toLowerCase();
-  if (!HOSTNAME_SHAPE.test(hostname)) return null;
-  if (requireOfficialSuffix && !BROKER_HOST_SHAPE.test(hostname)) return null;
-  return {
-    code: String(raw.code),
-    url: `https://${hostname}`,
-    hostname,
-    tunnelToken: String(raw.tunnelToken),
-    secret: String(raw.secret),
-  };
 }
 
 function brokerUrl(): string {
@@ -228,7 +191,7 @@ export class QuickTunnel {
       );
       const scan = (chunk: Buffer): void => {
         log.write(chunk);
-        const match = URL_SHAPE.exec(chunk.toString());
+        const match = QUICK_URL_SHAPE.exec(chunk.toString());
         if (match) finish(null, match[0]);
       };
       child.stdout?.on("data", scan);

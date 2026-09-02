@@ -9,6 +9,10 @@
 //   android/app/src/main/jniLibs/<abi>/libnode.so    the Node runtime built
 //       for Android (scripts/build-node-android.sh), taken from
 //       runtime/node-android/<abi>/libnode.so
+//   android/app/src/main/jniLibs/<abi>/libcloudflared.so   cloudflared built
+//       for Android (scripts/build-cloudflared-android.sh), taken from
+//       runtime/cloudflared-android/<abi>/; without it a device can host on
+//       its Wi-Fi but not share online
 //
 // Everything written here is a build artifact (gitignored). CI runs this
 // after unpacking the shared payload artifact and fetching the runtime.
@@ -21,6 +25,8 @@ const mobile = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const repo = path.dirname(mobile);
 const vendor = process.env.ODM_SERVER_PAYLOAD || path.join(repo, "vendor", "server");
 const runtime = process.env.ODM_NODE_ANDROID || path.join(mobile, "runtime", "node-android");
+const cloudflared =
+  process.env.ODM_CLOUDFLARED_ANDROID || path.join(mobile, "runtime", "cloudflared-android");
 const assets = path.join(mobile, "android", "app", "src", "main", "assets");
 const jniLibs = path.join(mobile, "android", "app", "src", "main", "jniLibs");
 const ABIS = ["arm64-v8a", "x86_64"];
@@ -86,6 +92,15 @@ for (const abi of ABIS) {
   }
   shipped += 1;
   console.log(`Node runtime staged for ${abi}`);
+  const tunnelBinary = path.join(cloudflared, abi, "libcloudflared.so");
+  const staged = path.join(dir, "libcloudflared.so");
+  fs.rmSync(staged, { force: true });
+  if (fs.existsSync(tunnelBinary)) {
+    fs.copyFileSync(tunnelBinary, staged);
+    console.log(`cloudflared staged for ${abi}`);
+  } else {
+    console.warn(`No cloudflared for ${abi} under ${cloudflared}; devices on that ABI cannot share online.`);
+  }
 }
 if (!shipped) {
   console.error("No Node runtime staged for any ABI.");
