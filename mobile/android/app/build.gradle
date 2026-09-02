@@ -26,8 +26,26 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Release signing comes from the environment so the keystore never lives
+    // in the repo: CI decodes it from a secret, local builds can export the
+    // same variables. Without them the release build stays unsigned.
+    def releaseKeystore = System.getenv('ODM_ANDROID_KEYSTORE')
+    signingConfigs {
+        if (releaseKeystore) {
+            release {
+                storeFile file(releaseKeystore)
+                storePassword System.getenv('ODM_ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ODM_ANDROID_KEY_ALIAS') ?: 'odm'
+                keyPassword System.getenv('ODM_ANDROID_KEY_PASSWORD') ?:
+                        System.getenv('ODM_ANDROID_KEYSTORE_PASSWORD')
+            }
+        }
+    }
     buildTypes {
         release {
+            if (releaseKeystore) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

@@ -28,6 +28,12 @@ linux:
   category: Game
   synopsis: Multiplayer TTRPG campaigns with an AI or human Dungeon Master
   artifactName: ${name}-${version}-${arch}.${ext}
+# Built separately in CI via --linux flatpak (needs flatpak-builder plus the
+# freedesktop runtime and Electron base app installed); not part of the
+# default linux target list so dist:linux keeps working without them.
+flatpak:
+  runtimeVersion: "24.08"
+  baseVersion: "24.08"
 mac:
   target: [dmg, zip]
   category: public.app-category.games
