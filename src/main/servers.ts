@@ -139,6 +139,18 @@ export class ServerStore {
     return this.crypt.decrypt(server.secretCipher);
   }
 
+  // Forgets only the session token. The entry stays (so the server list
+  // still offers the server) and so does any stored local profile secret,
+  // which is what lets the local world's next Play sign back in silently.
+  clearToken(id: string): void {
+    const registry = this.load();
+    const server = registry.servers.find((entry) => entry.id === id);
+    if (!server || !server.tokenCipher) return;
+    server.tokenCipher = "";
+    server.tokenExpiresAt = "";
+    this.save(registry);
+  }
+
   touch(id: string): void {
     const registry = this.load();
     const server = registry.servers.find((entry) => entry.id === id);

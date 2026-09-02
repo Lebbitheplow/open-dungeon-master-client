@@ -1,5 +1,6 @@
 import { App } from "@capacitor/app";
 import { CapacitorCookies, CapacitorHttp } from "@capacitor/core";
+import { LocalNotifications } from "@capacitor/local-notifications";
 import { Preferences } from "@capacitor/preferences";
 import { InAppBrowser, ToolBarType } from "@capgo/inappbrowser";
 import {
@@ -180,6 +181,30 @@ function emit(event: ShellEvent): void {
   for (const listener of listeners) listener(event);
 }
 
+// Android 13+ only shows notifications after a runtime POST_NOTIFICATIONS
+// grant, and connecting is the first moment they mean anything (session
+// reminders, turn alerts). Asked once per run; the system remembers a grant
+// or denial, so repeat connects never nag. Scaffolding only for now: server
+// pages run in the InAppBrowser webview, which does not grant the web
+// Notification API, so a follow-up must either enable notifications on that
+// webview (WebChromeClient permission grant in @capgo/inappbrowser) or
+// listen to the server's event stream natively and post through
+// LocalNotifications.schedule.
+let notificationsAsked = false;
+
+async function ensureNotificationPermission(): Promise<void> {
+  if (notificationsAsked) return;
+  notificationsAsked = true;
+  try {
+    const status = await LocalNotifications.checkPermissions();
+    if (status.display === "prompt" || status.display === "prompt-with-rationale") {
+      await LocalNotifications.requestPermissions();
+    }
+  } catch {
+    // A missing or denied permission must never block connecting.
+  }
+}
+
 async function openServer(server: StoredServer, joinCode: string): Promise<void> {
   await CapacitorCookies.setCookie({
     url: server.origin,
@@ -191,6 +216,9 @@ async function openServer(server: StoredServer, joinCode: string): Promise<void>
     toolbarType: ToolBarType.COMPACT,
     title: server.name,
   });
+  // The system dialog renders above the webview, so asking after the open
+  // never delays the connect itself.
+  void ensureNotificationPermission();
 }
 
 async function connectById(id: string, joinCode: string): Promise<ConnectResult> {
@@ -368,13 +396,18 @@ const bridge: OdmBridge = {
   shareStop: async () => fail(new Error("Hosting online is desktop-only for now.")),
   localAiScan: async () => fail(new Error("Local AI is desktop-only.")),
   localAiInstall: async () => fail(new Error("Local AI is desktop-only.")),
+  localAiInstallComfy: async () => fail(new Error("Local AI is desktop-only.")),
+  localAiUninstall: async () => fail(new Error("Local AI is desktop-only.")),
   localAiStatus: async () => ({
     supported: false,
     installedTierId: "",
+    installedLabel: "",
+    utilityInstalled: false,
     running: false,
     busy: "" as const,
     progress: null,
     error: "",
+    comfy: { installed: false, running: false, checkpoint: "", error: "" },
   }),
   async appInfo() {
     // Capacitor knows the installed APK's version; a plain browser dev run

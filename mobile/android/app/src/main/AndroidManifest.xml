@@ -65,4 +65,7 @@
     <!-- Voice chat and push-to-talk speech-to-text inside the server webview -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- Session reminders and turn alerts; Android 13+ also needs the
+         runtime grant the bridge requests after the first connect. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>

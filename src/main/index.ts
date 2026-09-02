@@ -4,7 +4,7 @@ import { joinLinkFromArgv, parseJoinLink, type JoinLink } from "../shared/deep-l
 import { LocalAiManager } from "./local-ai/manager";
 import { LocalServer } from "./local-server";
 import { registerIpc, type ShellIpc } from "./ipc";
-import { ServerStore, type TokenCrypt } from "./servers";
+import { LOCAL_SERVER_ID, ServerStore, type TokenCrypt } from "./servers";
 import { QuickTunnel } from "./tunnel";
 import { detectInstallKind, Updater } from "./updater";
 import { ShellWindow } from "./window";
@@ -91,6 +91,15 @@ function main(): void {
 
     win = new ShellWindow();
     win.create();
+    // A logout inside the server's web UI already revoked the session
+    // server-side; forget the matching stored token so the server list does
+    // not offer a dead one. The local entry keeps its secretCipher, so the
+    // next Play signs back in silently, which is the desired local behavior.
+    win.onSessionRevoked((origin) => {
+      const entry =
+        origin === local.origin ? store.get(LOCAL_SERVER_ID) : store.findByOrigin(origin);
+      if (entry) store.clearToken(entry.id);
+    });
     ipc = registerIpc({ store, window: win, local, tunnel, localAi, updater });
     updater.checkOnStartup();
 

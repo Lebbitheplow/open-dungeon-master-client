@@ -1,6 +1,7 @@
 import path from "node:path";
 import { BrowserWindow, Menu, WebContentsView, session, shell } from "electron";
 import type { ShellEvent } from "../shared/types";
+import { isShellCookieWrite } from "./session-cookies";
 
 // One window. Its own page is the shell UI (server picker, login, wizard);
 // a connected server's web app renders in a WebContentsView layered on top,
@@ -39,6 +40,15 @@ export class ShellWindow {
   private win: BrowserWindow | null = null;
   private view: WebContentsView | null = null;
   private currentOrigin = "";
+  private unwatchCookies: (() => void) | null = null;
+  private onRevoked: ((origin: string) => void) | null = null;
+
+  // Fired when the server's own web UI logs the user out while its view is
+  // attached. The window cannot forget the stored token itself (no store
+  // access here); index.ts wires the handler where both pieces exist.
+  onSessionRevoked(handler: (origin: string) => void): void {
+    this.onRevoked = handler;
+  }
 
   create(): void {
     this.win = new BrowserWindow({
@@ -129,6 +139,7 @@ export class ShellWindow {
     });
     this.view = view;
     this.currentOrigin = origin;
+    this.watchForLogout(partition, origin);
     view.webContents.setWindowOpenHandler(({ url }) => {
       if (sameOrigin(url, origin)) {
         void view.webContents.loadURL(url);
@@ -148,7 +159,36 @@ export class ShellWindow {
     void view.webContents.loadURL(`${origin}${pathname}`);
   }
 
+  // Logging out inside the server's web UI revokes the session server-side;
+  // left alone, the shell would keep a dead token and the user would be
+  // stranded on the server's embedded login page. A real logout removes
+  // odm_session explicitly (or overwrites it expired); the shell's own
+  // applySessionCookie writes are flagged and skipped, and natural expiry
+  // ("expired") is already covered by the stored token's expiry check.
+  private watchForLogout(partition: string, origin: string): void {
+    const cookies = session.fromPartition(partition).cookies;
+    const host = new URL(origin).hostname;
+    const listener = (
+      _event: Electron.Event,
+      cookie: Electron.Cookie,
+      cause: string,
+      removed: boolean,
+    ): void => {
+      if (!removed || cookie.name !== "odm_session") return;
+      if (cause !== "explicit" && cause !== "expired-overwrite") return;
+      if (isShellCookieWrite()) return;
+      if (cookie.domain && cookie.domain.replace(/^\./, "") !== host) return;
+      if (this.currentOrigin !== origin) return;
+      this.onRevoked?.(origin);
+      this.showManager();
+    };
+    cookies.on("changed", listener);
+    this.unwatchCookies = () => cookies.off("changed", listener);
+  }
+
   private detachView(): void {
+    this.unwatchCookies?.();
+    this.unwatchCookies = null;
     if (!this.win || !this.view) return;
     this.win.contentView.removeChildView(this.view);
     this.view.webContents.close();
