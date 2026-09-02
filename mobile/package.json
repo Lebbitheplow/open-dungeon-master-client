@@ -1,6 +1,6 @@
 {
   "name": "open-dungeon-master-mobile",
-  "version": "0.2.1",
+  "version": "0.2.0",
   "private": true,
   "description": "Android client for Open Dungeon Master: connect-only shell around any server's web UI",
   "license": "MIT",

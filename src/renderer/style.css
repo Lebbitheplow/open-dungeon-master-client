@@ -529,22 +529,6 @@ button:focus-visible { outline: 2px solid rgba(212, 171, 58, 0.6); outline-offse
   transition: color 150ms var(--ease-snap);
 }
 .link:hover { color: var(--gold-200); }
-.links {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.6rem 1.5rem;
-  margin: 1.25rem 0 1.5rem;
-}
-.links .link {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.86rem;
-}
-.links .link svg { width: 15px; height: 15px; }
-.hint .link { font-size: inherit; color: var(--gold-300); }
-.hint .link:hover { color: var(--gold-100); }
 .link.back {
   display: inline-flex;
   align-items: center;
