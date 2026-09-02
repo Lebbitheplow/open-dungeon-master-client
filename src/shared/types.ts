@@ -92,12 +92,50 @@ export interface LocalAiStatus {
   error: string;
 }
 
+// How this build reached the machine; decides whether the app may replace
+// itself ("appimage", "nsis") or must point at the real update channel.
+export type InstallKind =
+  | "appimage"
+  | "flatpak"
+  | "snap"
+  | "managed"
+  | "portable"
+  | "nsis"
+  | "mac"
+  | "dev";
+
+// "android" never comes out of detectInstallKind; it is the mobile shell
+// identifying itself so the About card can skip the update controls.
+export interface AppInfo {
+  version: string;
+  installKind: InstallKind | "android";
+}
+
+export interface UpdateStatus {
+  current: string;
+  latest: string;
+  available: boolean;
+  canSelfUpdate: boolean;
+  // Human words for installs that cannot self-update ("flatpak update", ...).
+  instruction: string;
+}
+
+// "available" is the once-per-run background check finding something; the
+// rest narrate an explicit download started from the About card.
+export interface UpdateProgress {
+  state: "idle" | "available" | "downloading" | "ready" | "error";
+  percent: number;
+  latest: string;
+  error: string;
+}
+
 export type ShellEvent =
   | { kind: "show-manager" }
   | { kind: "join-request"; origin: string; code: string; knownServerId: string }
   | { kind: "local-status"; status: LocalStatus }
   | { kind: "tunnel-status"; status: TunnelStatus }
-  | { kind: "local-ai-progress"; status: LocalAiStatus };
+  | { kind: "local-ai-progress"; status: LocalAiStatus }
+  | { kind: "update-progress"; progress: UpdateProgress };
 
 export interface OdmBridge {
   // Lets the shared shell UI adapt copy and layout per shell.
@@ -132,5 +170,8 @@ export interface OdmBridge {
   localAiScan(): Promise<Result<{ hardware: HardwareInfo; tiers: LocalAiTier[] }>>;
   localAiInstall(tierId: string): Promise<Result<{ status: LocalAiStatus }>>;
   localAiStatus(): Promise<LocalAiStatus>;
+  appInfo(): Promise<AppInfo>;
+  updateCheck(): Promise<Result<{ update: UpdateStatus }>>;
+  updateInstall(): Promise<Result>;
   onEvent(listener: (event: ShellEvent) => void): void;
 }

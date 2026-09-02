@@ -1,11 +1,13 @@
 import type {
   AiSetup,
+  AppInfo,
   HardwareInfo,
   LocalAiTier,
   LocalStatus,
   ServerProbe,
   ServerSummary,
   TunnelStatus,
+  UpdateStatus,
 } from "../shared/types";
 
 // The shell UI: a small screen machine rendered into #app. Only type imports
@@ -32,6 +34,10 @@ let local: LocalStatus = {
 let tunnel: TunnelStatus = { state: "stopped", url: "", mode: "", error: "" };
 let joinIntent: JoinIntent | null = null;
 let screenName = "home";
+let appInfo: AppInfo | null = null;
+let updateStatus: UpdateStatus | null = null;
+// One-line update state shown in the About card instead of the version.
+let updateNote = "";
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -234,6 +240,54 @@ async function connectServer(server: ServerSummary, btn: HTMLButtonElement): Pro
   renderError(result.error);
 }
 
+function aboutCard(): HTMLElement {
+  const card = el("div", "card");
+  const grow = el("div", "grow");
+  grow.append(el("div", "name", "About this app"));
+  const version = appInfo?.version ? `Version ${appInfo.version}` : "Version unknown";
+  grow.append(el("div", "detail", updateNote || version));
+  card.append(grow);
+  // Android updates through its store; the card is version-only there.
+  if (window.odm.platform === "android") return card;
+  if (updateStatus?.available && updateStatus.canSelfUpdate) {
+    const install = el("button", "primary", `Update to ${updateStatus.latest}`);
+    install.addEventListener("click", () => {
+      install.disabled = true;
+      updateNote = "Starting the download...";
+      void window.odm.updateInstall().then((result) => {
+        if (!result.ok) {
+          updateNote = result.error;
+          if (screenName === "home") renderHome();
+        }
+      });
+      renderHome();
+    });
+    card.append(install);
+    return card;
+  }
+  const check = el("button", "ghost", "Check for updates");
+  check.addEventListener("click", () => {
+    check.disabled = true;
+    updateNote = "Checking...";
+    void window.odm.updateCheck().then((result) => {
+      if (result.ok) {
+        updateStatus = result.update;
+        updateNote = !result.update.available
+          ? "You have the latest version."
+          : result.update.canSelfUpdate
+            ? `Version ${result.update.latest} is ready to install.`
+            : `Update available: ${result.update.latest}. ${result.update.instruction}`;
+      } else {
+        updateNote = result.error;
+      }
+      if (screenName === "home") renderHome();
+    });
+    renderHome();
+  });
+  card.append(check);
+  return card;
+}
+
 function renderHome(): void {
   screenName = "home";
   const title = el("h1", "", "Open Dungeon Master");
@@ -262,6 +316,7 @@ function renderHome(): void {
   addBtn.addEventListener("click", () => renderAdd(joinIntent?.origin ?? ""));
   addCard.append(addBtn);
   cards.append(addCard);
+  cards.append(aboutCard());
   show(title, sub, joinBanner(), cards);
 }
 
@@ -601,6 +656,20 @@ window.odm.onEvent((event) => {
       aiProgress.fill.style.width = `${event.status.progress.percent}%`;
       aiProgress.label.textContent = `${event.status.progress.label} (${event.status.progress.percent}%)`;
     }
+  } else if (event.kind === "update-progress") {
+    const progress = event.progress;
+    if (progress.state === "available") {
+      // The background check found something; the button click fills in the
+      // full status (can this install self-update, which instruction).
+      updateNote = `Version ${progress.latest} is available.`;
+    } else if (progress.state === "downloading") {
+      updateNote = `Downloading update... ${progress.percent}%`;
+    } else if (progress.state === "ready") {
+      updateNote = "Restarting to install the update...";
+    } else if (progress.state === "error") {
+      updateNote = progress.error;
+    }
+    if (screenName === "home") renderHome();
   } else if (event.kind === "join-request") {
     joinIntent = { origin: event.origin, code: event.code, knownServerId: event.knownServerId };
     void refresh().then(() => {
@@ -619,4 +688,8 @@ window.odm.onEvent((event) => {
   }
 });
 
+void window.odm.appInfo().then((info) => {
+  appInfo = info;
+  if (screenName === "home") renderHome();
+});
 void refresh().then(() => renderHome());

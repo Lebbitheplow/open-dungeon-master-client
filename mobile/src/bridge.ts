@@ -376,6 +376,21 @@ const bridge: OdmBridge = {
     progress: null,
     error: "",
   }),
+  async appInfo() {
+    // Capacitor knows the installed APK's version; a plain browser dev run
+    // does not, and the About card copes with an empty string.
+    const version = await App.getInfo()
+      .then((info) => info.version)
+      .catch(() => "");
+    return { version, installKind: "android" as const };
+  },
+  // The store owns updates on Android; report "nothing to do" so the shared
+  // About card renders as version-only without a special case crashing.
+  updateCheck: async () => ({
+    ok: true as const,
+    update: { current: "", latest: "", available: false, canSelfUpdate: false, instruction: "" },
+  }),
+  updateInstall: async () => fail(new Error("Updates come through the app store on Android.")),
 
   onEvent(listener) {
     listeners.add(listener);

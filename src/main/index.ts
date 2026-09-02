@@ -6,6 +6,7 @@ import { LocalServer } from "./local-server";
 import { registerIpc, type ShellIpc } from "./ipc";
 import { ServerStore, type TokenCrypt } from "./servers";
 import { QuickTunnel } from "./tunnel";
+import { detectInstallKind, Updater } from "./updater";
 import { ShellWindow } from "./window";
 
 // Session tokens go through the OS keychain when one is available. The
@@ -83,10 +84,15 @@ function main(): void {
       path.join(app.getPath("userData"), "tunnel.log"),
     );
     const localAi = new LocalAiManager(path.join(app.getPath("userData"), "local-ai"));
+    const updater = new Updater(
+      detectInstallKind(process.env, process.execPath, process.platform, app.isPackaged),
+      app.getVersion(),
+    );
 
     win = new ShellWindow();
     win.create();
-    ipc = registerIpc({ store, window: win, local, tunnel, localAi });
+    ipc = registerIpc({ store, window: win, local, tunnel, localAi, updater });
+    updater.checkOnStartup();
 
     app.on("before-quit", () => {
       void tunnel.stop();

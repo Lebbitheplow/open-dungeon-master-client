@@ -1,6 +1,11 @@
 # Maintainer: Kaleb Lutterman
 # AUR template repacking the released Linux tar.gz. Per release: bump pkgver,
 # fill the real source URL once the GitHub repo is public, update sha256sums.
+#
+# The app ships an in-app updater, but installs living under /opt (this
+# package) are detected as the "managed" kind and deliberately defer to
+# pacman: the app only announces new versions, it never rewrites files that
+# a package manager owns.
 pkgname=open-dungeon-master-client-bin
 pkgver=0.1.0
 pkgrel=1

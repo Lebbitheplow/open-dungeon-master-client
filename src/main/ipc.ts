@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import os from "node:os";
-import { ipcMain } from "electron";
+import { app, ipcMain } from "electron";
 import type { AiSetup, ConnectResult, LocalStatus, Result, ServerSummary } from "../shared/types";
 import { CODE_SHAPE, normalizeOrigin, originCandidates, type JoinLink } from "../shared/deep-link";
 import type { LocalAiManager } from "./local-ai/manager";
@@ -16,6 +16,7 @@ import {
 import { LOCAL_SERVER_ID, type ServerStore, type StoredServer } from "./servers";
 import { applySessionCookie, clearPartition, partitionFor } from "./session-cookies";
 import type { QuickTunnel } from "./tunnel";
+import type { Updater } from "./updater";
 import type { ShellWindow } from "./window";
 
 const OPENAI_BASE_URL = "https://api.openai.com/v1";
@@ -27,6 +28,7 @@ export interface ShellContext {
   local: LocalServer;
   tunnel: QuickTunnel;
   localAi: LocalAiManager;
+  updater: Updater;
 }
 
 export interface ShellIpc {
@@ -59,7 +61,7 @@ function summaryOf(entry: StoredServer): ServerSummary {
 }
 
 export function registerIpc(ctx: ShellContext): ShellIpc {
-  const { store, window: win, local, tunnel, localAi } = ctx;
+  const { store, window: win, local, tunnel, localAi, updater } = ctx;
 
   const localHasAccount = (): boolean => store.token(LOCAL_SERVER_ID) !== null;
   const localStatus = (): LocalStatus => local.status(localHasAccount());
@@ -67,6 +69,7 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
   local.onStatus(() => win.sendEvent({ kind: "local-status", status: localStatus() }));
   tunnel.onStatus(() => win.sendEvent({ kind: "tunnel-status", status: tunnel.status() }));
   localAi.onStatus(() => win.sendEvent({ kind: "local-ai-progress", status: localAi.status() }));
+  updater.onStatus(() => win.sendEvent({ kind: "update-progress", progress: updater.progress() }));
 
   // Keeps the local server's publicUrl matching reality, so invite links and
   // QR codes generated inside the game point at the tunnel while one runs
@@ -379,6 +382,25 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
   });
 
   ipcMain.handle("local-ai:status", () => localAi.status());
+
+  ipcMain.handle("app:info", () => ({ version: app.getVersion(), installKind: updater.kind }));
+
+  ipcMain.handle("update:check", async () => {
+    try {
+      return { ok: true, update: await updater.checkForUpdates() };
+    } catch (err) {
+      return fail(err);
+    }
+  });
+
+  ipcMain.handle("update:install", async () => {
+    try {
+      await updater.downloadAndInstall();
+      return { ok: true };
+    } catch (err) {
+      return fail(err);
+    }
+  });
 
   ipcMain.handle("local-ai:scan", async () => {
     try {

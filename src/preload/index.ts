@@ -24,6 +24,9 @@ const bridge: OdmBridge = {
   localAiScan: () => ipcRenderer.invoke("local-ai:scan"),
   localAiInstall: (tierId: string) => ipcRenderer.invoke("local-ai:install", tierId),
   localAiStatus: () => ipcRenderer.invoke("local-ai:status"),
+  appInfo: () => ipcRenderer.invoke("app:info"),
+  updateCheck: () => ipcRenderer.invoke("update:check"),
+  updateInstall: () => ipcRenderer.invoke("update:install"),
   onEvent: (listener) => {
     ipcRenderer.on("odm:event", (_event, payload: ShellEvent) => listener(payload));
   },

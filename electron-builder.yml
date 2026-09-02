@@ -9,6 +9,13 @@ extraResources:
   - from: vendor/server
     to: server
 asar: true
+# The in-app updater reads this generic feed: releases plus the generated
+# latest.yml (NSIS) and latest-linux.yml (AppImage) get uploaded to the
+# downloads path. Other targets (deb, rpm, tar.gz, dmg) ignore it; their
+# installs are notify-only in the app.
+publish:
+  provider: generic
+  url: https://opendungeonmaster.com/downloads
 # Registers odm:// on macOS (Info.plist), Windows (installer) and Linux
 # (.desktop MimeType), so invite links open the app.
 protocols:

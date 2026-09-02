@@ -1,5 +1,15 @@
 apply plugin: 'com.android.application'
 
+// The app version lives in mobile/package.json; Play requires versionCode to
+// only ever grow, so it is derived as major*10000 + minor*100 + patch.
+def versionMatch = file('../../package.json').text =~ /"version"\s*:\s*"(\d+)\.(\d+)\.(\d+)"/
+if (!versionMatch.find()) {
+    throw new GradleException('mobile/package.json has no x.y.z version')
+}
+def appVersionName = "${versionMatch.group(1)}.${versionMatch.group(2)}.${versionMatch.group(3)}"
+def appVersionCode = versionMatch.group(1).toInteger() * 10000 +
+        versionMatch.group(2).toInteger() * 100 + versionMatch.group(3).toInteger()
+
 android {
     namespace "com.opendungeonmaster.app"
     compileSdk rootProject.ext.compileSdkVersion
@@ -7,8 +17,8 @@ android {
         applicationId "com.opendungeonmaster.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode appVersionCode
+        versionName appVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
