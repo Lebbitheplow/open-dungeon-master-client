@@ -51,7 +51,7 @@ export type ConnectResult =
   | { ok: false; needsLogin: boolean; error: string };
 
 // A tunnel sharing the local world at a public https address. "named" means
-// a broker-issued CODE.play address; "quick" is the trycloudflare fallback.
+// a broker-issued play-CODE address; "quick" is the trycloudflare fallback.
 export interface TunnelStatus {
   state: "stopped" | "starting" | "running" | "error";
   url: string;

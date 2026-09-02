@@ -8,18 +8,19 @@ import type { TunnelStatus } from "../shared/types";
 // Hosts an offline world on the public internet through a Cloudflare quick
 // tunnel: no account, no port forwarding, a random https address on
 // trycloudflare.com. Friends join in any browser; the session lives as long
-// as the app keeps the tunnel up. The pretty CODE.play.opendungeonmaster.com
-// names come later from the broker Worker; the plumbing here is the same.
+// as the app keeps the tunnel up. The pretty play-CODE.opendungeonmaster.com
+// names come from the broker Worker; the plumbing here is the same.
 
 const URL_SHAPE = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/;
 const URL_WAIT_MS = 45_000;
 const REACHABLE_WAIT_MS = 90_000;
 const DOWNLOAD_TIMEOUT_MS = 10 * 60_000;
 
-// Named sessions from the default broker must live under this suffix; a
-// broker that hands back anything else does not get its hostname shown to
+// Named sessions from the default broker are play-CODE one label under the
+// official zone (one level so the free Universal SSL wildcard covers them);
+// a broker that hands back anything else does not get its hostname shown to
 // the user or written into the server's publicUrl.
-const BROKER_HOST_SUFFIX = ".play.opendungeonmaster.com";
+const BROKER_HOST_SHAPE = /^play-[a-z0-9]+\.opendungeonmaster\.com$/;
 const HOSTNAME_SHAPE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
 
 // ELF on Linux, MZ on Windows: enough to reject an HTML error page that
@@ -62,7 +63,7 @@ export function parseBrokerSession(
   if (!raw?.tunnelToken || !raw?.hostname || !raw?.code || !raw?.secret) return null;
   const hostname = String(raw.hostname).toLowerCase();
   if (!HOSTNAME_SHAPE.test(hostname)) return null;
-  if (requireOfficialSuffix && !hostname.endsWith(BROKER_HOST_SUFFIX)) return null;
+  if (requireOfficialSuffix && !BROKER_HOST_SHAPE.test(hostname)) return null;
   return {
     code: String(raw.code),
     url: `https://${hostname}`,

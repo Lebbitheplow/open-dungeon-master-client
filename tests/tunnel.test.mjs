@@ -4,26 +4,32 @@ import { parseBrokerSession } from "../dist/main/tunnel.js";
 
 const good = {
   code: "ABCD1234",
-  hostname: "abcd1234.play.opendungeonmaster.com",
+  hostname: "play-abcd1234.opendungeonmaster.com",
   tunnelToken: "tok",
   secret: "shh",
 };
 
 test("a complete broker reply on the official domain is accepted", () => {
   const session = parseBrokerSession(good, true);
-  assert.equal(session.hostname, "abcd1234.play.opendungeonmaster.com");
-  assert.equal(session.url, "https://abcd1234.play.opendungeonmaster.com");
+  assert.equal(session.hostname, "play-abcd1234.opendungeonmaster.com");
+  assert.equal(session.url, "https://play-abcd1234.opendungeonmaster.com");
 });
 
 test("the url is derived from the hostname, never trusted from the reply", () => {
   const session = parseBrokerSession({ ...good, url: "https://evil.example" }, true);
-  assert.equal(session.url, "https://abcd1234.play.opendungeonmaster.com");
+  assert.equal(session.url, "https://play-abcd1234.opendungeonmaster.com");
 });
 
-test("a hostname outside the official domain is rejected for the default broker", () => {
-  const off = { ...good, hostname: "abcd1234.play.opendungeonmaster.com.evil.example" };
-  assert.equal(parseBrokerSession(off, true), null);
-  assert.equal(parseBrokerSession({ ...good, hostname: "evil.example" }, true), null);
+test("a hostname outside the official shape is rejected for the default broker", () => {
+  for (const hostname of [
+    "play-abcd1234.opendungeonmaster.com.evil.example",
+    "evil.example",
+    "abcd1234.play.opendungeonmaster.com",
+    "play-abcd1234.evil.opendungeonmaster.com",
+    "notplay-abcd1234.opendungeonmaster.com",
+  ]) {
+    assert.equal(parseBrokerSession({ ...good, hostname }, true), null, hostname);
+  }
 });
 
 test("a custom broker may use its own domain", () => {
@@ -43,9 +49,9 @@ test("garbage hostnames are rejected even for custom brokers", () => {
   }
 });
 
-test("uppercase hostnames are normalized before the suffix check", () => {
-  const upper = { ...good, hostname: "ABCD1234.PLAY.OPENDUNGEONMASTER.COM" };
-  assert.equal(parseBrokerSession(upper, true).hostname, "abcd1234.play.opendungeonmaster.com");
+test("uppercase hostnames are normalized before the shape check", () => {
+  const upper = { ...good, hostname: "PLAY-ABCD1234.OPENDUNGEONMASTER.COM" };
+  assert.equal(parseBrokerSession(upper, true).hostname, "play-abcd1234.opendungeonmaster.com");
 });
 
 test("replies missing any credential field are rejected", () => {
