@@ -48,6 +48,8 @@ export class ShellWindow {
   private currentOrigin = "";
   private unwatchCookies: (() => void) | null = null;
   private onRevoked: ((origin: string) => void) | null = null;
+  // Set while a browser-based sign-in (Discord OAuth) occupies the view.
+  private loginCancel: ((reason: Error) => void) | null = null;
 
   // Fired when the server's own web UI logs the user out while its view is
   // attached. The window cannot forget the stored token itself (no store
@@ -177,6 +179,95 @@ export class ShellWindow {
     void view.webContents.loadURL(`${origin}${pathname}`);
   }
 
+  // Runs a server's own browser sign-in (Discord OAuth) in a throwaway
+  // partition and resolves with the session the callback plants as the
+  // odm_session cookie. The consent page lives on discord.com, so unlike a
+  // game view this one may navigate anywhere over http(s); popups still go
+  // to the system browser. Ctrl+M cancels. The view is torn down either
+  // way; the caller re-attaches a proper game view with the session.
+  browserLogin(
+    origin: string,
+    partition: string,
+    startPath: string,
+  ): Promise<{ token: string; expiresAt: string }> {
+    const win = this.win;
+    if (!win) return Promise.reject(new Error("The window is gone."));
+    this.cancelLogin(new Error("Sign-in was interrupted."));
+    this.detachView();
+    hardenPartition(partition, origin);
+    const ses = session.fromPartition(partition);
+    const view = new WebContentsView({
+      webPreferences: { partition, sandbox: true, contextIsolation: true, nodeIntegration: false },
+    });
+    this.view = view;
+    this.currentOrigin = origin;
+    const host = new URL(origin).hostname;
+    return new Promise((resolve, reject) => {
+      const cleanup = (): void => {
+        ses.cookies.off("changed", onCookie);
+        view.webContents.off("did-navigate", onNavigate);
+        this.loginCancel = null;
+        if (this.view === view) this.detachView();
+      };
+      const onCookie = (
+        _event: Electron.Event,
+        cookie: Electron.Cookie,
+        _cause: string,
+        removed: boolean,
+      ): void => {
+        if (removed || cookie.name !== "odm_session") return;
+        if (cookie.domain && cookie.domain.replace(/^\./, "") !== host) return;
+        const expiresAt = cookie.expirationDate
+          ? new Date(cookie.expirationDate * 1000).toISOString()
+          : "";
+        cleanup();
+        resolve({ token: cookie.value, expiresAt });
+      };
+      // A failed round trip lands back on the server as /?error=discord; a
+      // server without Discord configured answers the start URL itself
+      // with an error status instead of redirecting to the consent page.
+      const onNavigate = (_event: Electron.Event, url: string, status: number): void => {
+        if (!sameOrigin(url, origin)) return;
+        let parsed: URL;
+        try {
+          parsed = new URL(url);
+        } catch {
+          return;
+        }
+        if (parsed.pathname === new URL(`${origin}${startPath}`).pathname && status >= 400) {
+          cleanup();
+          reject(new Error("This server has not set up Discord sign-in."));
+          return;
+        }
+        if (!parsed.searchParams.get("error")) return;
+        cleanup();
+        reject(new Error("Discord sign-in failed. Try again."));
+      };
+      this.loginCancel = (reason) => {
+        cleanup();
+        reject(reason);
+      };
+      ses.cookies.on("changed", onCookie);
+      view.webContents.on("did-navigate", onNavigate);
+      view.webContents.setWindowOpenHandler(({ url }) => {
+        openExternally(url);
+        return { action: "deny" };
+      });
+      view.webContents.on("will-navigate", (event, url) => {
+        if (!/^https?:/.test(url)) event.preventDefault();
+      });
+      win.contentView.addChildView(view);
+      this.layout();
+      void view.webContents.loadURL(`${origin}${startPath}`);
+    });
+  }
+
+  private cancelLogin(reason: Error): void {
+    const cancel = this.loginCancel;
+    this.loginCancel = null;
+    cancel?.(reason);
+  }
+
   // Logging out inside the server's web UI revokes the session server-side;
   // left alone, the shell would keep a dead token and the user would be
   // stranded on the server's embedded login page. A real logout removes
@@ -215,6 +306,11 @@ export class ShellWindow {
   }
 
   showManager(): void {
+    if (this.loginCancel) {
+      this.cancelLogin(new Error("Sign-in cancelled."));
+      this.sendEvent({ kind: "show-manager" });
+      return;
+    }
     if (!this.view) return;
     this.detachView();
     this.sendEvent({ kind: "show-manager" });

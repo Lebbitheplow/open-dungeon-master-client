@@ -100,6 +100,25 @@ export async function registerAccount(
   return loginForToken(origin, input.username, input.password);
 }
 
+// Who a session belongs to; used after a browser sign-in (Discord OAuth)
+// hands the shell a token it did not mint itself.
+export async function whoAmI(
+  origin: string,
+  token: string,
+): Promise<{ username: string; isAdmin: boolean }> {
+  const res = await api(origin, "/api/auth/me", {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await errorFrom(res, "The sign-in did not produce a usable session.");
+  const body = (await res.json().catch(() => null)) as {
+    user?: { username?: string; isAdmin?: boolean };
+  } | null;
+  if (!body?.user || typeof body.user.username !== "string") {
+    throw new ApiError("The sign-in did not produce a usable session.");
+  }
+  return { username: body.user.username, isAdmin: Boolean(body.user.isAdmin) };
+}
+
 export async function tokenIsValid(origin: string, token: string): Promise<boolean> {
   try {
     const res = await api(origin, "/api/auth/me", {

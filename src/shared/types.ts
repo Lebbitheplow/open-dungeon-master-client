@@ -147,6 +147,9 @@ export interface UpdateProgress {
 
 export type ShellEvent =
   | { kind: "show-manager" }
+  // The platform back gesture (Android): leave the current screen for home,
+  // or, from home, leave the app.
+  | { kind: "back" }
   | { kind: "join-request"; origin: string; code: string; knownServerId: string }
   | { kind: "local-status"; status: LocalStatus }
   | { kind: "tunnel-status"; status: TunnelStatus }
@@ -171,7 +174,13 @@ export interface OdmBridge {
     inviteCode: string;
     joinCode?: string;
   }): Promise<Result<{ server: ServerSummary }>>;
+  // Sign in through the server's Discord OAuth in a web view; the shell
+  // harvests the session the callback plants and remembers the server like
+  // a password login would. Only offered when the probe says discord: true.
+  discordLogin(input: { origin: string; joinCode?: string }): Promise<Result<{ server: ServerSummary }>>;
   connect(serverId: string, joinCode?: string): Promise<ConnectResult>;
+  // Android only: the back gesture on the home screen leaves the app.
+  leaveApp?(): Promise<void>;
   // Feeds a pasted invite link (odm:// or the https /j shape) into the same
   // flow as a clicked deep link. False means the text was not an invite link.
   openInviteLink(raw: string): Promise<boolean>;

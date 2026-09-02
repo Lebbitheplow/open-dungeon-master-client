@@ -293,25 +293,20 @@ function loadInjectedScripts(): Promise<string> {
   return injectedScripts;
 }
 
-async function openServer(server: StoredServer, joinCode: string): Promise<void> {
-  await CapacitorCookies.setCookie({
-    url: server.origin,
-    key: "odm_session",
-    value: server.token,
-  });
+// No toolbar: the page is the app. The status bar and navigation bar keep
+// their space (the WebView cannot see them itself), the hardware back
+// button walks the page's own history, and at its root it closes the
+// page, landing here. The page's account menu offers the same door.
+async function openGameWebView(url: string, title: string): Promise<void> {
   const preShowScript = await loadInjectedScripts();
-  // No toolbar: the page is the app. The status bar and navigation bar keep
-  // their space (the WebView cannot see them itself), the hardware back
-  // button walks the page's own history, and at its root it closes the
-  // page, landing here. The page's account menu offers the same door.
   await InAppBrowser.openWebView({
-    url: `${server.origin}${joinCode ? `/join/${joinCode}` : "/"}`,
+    url,
     toolbarType: ToolBarType.BLANK,
     toolbarColor: NIGHT,
     backgroundColor: BackgroundColor.BLACK,
     enabledSafeBottomMargin: true,
     activeNativeNavigationForWebview: true,
-    title: server.name,
+    title,
     // documentStart injection needs the present-after-load mode; the game's
     // Bluetooth feature detection must run after the polyfill exists.
     ...(preShowScript
@@ -327,6 +322,104 @@ async function openServer(server: StoredServer, joinCode: string): Promise<void>
   void ensureNotificationPermission();
 }
 
+async function openServer(server: StoredServer, joinCode: string): Promise<void> {
+  await CapacitorCookies.setCookie({
+    url: server.origin,
+    key: "odm_session",
+    value: server.token,
+  });
+  await openGameWebView(`${server.origin}${joinCode ? `/join/${joinCode}` : "/"}`, server.name);
+}
+
+// ---------- Discord sign-in (the server's own OAuth, in the game webview) ----------
+
+// The round trip starts on the server, visits discord.com and lands back on
+// the server with the odm_session cookie set in the shared CookieManager.
+// The webview stays open as the game; this side only harvests the session
+// so the server list can remember the account like a password login.
+const SESSION_COOKIE = "odm_session";
+// The server's session TTL; the cookie's own expiry is not readable here.
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+interface PendingDiscord {
+  origin: string;
+  joinCode: string;
+  resolve: (result: Result<{ server: ServerSummary }>) => void;
+}
+
+let pendingDiscord: PendingDiscord | null = null;
+
+function settleDiscord(result: Result<{ server: ServerSummary }>): void {
+  const pending = pendingDiscord;
+  pendingDiscord = null;
+  pending?.resolve(result);
+}
+
+async function startDiscordLogin(
+  origin: string,
+  joinCode: string,
+): Promise<Result<{ server: ServerSummary }>> {
+  settleDiscord(fail(new Error("Sign-in was interrupted.")));
+  // A stale session cookie would make the callback look like a fresh one.
+  await CapacitorCookies.clearCookies({ url: origin }).catch(() => undefined);
+  const next = joinCode ? `/join/${joinCode}` : "/";
+  const start = `${origin}/api/auth/discord/start?next=${encodeURIComponent(next)}`;
+  let name = "";
+  try {
+    name = (await probeOrigin(origin)).serverName;
+  } catch {
+    // Cosmetic; the start route will say if the server is not real.
+  }
+  return new Promise((resolve) => {
+    pendingDiscord = { origin, joinCode, resolve };
+    openGameWebView(start, name || new URL(origin).host).catch((err: unknown) => {
+      settleDiscord(fail(err));
+    });
+  });
+}
+
+// Every navigation inside the game webview: while a Discord sign-in is
+// pending, a return to the server's origin is the callback having finished,
+// one way or the other.
+async function onWebviewUrl(url: string): Promise<void> {
+  const pending = pendingDiscord;
+  if (!pending || !url.startsWith(`${pending.origin}/`) && url !== pending.origin) return;
+  if (url.includes("/api/auth/discord/")) return;
+  let failed = false;
+  try {
+    failed = new URL(url).searchParams.get("error") === "discord";
+  } catch {
+    return;
+  }
+  if (failed) {
+    await InAppBrowser.close().catch(() => undefined);
+    settleDiscord(fail(new Error("Discord sign-in failed. Try again.")));
+    return;
+  }
+  const cookies = await InAppBrowser.getCookies({ url: pending.origin, includeHttpOnly: true }).catch(
+    () => ({}) as Record<string, string>,
+  );
+  const token = cookies[SESSION_COOKIE];
+  if (!token) return;
+  try {
+    const reply = await http(pending.origin, "/api/auth/me", { token });
+    const body = reply.data as { user?: { username?: string } } | null;
+    const username = body?.user?.username;
+    if (reply.status !== 200 || typeof username !== "string") {
+      throw new Error("The sign-in did not produce a usable session.");
+    }
+    const grant: TokenGrant = {
+      token,
+      expiresAt: new Date(Date.now() + SESSION_TTL_MS).toISOString(),
+      username,
+    };
+    settleDiscord(await rememberGrant(pending.origin, grant));
+  } catch (err) {
+    await InAppBrowser.close().catch(() => undefined);
+    settleDiscord(fail(err));
+  }
+}
+
 async function connectById(id: string, joinCode: string): Promise<ConnectResult> {
   const servers = await loadServers();
   const server = servers.find((entry) => entry.id === id);
@@ -340,11 +433,12 @@ async function connectById(id: string, joinCode: string): Promise<ConnectResult>
   return { ok: true };
 }
 
-async function adoptGrant(
+// Writes a fresh session into the server list (new entry or refreshed
+// token) without opening anything.
+async function rememberGrant(
   origin: string,
   grant: TokenGrant,
-  joinCode: string,
-): Promise<Result<{ server: ServerSummary }>> {
+): Promise<{ ok: true; server: ServerSummary; stored: StoredServer }> {
   let name = "";
   try {
     name = (await probeOrigin(origin)).serverName;
@@ -365,8 +459,17 @@ async function adoptGrant(
   if (existing) servers[servers.indexOf(existing)] = server;
   else servers.push(server);
   await saveServers(servers);
-  await openServer(server, joinCode);
-  return { ok: true, server: summaryOf(server) };
+  return { ok: true, server: summaryOf(server), stored: server };
+}
+
+async function adoptGrant(
+  origin: string,
+  grant: TokenGrant,
+  joinCode: string,
+): Promise<Result<{ server: ServerSummary }>> {
+  const remembered = await rememberGrant(origin, grant);
+  await openServer(remembered.stored, joinCode);
+  return { ok: true, server: remembered.server };
 }
 
 function fail(err: unknown): { ok: false; error: string } {
@@ -466,7 +569,17 @@ const bridge: OdmBridge = {
     }
   },
 
+  async discordLogin(input) {
+    const origin = normalizeOrigin(String(input?.origin ?? ""));
+    if (!origin) return fail(new Error("Bad server address."));
+    return startDiscordLogin(origin, cleanCode(input.joinCode));
+  },
+
   connect: (serverId, joinCode) => connectById(String(serverId), cleanCode(joinCode)),
+
+  // Back on the home screen: finish the activity, which is what Android
+  // users expect from a root screen (the launcher, not a dead tap).
+  leaveApp: () => App.exitApp(),
 
   async openInviteLink(raw) {
     const link = parseAnyLink(String(raw ?? ""));
@@ -556,8 +669,21 @@ const bridge: OdmBridge = {
 
 window.odm = bridge;
 
-// Closing the server webview lands back on the manager.
-void InAppBrowser.addListener("closeEvent", () => emit({ kind: "show-manager" }));
+// Closing the server webview lands back on the manager; closing it in the
+// middle of a Discord sign-in is a cancel.
+void InAppBrowser.addListener("closeEvent", () => {
+  settleDiscord(fail(new Error("Sign-in cancelled.")));
+  emit({ kind: "show-manager" });
+});
+void InAppBrowser.addListener("urlChangeEvent", ({ url }) => {
+  void onWebviewUrl(String(url ?? ""));
+});
+
+// The hardware back gesture on the manager itself. Registering a listener
+// takes the decision away from Capacitor's default (which walks WebView
+// history and otherwise swallows the press); the shell UI decides whether
+// it is on an inner screen or at home.
+void App.addListener("backButton", () => emit({ kind: "back" }));
 
 // Traffic from the injected game-page scripts: GATT calls from the Web
 // Bluetooth polyfill and file exports from the download shim. The plugin

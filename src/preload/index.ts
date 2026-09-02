@@ -11,6 +11,7 @@ const bridge: OdmBridge = {
   probeServer: (origin: string) => ipcRenderer.invoke("servers:probe", origin),
   login: (input) => ipcRenderer.invoke("servers:login", input),
   register: (input) => ipcRenderer.invoke("servers:register", input),
+  discordLogin: (input) => ipcRenderer.invoke("servers:discord-login", input),
   connect: (serverId: string, joinCode?: string) =>
     ipcRenderer.invoke("servers:connect", serverId, joinCode),
   removeServer: (serverId: string) => ipcRenderer.invoke("servers:remove", serverId),

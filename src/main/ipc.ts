@@ -18,6 +18,7 @@ import {
   probeServer,
   registerAccount,
   tokenIsValid,
+  whoAmI,
   type TokenGrant,
 } from "./odm-api";
 import { LOCAL_SERVER_ID, type ServerStore, type StoredServer } from "./servers";
@@ -252,6 +253,24 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
       return await adoptGrant(origin, grant, joinCodeOf(input?.joinCode));
     } catch (err) {
       return fail(err);
+    }
+  });
+
+  // Discord sign-in runs in the window as a throwaway in-memory partition;
+  // the harvested session then takes the same road as a password login.
+  ipcMain.handle("servers:discord-login", async (_event, input: Record<string, unknown>) => {
+    const partition = "odm-login";
+    try {
+      const origin = normalizeOrigin(str(input?.origin, 300));
+      if (!origin) return fail(new Error("Bad server address."));
+      const joinCode = joinCodeOf(input?.joinCode);
+      const minted = await win.browserLogin(origin, partition, "/api/auth/discord/start?next=%2F");
+      const me = await whoAmI(origin, minted.token);
+      return await adoptGrant(origin, { ...minted, ...me }, joinCode);
+    } catch (err) {
+      return fail(err);
+    } finally {
+      await clearPartition(partition).catch(() => undefined);
     }
   });
 
