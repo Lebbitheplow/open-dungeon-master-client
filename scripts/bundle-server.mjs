@@ -88,35 +88,10 @@ try {
   run("git", ["-C", serverDir, "worktree", "remove", "--force", buildDir]);
 }
 
-// Turbopack requires serverExternalPackages under hash-suffixed ids (e.g.
-// mediasoup-f2b066850faeed90) that the standalone file tracer never
-// materializes in node_modules. Alias every referenced id to the real
-// package so require() resolves at runtime.
-function walkJs(dir, out = []) {
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) walkJs(full, out);
-    else if (entry.name.endsWith(".js")) out.push(full);
-  }
-  return out;
-}
-const hashedIds = new Set();
-for (const file of walkJs(path.join(vendorDir, ".next", "server"))) {
-  const text = fs.readFileSync(file, "utf8");
-  // .x( is externalRequire, .y( is externalImport (dynamic).
-  for (const [, id] of text.matchAll(/\.[xy]\("((?:@[\w.-]+\/)?[\w.-]+-[0-9a-f]{16})"/g)) {
-    hashedIds.add(id);
-  }
-}
-for (const id of hashedIds) {
-  const real = id.replace(/-[0-9a-f]{16}$/, "");
-  const target = path.join(vendorDir, "node_modules", real);
-  const alias = path.join(vendorDir, "node_modules", id);
-  if (!fs.existsSync(target) || fs.existsSync(alias)) continue;
-  fs.mkdirSync(path.dirname(alias), { recursive: true });
-  fs.symlinkSync(path.relative(path.dirname(alias), target), alias);
-  console.log(`Aliased external ${id} -> ${real}`);
-}
+// Prune the dangling symlinks the standalone tracer leaves behind and
+// create the hashed-id aliases Turbopack's serverExternalPackages need;
+// CI platform jobs rerun the same script after unpacking the payload.
+run(process.execPath, ["scripts/alias-server-modules.mjs"], { cwd: repo });
 
 console.log(`Rebuilding native modules for Electron ${electronPkg.version}`);
 run(

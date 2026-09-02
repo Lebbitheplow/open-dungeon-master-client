@@ -19,6 +19,11 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+# The default workflow token is read-only; creating the release and
+# uploading assets needs contents write.
+permissions:
+  contents: write
+
 defaults:
   run:
     shell: bash
@@ -51,9 +56,12 @@ jobs:
         env:
           ODM_SERVER_DIR: ${{ github.workspace }}/open-dungeon-master
         run: npm run bundle-server
-      - name: Pack the payload (tar preserves the module-alias symlinks)
+      - name: Pack the payload without symlinks (Windows tar cannot extract
+          them; each platform job recreates the module aliases)
         working-directory: client
-        run: tar -C vendor -czf server-payload.tgz server
+        run: |
+          find vendor/server -type l -delete
+          tar -C vendor -czf server-payload.tgz server
       - uses: actions/upload-artifact@v4
         with:
           name: server-payload
@@ -89,8 +97,10 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: server-payload
-      - name: Unpack the server payload
-        run: mkdir -p vendor && tar -C vendor -xzf server-payload.tgz
+      - name: Unpack the server payload and recreate the module aliases
+        run: |
+          mkdir -p vendor && tar -C vendor -xzf server-payload.tgz
+          node scripts/alias-server-modules.mjs
       - name: Rebuild the native module for this platform
         if: matrix.rebuild == true
         run: >
@@ -130,8 +140,10 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: server-payload
-      - name: Unpack the server payload
-        run: mkdir -p vendor && tar -C vendor -xzf server-payload.tgz
+      - name: Unpack the server payload and recreate the module aliases
+        run: |
+          mkdir -p vendor && tar -C vendor -xzf server-payload.tgz
+          node scripts/alias-server-modules.mjs
       - name: Build and publish the flatpak bundle
         env:
           GH_TOKEN: ${{ github.token }}
