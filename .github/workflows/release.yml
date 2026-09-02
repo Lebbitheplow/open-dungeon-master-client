@@ -209,7 +209,12 @@ jobs:
           ODM_ANDROID_KEYSTORE: ${{ runner.temp }}/odm-release.keystore
           ODM_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ODM_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-        run: ./gradlew assembleRelease
+        # --stacktrace: Gradle hides the cause of a packaging failure
+        # otherwise, and the runner cannot be inspected after the fact.
+        run: |
+          df -h . | tail -1
+          free -m | head -2
+          ./gradlew assembleRelease --stacktrace
       - name: Upload the APK to the release
         env:
           GH_TOKEN: ${{ github.token }}
