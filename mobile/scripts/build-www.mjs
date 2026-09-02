@@ -3,6 +3,7 @@
 // implementation is bundled in front of it.
 import { build } from "esbuild";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -52,9 +53,13 @@ for (const name of ["style.css", "story.png"]) {
 }
 fs.copyFileSync(path.join(mobile, "src", "index.html"), path.join(www, "index.html"));
 
-// Same display face as the desktop shell, vendored from the repo root's
-// @fontsource package (the mobile package has no font dependency of its own).
-const fontSource = path.join(repo, "node_modules", "@fontsource", "cinzel", "files");
+// Same display face as the desktop shell. Resolved as a module so it works
+// from the mobile package's own node_modules (CI installs only those) or
+// the repo root's.
+const fontSource = path.join(
+  path.dirname(createRequire(import.meta.url).resolve("@fontsource/cinzel/package.json")),
+  "files",
+);
 fs.mkdirSync(path.join(www, "fonts"), { recursive: true });
 for (const weight of ["400", "600", "700"]) {
   const name = `cinzel-latin-${weight}-normal.woff2`;
