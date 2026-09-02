@@ -68,6 +68,8 @@ export interface HardwareInfo {
   // Silicon) this equals ramGb.
   vramGb: number;
   gpuName: string;
+  // Which GPU stack to install compute for; "" when no signal was found.
+  gpuVendor: "" | "nvidia" | "amd" | "apple";
   unifiedMemory: boolean;
 }
 
@@ -86,10 +88,21 @@ export interface LocalAiTier {
 export interface LocalAiStatus {
   supported: boolean;
   installedTierId: string;
+  // Human label for the installed tier, for status display.
+  installedLabel: string;
+  // Whether the small summaries model sits beside the story model.
+  utilityInstalled: boolean;
   running: boolean;
   busy: "" | "scanning" | "downloading" | "starting";
   progress: { label: string; percent: number } | null;
   error: string;
+  // The local image generation stack, installed and removed independently.
+  comfy: {
+    installed: boolean;
+    running: boolean;
+    checkpoint: string;
+    error: string;
+  };
 }
 
 // How this build reached the machine; decides whether the app may replace
@@ -168,7 +181,11 @@ export interface OdmBridge {
   shareStart(): Promise<Result<{ tunnel: TunnelStatus }>>;
   shareStop(): Promise<Result<{ tunnel: TunnelStatus }>>;
   localAiScan(): Promise<Result<{ hardware: HardwareInfo; tiers: LocalAiTier[] }>>;
-  localAiInstall(tierId: string): Promise<Result<{ status: LocalAiStatus }>>;
+  // warning is "" or a sentence: the install worked but wiring the world's
+  // settings to it failed and needs a hand.
+  localAiInstall(tierId: string): Promise<Result<{ status: LocalAiStatus; warning: string }>>;
+  localAiInstallComfy(): Promise<Result<{ status: LocalAiStatus; warning: string }>>;
+  localAiUninstall(component: "text" | "images"): Promise<Result<{ status: LocalAiStatus }>>;
   localAiStatus(): Promise<LocalAiStatus>;
   appInfo(): Promise<AppInfo>;
   updateCheck(): Promise<Result<{ update: UpdateStatus }>>;

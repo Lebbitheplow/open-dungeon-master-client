@@ -23,6 +23,9 @@ const bridge: OdmBridge = {
   shareStop: () => ipcRenderer.invoke("share:stop"),
   localAiScan: () => ipcRenderer.invoke("local-ai:scan"),
   localAiInstall: (tierId: string) => ipcRenderer.invoke("local-ai:install", tierId),
+  localAiInstallComfy: () => ipcRenderer.invoke("local-ai:install-comfy"),
+  localAiUninstall: (component: "text" | "images") =>
+    ipcRenderer.invoke("local-ai:uninstall", component),
   localAiStatus: () => ipcRenderer.invoke("local-ai:status"),
   appInfo: () => ipcRenderer.invoke("app:info"),
   updateCheck: () => ipcRenderer.invoke("update:check"),

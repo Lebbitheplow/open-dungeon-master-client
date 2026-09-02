@@ -2,6 +2,7 @@ import type {
   AiSetup,
   AppInfo,
   HardwareInfo,
+  LocalAiStatus,
   LocalAiTier,
   LocalStatus,
   ServerProbe,
@@ -477,8 +478,15 @@ function renderLocalAccount(mode: "create" | "login"): void {
   show(backButton("Back", () => renderHome()), title, sub, form);
 }
 
-function renderLocalAi(fromHome = false): void {
+function renderLocalAi(fromHome = false, aiStatus: LocalAiStatus | null = null): void {
   screenName = "local-ai";
+  if (fromHome && !aiStatus) {
+    // The entry screen doubles as the status view; fetch once, then re-render
+    // with the installed-components card filled in.
+    void window.odm.localAiStatus().then((status) => {
+      if (screenName === "local-ai") renderLocalAi(true, status);
+    });
+  }
   const title = el("h2", "", "Who runs your games?");
   const sub = el(
     "p",
@@ -510,10 +518,65 @@ function renderLocalAi(fromHome = false): void {
 
   choices.append(human, openai, localAi);
   if (fromHome) {
-    show(backButton("Back", () => renderHome()), title, sub, choices);
+    show(backButton("Back", () => renderHome()), title, sub, localAiStatusCard(aiStatus), choices);
   } else {
     show(title, sub, choices);
   }
+}
+
+// What is installed on this machine right now, with per-component removal.
+function localAiStatusCard(status: LocalAiStatus | null): HTMLElement | null {
+  if (!status || (!status.installedTierId && !status.comfy.installed)) return null;
+  const card = el("div", "card");
+  const grow = el("div", "grow");
+  grow.append(el("div", "name", "Installed on this machine"));
+  if (status.installedTierId) {
+    const utility = status.utilityInstalled ? " + utility model" : "";
+    grow.append(
+      el(
+        "div",
+        "detail",
+        `${status.installedLabel || "Story model"}${utility}: ${status.running ? "running" : "stopped"}.`,
+      ),
+    );
+  }
+  if (status.comfy.installed) {
+    grow.append(
+      el(
+        "div",
+        "detail",
+        `Image generation (ComfyUI): ${status.comfy.running ? "running" : "stopped"}.`,
+      ),
+    );
+  }
+  card.append(grow);
+  const uninstall = (label: string, component: "text" | "images", prompt: string): void => {
+    const btn = el("button", "quiet", label);
+    btn.addEventListener("click", () => {
+      if (!confirm(prompt)) return;
+      btn.disabled = true;
+      void window.odm.localAiUninstall(component).then((result) => {
+        if (result.ok) renderLocalAi(true, result.status);
+        else renderError(result.error);
+      });
+    });
+    card.append(btn);
+  };
+  if (status.installedTierId) {
+    uninstall(
+      "Uninstall story AI",
+      "text",
+      "Delete the local story model and AI engine? Your campaigns stay; the AI stops until you set one up again.",
+    );
+  }
+  if (status.comfy.installed) {
+    uninstall(
+      "Uninstall image AI",
+      "images",
+      "Delete ComfyUI and the image model? Existing campaign art stays.",
+    );
+  }
+  return card;
 }
 
 // ---------- local AI installer ----------
@@ -586,17 +649,87 @@ function renderLocalAiInstall(tier: LocalAiTier): void {
   show(title, sub, bar, label, error);
   void window.odm.localAiInstall(tier.id).then((result) => {
     aiProgress = null;
-    if (result.ok) {
-      void window.odm.localPlay(joinIntent?.code);
-      joinIntent = null;
-    } else {
-      error.textContent = result.error;
+    if (!result.ok) {
       show(
         backButton("Back", () => void startLocalAiFlow()),
         title,
         el("p", "error", result.error),
       );
+      return;
     }
+    // Next stop: images, unless ComfyUI is already there. A wiring warning
+    // rides along so it is seen before the world swallows the screen.
+    if (result.status.comfy.installed) {
+      if (result.warning) renderWarning(result.warning);
+      else void enterLocalWorld();
+    } else {
+      renderComfyOffer(result.warning);
+    }
+  });
+}
+
+async function enterLocalWorld(): Promise<void> {
+  await window.odm.localPlay(joinIntent?.code);
+  joinIntent = null;
+}
+
+// Success with a caveat: something installed fine but its settings PATCH
+// failed. One screen, one Continue, no pretending it fully worked.
+function renderWarning(warning: string): void {
+  screenName = "local-ai-warning";
+  const cont = el("button", "primary", "Continue");
+  cont.addEventListener("click", () => void enterLocalWorld());
+  show(el("h2", "", "Installed, with one loose end"), el("p", "error", warning), cont);
+}
+
+function renderComfyOffer(warning: string): void {
+  screenName = "local-ai-comfy";
+  const title = el("h2", "", "Add local image generation?");
+  const sub = el(
+    "p",
+    "sub",
+    "ComfyUI with the Stable Diffusion XL model paints scene art on your GPU, free and private. About 15 GB all told (Python packages included); needs Python 3 and Git installed. You can remove it later from the Story AI screen.",
+  );
+  const note = warning ? el("p", "error", warning) : null;
+  const choices = el("div", "choices");
+  const install = el("button", "choice");
+  install.append(
+    el("span", "title", "Install image generation (ComfyUI)"),
+    el("span", "desc", "One big download now; scene images in your campaigns from then on."),
+  );
+  install.addEventListener("click", () => renderComfyInstall());
+  const skip = el("button", "choice");
+  skip.append(
+    el("span", "title", "Skip for now"),
+    el("span", "desc", "Play with the story model only. You can add images later."),
+  );
+  skip.addEventListener("click", () => void enterLocalWorld());
+  choices.append(install, skip);
+  show(title, note, sub, choices);
+}
+
+function renderComfyInstall(): void {
+  screenName = "local-ai-comfy-install";
+  const title = el("h2", "", "Setting up image generation");
+  const sub = el(
+    "p",
+    "sub",
+    "Keep the app open. The big downloads resume where they left off if interrupted.",
+  );
+  const bar = el("div", "progress");
+  const fill = el("div", "progress-fill");
+  bar.append(fill);
+  const label = el("p", "hint", "Starting...");
+  aiProgress = { fill, label };
+  show(title, sub, bar, label);
+  void window.odm.localAiInstallComfy().then((result) => {
+    aiProgress = null;
+    if (!result.ok) {
+      show(backButton("Back", () => renderComfyOffer("")), title, el("p", "error", result.error));
+      return;
+    }
+    if (result.warning) renderWarning(result.warning);
+    else void enterLocalWorld();
   });
 }
 
@@ -652,7 +785,8 @@ window.odm.onEvent((event) => {
     tunnel = event.status;
     if (screenName === "home") renderHome();
   } else if (event.kind === "local-ai-progress") {
-    if (screenName === "local-ai-install" && aiProgress && event.status.progress) {
+    const installing = screenName === "local-ai-install" || screenName === "local-ai-comfy-install";
+    if (installing && aiProgress && event.status.progress) {
       aiProgress.fill.style.width = `${event.status.progress.percent}%`;
       aiProgress.label.textContent = `${event.status.progress.label} (${event.status.progress.percent}%)`;
     }

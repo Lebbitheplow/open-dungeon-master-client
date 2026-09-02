@@ -117,6 +117,29 @@ export const CATALOG: CatalogEntry[] = [
   },
 ];
 
+// The utility model: a small second model the ODM server uses for summaries
+// and other short helper calls, so the story model's KV cache stays on the
+// story. The Qwen3.6 generation ships no 4B model, so this is Qwen3.5-4B,
+// the newest 4B-class instruct GGUF in the same ungated Unsloth family
+// (unsloth/Qwen3.5-4B-GGUF, UD-Q4_K_XL, 2.9 GB). Installed alongside the
+// story model only when the memory budget covers both.
+export const UTILITY_ENTRY: CatalogEntry = {
+  id: "qwen-utility",
+  label: "Utility model",
+  detail: "Qwen3.5-4B: a small helper for summaries beside the story model.",
+  alias: "qwen3.5-4b",
+  url: "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-UD-Q4_K_XL.gguf",
+  file: "Qwen3.5-4B-UD-Q4_K_XL.gguf",
+  sizeGb: 2.9,
+  needsGb: 5,
+  moe: false,
+};
+
+// Whether the machine can hold the utility model next to a story tier.
+export function utilityFits(entry: CatalogEntry, hardware: HardwareInfo): boolean {
+  return entry.needsGb + UTILITY_ENTRY.needsGb <= memoryBudgetGb(hardware);
+}
+
 // How much model this machine can carry. MoE with cpu-moe means system RAM
 // genuinely counts: attention lives on the GPU and the expert weights
 // stream from RAM at ~3B active parameters per token.
@@ -212,5 +235,29 @@ export function presetFor(
       "min-p = 0.0",
     );
   }
+  return `${lines.join("\n")}\n`;
+}
+
+// Appended to the story preset when the utility model is installed. Loaded
+// on demand rather than at startup: summaries are occasional, and boot
+// should spend its memory bandwidth on the story model. Sampling follows
+// Qwen's published instruct defaults for the 4B line.
+export function utilityPresetSection(modelPath: string): string {
+  const lines = [
+    "",
+    `[${UTILITY_ENTRY.alias}]`,
+    `model = ${modelPath}`,
+    "ngl = 99",
+    "fa = on",
+    "jinja = true",
+    "load-on-startup = false",
+    "c = 16384",
+    "ctk = q8_0",
+    "ctv = q8_0",
+    "temp = 0.7",
+    "top-p = 0.8",
+    "top-k = 20",
+    "min-p = 0.0",
+  ];
   return `${lines.join("\n")}\n`;
 }

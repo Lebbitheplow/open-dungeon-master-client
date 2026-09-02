@@ -4,6 +4,7 @@ import { app, ipcMain } from "electron";
 import type { AiSetup, ConnectResult, LocalStatus, Result, ServerSummary } from "../shared/types";
 import { CODE_SHAPE, normalizeOrigin, originCandidates, type JoinLink } from "../shared/deep-link";
 import type { LocalAiManager } from "./local-ai/manager";
+import { wireImageAi, wireTextAi } from "./local-ai/wiring";
 import type { LocalServer } from "./local-server";
 import {
   loginForToken,
@@ -349,9 +350,10 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     }
     // A crash while sharing can leave a stale publicUrl behind; heal it.
     void syncPublicUrl();
-    // A model was installed: warm the AI server in the background. The first
-    // AI turn simply waits for the load if the player beats it.
+    // Whatever local AI is installed warms up in the background. The first
+    // AI turn or image simply waits for the load if the player beats it.
     void localAi.start();
+    void localAi.startComfy();
     let token = store.token(LOCAL_SERVER_ID);
     if (token && !(await tokenIsValid(local.origin, token))) token = null;
     if (!token) {
@@ -430,27 +432,46 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
   ipcMain.handle("local-ai:install", async (_event, tierId: unknown) => {
     try {
       await localAi.install(str(tierId, 40));
-      // Point the local world's AI at the freshly installed model. The base
-      // URL is the ODM server's own local default; the alias tells it which
-      // model name to request from the llama-server preset.
+      // Point the local world's AI at the freshly installed aliases;
+      // summaries go to the utility model when one fit, else to the story.
       const token = store.token(LOCAL_SERVER_ID);
       const alias = localAi.installedAlias();
+      const utility = localAi.installedUtilityAlias() || alias;
+      let warning = "";
       if (token && local.origin && alias) {
-        const base = "http://127.0.0.1:8001/v1";
-        await patchAdminSettings(local.origin, token, {
-          text: {
-            provider: "custom",
-            customBaseUrl: base,
-            customModel: alias,
-            customApiKey: "",
-            utilityProvider: "custom",
-            utilityBaseUrl: base,
-            utilityModel: alias,
-            utilityApiKey: "",
-          },
-        }).catch(() => undefined);
+        warning = await wireTextAi(local.origin, token, alias, utility);
       }
       void localAi.start();
+      return { ok: true, status: localAi.status(), warning };
+    } catch (err) {
+      return fail(err);
+    }
+  });
+
+  ipcMain.handle("local-ai:install-comfy", async () => {
+    try {
+      await localAi.installComfy();
+      const token = store.token(LOCAL_SERVER_ID);
+      let warning = "";
+      if (token && local.origin) {
+        warning = await wireImageAi(
+          local.origin,
+          token,
+          localAi.comfy.origin(),
+          localAi.comfy.checkpointFile(),
+        );
+      }
+      void localAi.startComfy();
+      return { ok: true, status: localAi.status(), warning };
+    } catch (err) {
+      return fail(err);
+    }
+  });
+
+  ipcMain.handle("local-ai:uninstall", async (_event, component: unknown) => {
+    try {
+      if (str(component, 10) === "images") await localAi.uninstallComfy();
+      else await localAi.uninstallText();
       return { ok: true, status: localAi.status() };
     } catch (err) {
       return fail(err);

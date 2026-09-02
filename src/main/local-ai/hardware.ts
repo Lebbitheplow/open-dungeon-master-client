@@ -12,20 +12,33 @@ const run = promisify(execFile);
 // slightly wrong is survivable because the MoE catalog can spill experts to
 // RAM; the tier picker leans on the combined budget, not VRAM alone.
 
-async function linuxVramGb(): Promise<{ vramGb: number; gttGb: number; gpuName: string }> {
+type GpuVendor = HardwareInfo["gpuVendor"];
+
+async function linuxVramGb(): Promise<{
+  vramGb: number;
+  gttGb: number;
+  gpuName: string;
+  vendor: GpuVendor;
+}> {
   // amdgpu exposes both pools in sysfs. On APUs the VRAM number is only the
   // BIOS carve-out (often 512MB-4GB) while the GTT pool is the real capacity:
   // system RAM the GPU addresses directly, which is what llama.cpp actually
   // fills with ngl 99 on these machines.
   let best = 0;
   let gtt = 0;
+  let vendor: GpuVendor = "";
   try {
     for (const card of fs.readdirSync("/sys/class/drm")) {
       if (!/^card\d+$/.test(card)) continue;
       const device = path.join("/sys/class/drm", card, "device");
       try {
         const bytes = Number(fs.readFileSync(path.join(device, "mem_info_vram_total"), "utf8"));
-        if (Number.isFinite(bytes)) best = Math.max(best, bytes / 1024 ** 3);
+        // mem_info_vram_total is an amdgpu-only sysfs node, so its very
+        // presence identifies the vendor.
+        if (Number.isFinite(bytes)) {
+          best = Math.max(best, bytes / 1024 ** 3);
+          vendor = "amd";
+        }
       } catch {
         // This card does not expose it; keep looking.
       }
@@ -49,18 +62,27 @@ async function linuxVramGb(): Promise<{ vramGb: number; gttGb: number; gpuName: 
     const gb = Number(mem) / 1024;
     if (Number.isFinite(gb)) best = Math.max(best, gb);
     gpuName = name.join(",").trim();
+    // A responding nvidia-smi means a working NVIDIA driver; as the compute
+    // install target that beats an AMD iGPU sitting next to it.
+    vendor = "nvidia";
   } catch {
     // No NVIDIA tooling; the sysfs number stands.
   }
-  return { vramGb: best, gttGb: gtt, gpuName };
+  return { vramGb: best, gttGb: gtt, gpuName, vendor };
 }
 
-async function windowsVramGb(): Promise<{ vramGb: number; gttGb: number; gpuName: string }> {
+async function windowsVramGb(): Promise<{
+  vramGb: number;
+  gttGb: number;
+  gpuName: string;
+  vendor: GpuVendor;
+}> {
   // AdapterRAM is a 32-bit field on many drivers, so it understates big
   // cards; nvidia-smi corrects that where present. Understating is safe
   // here: the budget falls back to RAM-assisted MoE offload.
   let vramGb = 0;
   let gpuName = "";
+  let vendor: GpuVendor = "";
   try {
     const { stdout } = await run("powershell.exe", [
       "-NoProfile",
@@ -70,6 +92,8 @@ async function windowsVramGb(): Promise<{ vramGb: number; gttGb: number; gpuName
     const parsed = JSON.parse(stdout) as { Name?: string; AdapterRAM?: number };
     gpuName = parsed.Name ?? "";
     if (Number.isFinite(parsed.AdapterRAM)) vramGb = (parsed.AdapterRAM as number) / 1024 ** 3;
+    if (/nvidia|geforce|rtx|gtx|quadro/i.test(gpuName)) vendor = "nvidia";
+    else if (/amd|radeon/i.test(gpuName)) vendor = "amd";
   } catch {
     // No signal; RAM budget it is.
   }
@@ -80,10 +104,11 @@ async function windowsVramGb(): Promise<{ vramGb: number; gttGb: number; gpuName
     ]);
     const gb = Number(stdout.split("\n")[0]) / 1024;
     if (Number.isFinite(gb)) vramGb = Math.max(vramGb, gb);
+    vendor = "nvidia";
   } catch {
     // Not an NVIDIA machine.
   }
-  return { vramGb, gttGb: 0, gpuName };
+  return { vramGb, gttGb: 0, gpuName, vendor };
 }
 
 export async function scanHardware(): Promise<HardwareInfo> {
@@ -94,17 +119,24 @@ export async function scanHardware(): Promise<HardwareInfo> {
     ramGb: Math.round(ramGb),
     vramGb: 0,
     gpuName: "",
+    gpuVendor: "",
     unifiedMemory: false,
   };
   if (process.platform === "darwin" && process.arch === "arm64") {
-    return { ...base, vramGb: Math.round(ramGb), gpuName: "Apple Silicon", unifiedMemory: true };
+    return {
+      ...base,
+      vramGb: Math.round(ramGb),
+      gpuName: "Apple Silicon",
+      gpuVendor: "apple",
+      unifiedMemory: true,
+    };
   }
   const probe =
     process.platform === "linux"
       ? await linuxVramGb()
       : process.platform === "win32"
         ? await windowsVramGb()
-        : { vramGb: 0, gttGb: 0, gpuName: "" };
+        : { vramGb: 0, gttGb: 0, gpuName: "", vendor: "" as GpuVendor };
   // Unified memory two ways: a big carve-out that IS most of RAM, or an AMD
   // APU whose GTT pool (GPU-addressable system RAM) dwarfs its carve-out.
   const unified =
@@ -114,6 +146,7 @@ export async function scanHardware(): Promise<HardwareInfo> {
     ...base,
     vramGb: Math.round(unified ? ramGb : probe.vramGb),
     gpuName: probe.gpuName,
+    gpuVendor: probe.vendor,
     unifiedMemory: unified,
   };
 }
