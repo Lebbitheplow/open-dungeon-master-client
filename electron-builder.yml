@@ -37,6 +37,10 @@ flatpak:
 mac:
   target: [dmg, zip]
   category: public.app-category.games
+  # Space-free and arch-qualified: GitHub sanitizes spaces in asset names
+  # server-side, which broke electron-builder's upload conflict handling,
+  # and the two mac arch jobs must not collide on asset names.
+  artifactName: ${name}-${version}-${arch}-mac.${ext}
 win:
   target: [nsis, portable]
 nsis:
