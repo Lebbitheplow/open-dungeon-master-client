@@ -49,6 +49,19 @@
 
         </activity>
 
+        <!-- Keeps the phone-hosted world's server process alive while the
+             player is in another app. "specialUse" because none of the
+             typed categories fit a game server; Play asks for the subtype
+             explanation below. -->
+        <service
+            android:name=".WorldService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Runs the player's own tabletop game server so friends on the same network can join while the app is in the background." />
+        </service>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -63,6 +76,11 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- The phone-hosted world runs under a foreground service (WorldService). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Friends on the same Wi-Fi reach the phone's world by its LAN address. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Voice chat and push-to-talk speech-to-text inside the server webview -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />

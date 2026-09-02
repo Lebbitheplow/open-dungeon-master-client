@@ -34,6 +34,7 @@ let local: LocalStatus = {
   username: "",
   serverVersion: "",
   error: "",
+  lanOrigin: "",
 };
 let tunnel: TunnelStatus = { state: "stopped", url: "", mode: "", error: "" };
 let joinIntent: JoinIntent | null = null;
@@ -266,11 +267,15 @@ async function copyText(text: string): Promise<boolean> {
 
 // ---------- home ----------
 
-// The on-device world is the default door on desktop: it sits first, largest,
-// and names the profile it opens so nobody has to wonder who they are.
+// The device's own world is the default door: it sits first, largest, and
+// names the profile it opens so nobody has to wonder who they are. On a
+// phone the world runs inside the app too (a bundled server), so the same
+// card serves both, with the device named honestly.
+const DEVICE = isAndroid ? "This phone" : "This computer";
+
 function localHero(): HTMLElement {
   const hero = el("div", "panel ornate grain hero");
-  hero.append(chip("monitor"));
+  hero.append(chip(isAndroid ? "globe" : "monitor"));
   const body = el("div", "hero-body");
   const actions = el("div", "hero-actions");
   const who = el("p", "who");
@@ -285,7 +290,7 @@ function localHero(): HTMLElement {
   }
 
   if (local.state === "error") {
-    body.append(el("h2", "", "This computer"));
+    body.append(el("h2", "", DEVICE));
     who.textContent = local.error || "The offline world could not start.";
     body.append(who);
     actions.append(button("primary", "Try again", (btn) => void playLocal(btn), "play"));
@@ -295,8 +300,9 @@ function localHero(): HTMLElement {
 
   if (local.firstRun) {
     body.append(el("h2", "", "Begin your world"));
-    who.textContent =
-      "No server needed. Your world lives on this computer, and you can share it online with friends whenever you like.";
+    who.textContent = isAndroid
+      ? "No server needed. Your world lives on this phone, and friends on your Wi-Fi can join it."
+      : "No server needed. Your world lives on this computer, and you can share it online with friends whenever you like.";
     body.append(who);
     if (local.state === "starting") {
       actions.append(spinner(), badge("Starting"));
@@ -307,7 +313,7 @@ function localHero(): HTMLElement {
     return hero;
   }
 
-  body.append(el("h2", "", "This computer"));
+  body.append(el("h2", "", DEVICE));
   if (local.username) {
     who.append(document.createTextNode("Playing as "));
     who.append(el("strong", "", local.username));
@@ -330,8 +336,28 @@ function localHero(): HTMLElement {
     );
   }
   hero.append(body, actions);
-  if (local.state === "running") hero.append(shareRow());
+  if (local.state === "running") hero.append(isAndroid ? lanRow() : shareRow());
   return hero;
+}
+
+// A phone world is reachable by everyone on the same Wi-Fi at the phone's
+// address; that address is the invitation.
+function lanRow(): HTMLElement {
+  const row = el("div", "hero-actions stacked");
+  if (!local.lanOrigin) {
+    row.append(el("span", "status-line", "Join a Wi-Fi network and friends nearby can play in your world."));
+    return row;
+  }
+  row.append(badge("On your Wi-Fi", true));
+  row.append(el("span", "status-line", local.lanOrigin));
+  const copy = button("secondary", "Copy address", () => {
+    void copyText(local.lanOrigin).then((worked) => {
+      copy.lastChild!.textContent = worked ? "Copied" : "Copy failed";
+      setTimeout(() => (copy.lastChild!.textContent = "Copy address"), 1500);
+    });
+  }, "link");
+  row.append(copy);
+  return row;
 }
 
 async function playLocal(btn: HTMLButtonElement): Promise<void> {
@@ -339,6 +365,11 @@ async function playLocal(btn: HTMLButtonElement): Promise<void> {
   const result = await window.odm.localPlay(joinIntent?.code);
   btn.disabled = false;
   if (result.ok) {
+    if (result.needsName) {
+      // A fresh phone world: who is playing comes first, then who narrates.
+      renderLocalName();
+      return;
+    }
     if (result.firstSetup) {
       // The shell just created the local profile; the only choice worth a
       // screen is who tells the story.
@@ -587,7 +618,9 @@ function renderHome(): void {
   const cards = el("div", "cards");
   let listed = servers;
 
-  if (isAndroid) {
+  if (isAndroid && local.state === "unavailable") {
+    // No runtime for this phone (unsupported CPU): connect-only, with the
+    // most recent server up front.
     const [latest] = servers;
     if (latest) {
       nodes.push(serverHero(latest));
@@ -830,6 +863,48 @@ function renderLocalAccount(mode: "create" | "login"): void {
   (mode === "login" && local.username ? passField : userField).focus();
 }
 
+// First launch of a phone world: the name the table will know the player
+// by. The shell mints and keeps the password, so this is the whole form.
+function renderLocalName(): void {
+  screenName = "local-name";
+  const form = el("form");
+  const [nameLabel, nameField] = input("Your name", "text");
+  nameField.placeholder = "How the table will know you";
+  nameField.autocomplete = "username";
+  nameField.maxLength = 24;
+  const error = el("p", "error");
+  const submit = button("primary", "Start playing", undefined, "play");
+  submit.type = "submit";
+  submit.classList.add("block");
+  form.append(nameLabel, error, submit);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submit.disabled = true;
+    error.textContent = "";
+    void window.odm
+      .localCreateAccount({ username: nameField.value.trim(), password: "" })
+      .then((result) => {
+        submit.disabled = false;
+        if (!result.ok) {
+          error.textContent = result.error;
+          return;
+        }
+        local = result.status;
+        renderLocalAi();
+      });
+  });
+  show(
+    "narrow",
+    backLink("Servers", () => void refresh().then(() => renderHome())),
+    intro(
+      "Name your adventurer",
+      "Your world lives on this phone. Pick the name friends will see at the table; letters, digits, _ and - only.",
+    ),
+    formCard(form, el("p", "hint center", "You can add a password later in the game's settings.")),
+  );
+  nameField.focus();
+}
+
 function choice(
   iconName: keyof typeof ICONS,
   title: string,
@@ -869,13 +944,18 @@ function renderLocalAi(fromHome = false, aiStatus: LocalAiStatus | null = null):
       "Narration and image generation billed to your key. No GPU needed.",
       () => renderOpenAiForm(),
     ),
-    choice(
-      "cpu",
-      "Local AI on this machine",
-      "Free and private: a guided install sized to your hardware. Needs a beefy machine.",
-      () => void startLocalAiFlow(),
-    ),
   );
+  // Local models need a desktop GPU; a phone gets the two doors above.
+  if (!isAndroid) {
+    choices.append(
+      choice(
+        "cpu",
+        "Local AI on this machine",
+        "Free and private: a guided install sized to your hardware. Needs a beefy machine.",
+        () => void startLocalAiFlow(),
+      ),
+    );
+  }
   show(
     "mid",
     fromHome ? backLink("Servers", () => renderHome()) : null,

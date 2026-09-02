@@ -41,6 +41,15 @@ android {
             }
         }
     }
+    // The Node runtime ships as jniLibs/<abi>/libnode.so and is executed,
+    // not loaded, so it must exist as a real file on disk: legacy packaging
+    // extracts native libraries at install time instead of mapping them
+    // from the APK.
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
     buildTypes {
         release {
             if (releaseKeystore) {

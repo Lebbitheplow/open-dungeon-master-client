@@ -151,9 +151,14 @@ jobs:
 
   android:
     # Runs after a desktop job so the draft release already exists for the
-    # APK upload.
-    needs: desktop
+    # APK upload. The phone hosts worlds itself: the APK carries the same
+    # server payload (minus native modules) plus a Node runtime built for
+    # Android, published once as a release of its own (see
+    # mobile/scripts/build-node-android.sh) and fetched here by tag.
+    needs: [payload, desktop]
     runs-on: ubuntu-latest
+    env:
+      NODE_ANDROID_RELEASE: node-android-v24.20.0
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -163,9 +168,29 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
+      - name: Install dependencies
+        run: npm ci
       - name: Install mobile dependencies
         working-directory: mobile
         run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: server-payload
+      - name: Unpack the server payload and recreate the module aliases
+        run: |
+          mkdir -p vendor && tar -C vendor -xzf server-payload.tgz
+          node scripts/alias-server-modules.mjs
+      - name: Fetch the Node runtime for Android
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p mobile/runtime
+          gh release download "$NODE_ANDROID_RELEASE" --pattern '*.tar.gz' --dir mobile/runtime
+          tar -C mobile/runtime -xzf mobile/runtime/*.tar.gz
+          ls mobile/runtime/node-android
+      - name: Stage the server payload and runtime into the app
+        working-directory: mobile
+        run: npm run bundle-payload
       - name: Build web assets and sync Capacitor
         working-directory: mobile
         run: npm run sync

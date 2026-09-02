@@ -12,6 +12,7 @@ import { Share } from "@capacitor/share";
 import { BackgroundColor, InAppBrowser, ToolBarType } from "@capgo/inappbrowser";
 import { createBleRelay } from "./ble-relay";
 import { createDownloadRelay } from "./download-relay";
+import { createLocalWorld, LocalWorld, type LocalProfile } from "./local-world";
 import {
   CODE_SHAPE,
   normalizeOrigin,
@@ -21,7 +22,6 @@ import {
 } from "../../src/shared/deep-link";
 import type {
   ConnectResult,
-  LocalStatus,
   TunnelStatus,
   OdmBridge,
   Result,
@@ -182,6 +182,11 @@ async function tokenIsValid(origin: string, token: string): Promise<boolean> {
   }
 }
 
+async function patchAdminSettings(origin: string, token: string, patch: object): Promise<void> {
+  const reply = await http(origin, "/api/admin/settings", { method: "PATCH", token, body: patch });
+  if (reply.status !== 200) throw new Error(errorText(reply, "Saving world settings failed."));
+}
+
 // ---------- events and the server webview ----------
 
 const listeners = new Set<(event: ShellEvent) => void>();
@@ -330,6 +335,52 @@ async function openServer(server: StoredServer, joinCode: string): Promise<void>
   });
   await openGameWebView(`${server.origin}${joinCode ? `/join/${joinCode}` : "/"}`, server.name);
 }
+
+// ---------- the phone-hosted world ----------
+
+// The on-device profile lives beside the server list in app-private
+// Preferences; the world's data itself is the server's SQLite file in the
+// app's files directory (WorldRuntime.java).
+const LOCAL_PROFILE_KEY = "odm-local-profile";
+
+function randomSecret(): string {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return btoa(String.fromCharCode(...bytes))
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replaceAll("=", "");
+}
+
+const localWorld = createLocalWorld({
+  plugin: LocalWorld,
+  async loadProfile() {
+    try {
+      const { value } = await Preferences.get({ key: LOCAL_PROFILE_KEY });
+      const parsed = value ? (JSON.parse(value) as LocalProfile) : null;
+      return parsed && typeof parsed.username === "string" ? parsed : null;
+    } catch {
+      return null;
+    }
+  },
+  async saveProfile(profile) {
+    if (profile) {
+      await Preferences.set({ key: LOCAL_PROFILE_KEY, value: JSON.stringify(profile) });
+    } else {
+      await Preferences.remove({ key: LOCAL_PROFILE_KEY });
+    }
+  },
+  loginForToken,
+  registerAccount,
+  tokenIsValid,
+  patchAdminSettings,
+  async open(origin, token, joinCode) {
+    await CapacitorCookies.setCookie({ url: origin, key: "odm_session", value: token });
+    await openGameWebView(`${origin}${joinCode ? `/join/${joinCode}` : "/"}`, "This phone");
+  },
+  emit,
+  randomSecret,
+});
 
 // ---------- Discord sign-in (the server's own OAuth, in the game webview) ----------
 
@@ -505,22 +556,9 @@ async function handleLink(raw: string): Promise<void> {
 
 // ---------- the bridge ----------
 
-const LOCAL_UNAVAILABLE: LocalStatus = {
-  state: "unavailable",
-  origin: "",
-  firstRun: false,
-  hasAccount: false,
-  username: "",
-  serverVersion: "",
-  error: "",
-};
-
+// Sharing beyond the local network (the desktop's tunnel) has no phone
+// equivalent yet; friends on the same Wi-Fi use the address in LocalStatus.
 const TUNNEL_STOPPED: TunnelStatus = { state: "stopped", url: "", mode: "", error: "" };
-
-const notLocal = async (): Promise<Result<{ status: LocalStatus }>> => ({
-  ok: false,
-  error: "Offline play lives in the desktop app for now.",
-});
 
 const bridge: OdmBridge = {
   platform: "android",
@@ -528,7 +566,11 @@ const bridge: OdmBridge = {
   async listServers() {
     const servers = await loadServers();
     servers.sort((a, b) => b.lastUsedAt.localeCompare(a.lastUsedAt));
-    return { servers: servers.map(summaryOf), local: LOCAL_UNAVAILABLE, tunnel: TUNNEL_STOPPED };
+    return {
+      servers: servers.map(summaryOf),
+      local: await localWorld.status(),
+      tunnel: TUNNEL_STOPPED,
+    };
   },
 
   async probeServer(raw: string) {
@@ -620,17 +662,29 @@ const bridge: OdmBridge = {
     }
   },
 
-  localStart: notLocal,
-  localCreateAccount: notLocal,
-  localLogin: notLocal,
-  localConfigureAi: async () => fail(new Error("Offline play is desktop-only.")),
-  localPlay: async () => ({
-    ok: false,
-    needsLogin: false,
-    error: "Offline play lives in the desktop app for now.",
-  }),
-  shareStart: async () => fail(new Error("Hosting online is desktop-only for now.")),
-  shareStop: async () => fail(new Error("Hosting online is desktop-only for now.")),
+  async localStart() {
+    try {
+      await localWorld.start();
+      return { ok: true, status: await localWorld.status() };
+    } catch (err) {
+      return fail(err);
+    }
+  },
+  localCreateAccount: (input) =>
+    localWorld.createAccount({
+      username: String(input?.username ?? "").trim(),
+      password: String(input?.password ?? ""),
+    }),
+  localLogin: (input) =>
+    localWorld.login({
+      username: String(input?.username ?? "").trim(),
+      password: String(input?.password ?? ""),
+    }),
+  localConfigureAi: (setup) => localWorld.configureAi(setup),
+  localPlay: (joinCode) => localWorld.play(cleanCode(joinCode)),
+  shareStart: async () =>
+    fail(new Error("Sharing beyond your Wi-Fi is not available on phones yet.")),
+  shareStop: async () => fail(new Error("Nothing is being shared.")),
   localAiScan: async () => fail(new Error("Local AI is desktop-only.")),
   localAiInstall: async () => fail(new Error("Local AI is desktop-only.")),
   localAiInstallComfy: async () => fail(new Error("Local AI is desktop-only.")),

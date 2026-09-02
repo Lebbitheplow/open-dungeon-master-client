@@ -36,6 +36,9 @@ export interface LocalStatus {
   username: string;
   serverVersion: string;
   error: string;
+  // Where friends on the same network reach a phone-hosted world ("" when
+  // not hosting or not on a network). Desktop shares through a tunnel.
+  lanOrigin: string;
 }
 
 // The offline-play setup wizard's AI step. "human" changes nothing on the
@@ -49,8 +52,10 @@ export interface AiSetup {
 
 // firstSetup: the shell just auto-provisioned the local profile, so the
 // renderer should offer the one-time AI choice before entering the world.
+// needsName: a fresh phone world has no OS username to borrow, so the
+// renderer asks for one before the profile is created.
 export type ConnectResult =
-  | { ok: true; firstSetup?: boolean }
+  | { ok: true; firstSetup?: boolean; needsName?: boolean }
   | { ok: false; needsLogin: boolean; error: string };
 
 // A tunnel sharing the local world at a public https address. "named" means

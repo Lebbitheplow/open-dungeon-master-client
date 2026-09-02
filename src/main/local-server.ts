@@ -90,6 +90,7 @@ export class LocalServer {
       username,
       serverVersion: info?.serverVersion ?? "",
       error: this.error,
+      lanOrigin: "",
     };
   }
 
