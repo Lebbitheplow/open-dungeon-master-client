@@ -4,6 +4,10 @@
   "private": true,
   "description": "Desktop client for Open Dungeon Master: connect to any server, or play fully offline",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Lebbitheplow/open-dungeon-master-client.git"
+  },
   "main": "dist/main/index.js",
   "engines": {
     "node": ">=22"

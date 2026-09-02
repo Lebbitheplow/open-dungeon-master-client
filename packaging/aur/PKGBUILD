@@ -1,6 +1,8 @@
 # Maintainer: Kaleb Lutterman
-# AUR template repacking the released Linux tar.gz. Per release: bump pkgver,
-# fill the real source URL once the GitHub repo is public, update sha256sums.
+# AUR template repacking the released Linux tar.gz from GitHub Releases.
+# Per release: bump pkgver, update sha256sums (curl the .tar.gz and
+# sha256sum it; never ship SKIP once the repo is public), regenerate
+# .SRCINFO with `makepkg --printsrcinfo > .SRCINFO`.
 #
 # The app ships an in-app updater, but installs living under /opt (this
 # package) are detected as the "managed" kind and deliberately defer to
@@ -16,7 +18,7 @@ license=('MIT')
 depends=('gtk3' 'nss' 'alsa-lib' 'libxss')
 provides=('open-dungeon-master-client')
 options=('!strip')
-source=("open-dungeon-master-client-${pkgver}-x64.tar.gz::https://opendungeonmaster.com/downloads/open-dungeon-master-client-${pkgver}-x64.tar.gz")
+source=("open-dungeon-master-client-${pkgver}-x64.tar.gz::https://github.com/Lebbitheplow/open-dungeon-master-client/releases/download/v${pkgver}/open-dungeon-master-client-${pkgver}-x64.tar.gz")
 sha256sums=('SKIP')
 
 package() {

@@ -1,0 +1,52 @@
+# Builds and publishes Linux release artifacts (AppImage, deb, rpm, tar.gz
+# plus latest-linux.yml for the in-app updater) to the GitHub release for
+# the pushed tag. The bundled server payload is built from the sibling
+# server repo, so this needs a SERVER_REPO_TOKEN secret (a fine-grained PAT
+# with read access to Lebbitheplow/open-dungeon-master) while that repo is
+# private; once it is public the default token works and the secret can go.
+#
+# Windows artifacts are built locally for now: bundle-server.mjs uses posix
+# tooling and the native module must be rebuilt per platform, so on a
+# Windows machine run
+#   set GH_TOKEN=... && npm run bundle-server && npm run dist:win -- --publish always
+# macOS needs signing and notarization before its builds are worth shipping.
+name: release
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: client
+      - uses: actions/checkout@v4
+        with:
+          repository: Lebbitheplow/open-dungeon-master
+          token: ${{ secrets.SERVER_REPO_TOKEN || github.token }}
+          path: open-dungeon-master
+          # bundle-server.mjs creates a worktree from HEAD, so it needs real
+          # history, not a shallow grafted checkout.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install client dependencies
+        working-directory: client
+        run: npm ci
+      - name: Install server dependencies
+        working-directory: open-dungeon-master
+        run: npm ci
+      - name: Bundle the server payload
+        working-directory: client
+        env:
+          ODM_SERVER_DIR: ${{ github.workspace }}/open-dungeon-master
+        run: npm run bundle-server
+      - name: Build and publish Linux artifacts
+        working-directory: client
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: npm run build && npx electron-builder --linux --publish always

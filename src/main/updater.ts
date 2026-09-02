@@ -1,10 +1,10 @@
 import type { AppUpdater, ProgressInfo } from "electron-updater";
 import type { InstallKind, UpdateProgress, UpdateStatus } from "../shared/types";
 
-// Desktop updates against the generic feed at opendungeonmaster.com. Only
-// AppImage and NSIS builds can swap themselves out; every other install
-// channel owns its files (pacman, flatpak, the Mac bundle), so the app only
-// tells the player where the new version lives.
+// Desktop updates against the GitHub Releases feed (electron-builder.yml
+// publish block). Only AppImage and NSIS builds can swap themselves out;
+// every other install channel owns its files (pacman, flatpak, the Mac
+// bundle), so the app only tells the player where the new version lives.
 //
 // electron-updater drags in electron at require time, so it loads lazily
 // inside the class: this module must stay importable under plain node for
@@ -25,8 +25,8 @@ const INSTRUCTIONS: Record<InstallKind, string> = {
   flatpak: "Update with: flatpak update",
   snap: "Update with: snap refresh",
   managed: "Update through your package manager.",
-  portable: "Download the latest version from opendungeonmaster.com.",
-  mac: "Download the latest version from opendungeonmaster.com.",
+  portable: "Download the latest version from the releases page on GitHub.",
+  mac: "Download the latest version from the releases page on GitHub.",
 };
 
 // How was this build installed? Decides whether the app may replace itself.
