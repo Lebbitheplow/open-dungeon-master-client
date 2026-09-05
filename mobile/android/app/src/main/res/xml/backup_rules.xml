@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 8 to 11 auto backup. Same exclusions as data_extraction_rules.xml. -->
+<full-backup-content>
+    <exclude domain="file" path="data" />
+    <exclude domain="file" path="server" />
+    <exclude domain="file" path="server.keep" />
+    <exclude domain="file" path="local-server.log" />
+    <exclude domain="database" path="." />
+</full-backup-content>

@@ -2,7 +2,16 @@
 
 Audited 2026-09-04 against the client repo at `main` (f667952) and the server
 repo at `main` (ce9438c). Subject of the audit is the Android app only:
-`com.opendungeonmaster.app`, versionName 0.3.1, versionCode 301.
+`com.opendungeonmaster.app`.
+
+**Status update 2026-09-05.** Every code and build item below is done, in the
+client working tree and in server commit 6a6e4f2 (bundled into `vendor/server`
+via `npm run bundle-server`). What remains is off-app: publish the marketing
+site so the privacy and deletion URLs resolve, deploy the two Cloudflare
+Workers, set the broker's `RATE_LIMIT_SALT` secret, and fill in the console
+forms. Each finding carries a "Done" line saying what landed. The version
+facts now read 0.4.1 / versionCode 40001 (major*10000 + minor*100 + patch)
+and targetSdk 36.
 
 Everything below is split into two halves. Part 1 is what Google asks you to
 declare in the Play Console, answered from the code. Part 2 is the audit
@@ -15,10 +24,10 @@ against Play policy, ordered by how hard it blocks a submission.
 | Fact | Value | Where |
 | --- | --- | --- |
 | Application ID | `com.opendungeonmaster.app` | `mobile/android/app/build.gradle` |
-| versionName / versionCode | 0.3.1 / 301 | derived from `mobile/package.json` |
-| minSdk / targetSdk / compileSdk | 26 / 35 / 35 | `mobile/android/variables.gradle` |
+| versionName / versionCode | 0.4.1 / 40001 | derived from `mobile/package.json` |
+| minSdk / targetSdk / compileSdk | 26 / 36 / 36 | `mobile/android/variables.gradle` |
 | ABIs shipped | `arm64-v8a`, `x86_64` | `mobile/scripts/bundle-android-payload.mjs` |
-| Artifact CI produces today | signed universal **APK**, 134 MB | `.github/workflows/release.yml` |
+| Artifacts CI produces | signed universal **APK** (GitHub download) and signed **AAB** (Play upload), both about 135 MB before Play's per-ABI split | `.github/workflows/release.yml` |
 | Native libraries | `libnode.so` (Node 24.20.0), `libcloudflared.so` (cloudflared 2026.8.3), `libc++_shared.so` | `mobile/android/app/src/main/jniLibs/` |
 | 16 KB page alignment | Yes, all three ELF LOAD segments align at 0x4000 | verified with `readelf -lW` |
 | 64-bit support | Yes, both shipped ABIs are 64-bit | no 32-bit ABI is built |
@@ -74,8 +83,8 @@ Every permission in the merged release manifest, verified with
 | `BLUETOOTH_CONNECT` | Talking to a paired Pixels die. |
 | `BLUETOOTH` (`maxSdkVersion=30`) | Legacy pre-Android-12 path. |
 | `BLUETOOTH_ADMIN` (`maxSdkVersion=30`) | Legacy pre-Android-12 path. |
-| `ACCESS_FINE_LOCATION` | **Uncapped. See finding B-4.** |
-| `ACCESS_COARSE_LOCATION` | **Uncapped. See finding B-4.** |
+| `ACCESS_FINE_LOCATION` (`maxSdkVersion=30`) | Capped in the app manifest; Android 8 to 11 need it to BLE-scan. See B-4. |
+| `ACCESS_COARSE_LOCATION` (`maxSdkVersion=30`) | Same. |
 
 **Pulled in by `@capacitor/local-notifications`:**
 
@@ -177,7 +186,7 @@ The honest headline is that the developer runs almost no infrastructure, but
 
 | Recipient | Trigger | What is sent |
 | --- | --- | --- |
-| Cloudflare (`odm-tunnel-broker.tunnel-broker.workers.dev`, developer-operated Worker) | User taps Share to publish their world | The local port number, plus the IP address Cloudflare attaches to the request. The Worker stores a per-IP counter in KV keyed `ip:<ip>:<date>` with a 24 hour TTL for rate limiting, and a session record. See finding B-6. |
+| Cloudflare (`odm-tunnel-broker.tunnel-broker.workers.dev`, developer-operated Worker) | User taps Share to publish their world | The local port number, plus the IP address Cloudflare attaches to the request. The Worker keeps a per-address rate-limit counter in KV keyed by a salted SHA-256 of the address (24 hour TTL), never the address itself, plus a session record. See finding B-6. |
 | Cloudflare (tunnel edge, `trycloudflare.com` or `play-CODE.opendungeonmaster.com`) | same | All game traffic between remote players and the phone transits the tunnel. |
 | Cloudflare DoH (`cloudflare-dns.com/dns-query`) | same | A DNS lookup for the new tunnel hostname, to confirm it resolved. |
 | OpenAI (`api.openai.com`) | Only if the user chooses the OpenAI option and pastes their own key | Prompts and game text, per OpenAI's own policy. |
@@ -197,13 +206,20 @@ through Cloudflare.
 
 The app does create accounts, on the phone-hosted server or on the server the
 user joins. Play's account deletion requirement is satisfied in-app:
-`/settings` has a "Delete account" section, and `deleteUserCascade` in
-`src/lib/db/users.ts` removes the row and its dependents. Server admins can
-also delete any account from `AdminUsersPanel`.
+`/settings` has a "Delete account" section. Since server 0.13.0 deletion is
+scheduled rather than immediate: `DELETE /api/profile` signs the account out
+everywhere and stamps a due date, the purge job erases it after the admin-set
+grace period (`accountDeletionGraceDays`, 0 to 90, default 14), and signing
+in before then offers "Keep my account". Admins can erase any account at once
+from `AdminUsersPanel`. Say so on the form: the console asks whether deletion
+is immediate or delayed, and the honest answer is "delayed by up to the
+server's grace period, default 14 days, undoable until then".
 
-For the console's "Data deletion" URL requirement, you still need a web page
-describing how to delete an account and the data, because Play wants an
-off-app route as well as the in-app one.
+For the console's "Data deletion" URL requirement the site now has
+`https://opendungeonmaster.com/delete-account/` (site repo,
+`src/pages/delete-account.html`), which walks through both the per-server
+account and a device-hosted world. It resolves only once the site is
+published (B-7).
 
 ### 1.8 Target audience and content rating
 
@@ -230,7 +246,7 @@ Families entirely, which is the right call here.
 | Gambling | No | Dice are a game mechanic, no wagering, no simulated gambling. |
 | Users interact | **Yes** | Multiplayer text chat and voice chat. |
 | Users can share content | **Yes** | Campaigns, characters, images, and files are shared with the party. |
-| Shares user location | No | The app never reads location. Say no, and see finding B-4 about removing the permissions that imply otherwise. |
+| Shares user location | No | The app never reads location, and the location permissions are now capped at API 30 (B-4). |
 | Digital purchases | No | |
 | Unrestricted internet access | **Yes** | The user can enter any server URL, and the WebView loads it. |
 | Generative AI | **Yes** | Declare it. The narration, and optionally images, are model output. |
@@ -265,6 +281,11 @@ compressed arm64 native code), comfortably under Play's 200 MB download cap.
 Uploading the current universal build as a single artifact would be near that
 cap for no reason.
 
+**Done 2026-09-05.** `release.yml` runs `assembleRelease bundleRelease` and
+uploads both `open-dungeon-master-client-<v>.apk` and `<v>.aab` to the GitHub
+release; the AAB is what goes into the Play Console. Verified locally: the
+bundle task builds at API 36 alongside the APK.
+
 You will also need to decide on Play App Signing. Google will ask to manage
 the signing key. If you enroll, the keystore at
 `~/.local/share/odm/odm-release.keystore` becomes the upload key, and losing
@@ -277,6 +298,11 @@ GitHub-released APK, which matters for App Links (see B-7).
 `variables.gradle` sets `targetSdkVersion = 35` (Android 15). Play's annual
 target API rule required new apps and updates to target API 36 (Android 16)
 from 31 August 2026. That date has passed, so a 0.3.1 build will be refused.
+
+**Done 2026-09-05.** `variables.gradle` is at compileSdk 36 / targetSdk 36
+and the release build passes locally (`apkanalyzer manifest target-sdk`
+reports 36). The edge-to-edge and foreground service paths still want a run
+on a real Android 16 device before upload.
 
 **Fix.** Move `compileSdkVersion` and `targetSdkVersion` to 36, then retest
 the two places most likely to break: the edge-to-edge handling that
@@ -300,6 +326,24 @@ self-hosted architecture does not exempt you. Google's position is that the
 app must offer the mechanism, and it is fine for the report to route to the
 server operator rather than to you.
 
+**Done 2026-09-05, server commit 6a6e4f2.** Every DM passage and every other
+player's message carries a flag button (hover on player rows), and the
+character menu in the party list offers Report player and Block player. The
+report dialog (`ReportDialog.tsx`) takes a reason and notes, with "Also
+block" on player targets; `POST /api/campaigns/:id/reports` stores the
+report with a copy of the text as it read and notifies every admin. The
+admin panel has a Reports tab (`AdminReportsPanel.tsx`, `/api/admin/reports`)
+to read and resolve them. Blocks (`/api/profile/blocks`, listed under
+Account settings) hide that player's table messages from the blocker and
+refuse private chats and friend requests both ways. The party lead or owner
+can mute a member from the lobby or the character menu
+(`POST /api/campaigns/:id/mute`); `requireVoice` in `campaign-api.ts` turns
+muted members away from actions, asks and side chats, and the composer says
+why. `scripts/test-moderation.mjs` covers the data layer. Wording for the
+listing and the console's UGC questions: reports go to the admins of the
+server the player chose; the app has no central moderation because it has
+no central service.
+
 **Fix.** A modest version satisfies this: a report action on each DM message
 and each player message that writes a row to a `reports` table on that
 server, surfaced in the existing admin panel, plus a per-user block or mute
@@ -321,6 +365,10 @@ This matters for three reasons: location is a sensitive permission that draws
 extra review, the Play listing will show "location" to users, and the Data
 safety form and IARC questionnaire both ask about location in a way that is
 now awkward to answer cleanly.
+
+**Done 2026-09-05.** Both overrides are in the manifest and
+`apkanalyzer manifest permissions` on the API 36 build shows
+`ACCESS_FINE_LOCATION' maxSdkVersion='30` and the same for coarse.
 
 **Fix.** In `mobile/android/app/src/main/AndroidManifest.xml`, override both
 with `android:maxSdkVersion="30"` and `tools:node="replace"`, matching the
@@ -354,6 +402,13 @@ ephemerally" exemption, and it contradicts the current privacy policy's flat
 claim of "No data is sold, shared, or transmitted to any third party,
 including the creator of Open Dungeon Master."
 
+**Done 2026-09-05, code side.** `rateLimited()` keys on
+`sha256(RATE_LIMIT_SALT + ":" + ip)`; unsalted if the secret is missing, so
+the limit never switches off. Before deploying run
+`npx wrangler secret put RATE_LIMIT_SALT` in `workers/tunnel-broker` with a
+long random value, then `npx wrangler deploy`. The privacy policy now
+describes the broker, what it sees, and the 24 hour hashed retention.
+
 **Fix, in order of preference.** Hash the IP with a server-side salt before
 using it as the KV key, which preserves the rate limit exactly and stops you
 holding the address. Then update the privacy policy to say the broker exists,
@@ -376,6 +431,24 @@ and it must cover the app specifically. Two problems:
    Bluetooth, or notification permissions, the tunnel broker, Cloudflare as a
    transit provider, or the on-device OpenAI key path.
 
+**Findings 2026-09-05.** The site was never published anywhere: there is no
+GitHub repo or Pages site for `open-dungeon-master-site`, and the Cloudflare
+DNS records for the apex point at an origin that does not exist, hence the
+522. The site repo (`/home/lebbi/open-dungeon-master-site`, not yet under
+git) now builds `/privacy/` and `/delete-account/` from
+`src/pages/privacy.html` and `src/pages/delete-account.html`, linked from a
+Legal column in the footer, and `npm test` there passes. Publishing is the
+outstanding step and needs your go, since it means a public repo: push
+`dist/` (or the repo with a Pages workflow) to GitHub Pages with a `CNAME`
+of `opendungeonmaster.com`, then point the apex at Pages in Cloudflare DNS
+(proxied is fine; the Workers routes for `/j*` and `/.well-known/assetlinks.json`
+keep running in front). The server's own `/privacy` and `/terms` pages were
+also rewritten to cover the app permissions, the broker, Cloudflare, the
+on-device AI key, reports, and deletion steps, so every server shows the
+same story. The `j-redirector` Worker's last deploy predates its assetlinks
+route; redeploy it after adding the Play-managed fingerprint to
+`ANDROID_CERT_SHA256`.
+
 **Fix.** Bring the site back up, publish an Android-specific privacy policy
 covering the permission list in 1.1 and the recipients in 1.6, and publish a
 data deletion page. Then confirm `assetlinks.json` lists the SHA-256
@@ -396,6 +469,13 @@ one.
 This is not a Play policy violation on its own, but it is a real privacy
 exposure that contradicts the app's own "your data stays on that server"
 promise, and it will look bad if a reviewer or a user notices.
+
+**Done 2026-09-05.** The manifest points `dataExtractionRules` at
+`res/xml/data_extraction_rules.xml` (Android 12+) and `fullBackupContent` at
+`res/xml/backup_rules.xml` (older); both exclude `files/data`, `files/server`,
+`files/server.keep`, `files/local-server.log` and every database from cloud
+backup and device transfer, so only the Capacitor preferences (saved servers,
+local profile) follow the user to a new phone. Verified in the built APK.
 
 **Fix.** Either set `android:allowBackup="false"`, or add a
 `dataExtractionRules` XML that excludes `files/data/`, `files/server/`, and
@@ -423,6 +503,10 @@ Profanity policy plus the Generative AI policy both prohibit apps that
 facilitate generating sexual content. If anyone reviewing the app or the
 source finds that prompt, "it is unreachable" is a much weaker answer than
 its not being there.
+
+**Done 2026-09-05, server commit 6a6e4f2.** The three system prompts and
+`buildStoryMessages` are gone; the exported helpers stay and the suite
+passes.
 
 **Fix.** Delete `DEFAULT_SYSTEM`, `IMAGE_SYSTEM`, `IMAGE_DISABLED_SYSTEM`, and
 `buildStoryMessages` from `story-prompt.ts`. The exported helpers the DM path
@@ -476,21 +560,23 @@ the 12 testers before you finish the code fixes above.
 
 Code and build:
 
-- [ ] B-1: publish an AAB, keep the APK for GitHub releases
+- [x] B-1: publish an AAB, keep the APK for GitHub releases (CI uploads both)
 - [ ] B-1: decide on Play App Signing, record both certificate fingerprints
-- [ ] B-2: move compileSdk and targetSdk to 36, retest edge-to-edge and the FGS start
-- [ ] B-3: add in-app content reporting and user blocking
-- [ ] B-4: cap both location permissions at `maxSdkVersion="30"`
-- [ ] B-6: hash IPs in the tunnel broker's rate limit keys
-- [ ] B-8: add `dataExtractionRules` excluding `files/data/` and `files/server/`
-- [ ] B-9: delete the unused NSFW prompt from `story-prompt.ts`
-- [ ] Re-run `apkanalyzer manifest permissions` on the new build and diff against 1.1
+- [x] B-2: move compileSdk and targetSdk to 36 (still: retest edge-to-edge and the FGS start on a real Android 16 device)
+- [x] B-3: add in-app content reporting and user blocking (server 6a6e4f2, bundled)
+- [x] B-4: cap both location permissions at `maxSdkVersion="30"`
+- [x] B-6: hash IPs in the tunnel broker's rate limit keys (deploy pending, see below)
+- [x] B-8: add `dataExtractionRules` excluding `files/data/` and `files/server/`
+- [x] B-9: delete the unused NSFW prompt from `story-prompt.ts`
+- [x] Re-run `apkanalyzer manifest permissions` on the new build and diff against 1.1 (matches, with the two location caps)
+- [ ] Tag the client release that carries all of the above (0.4.0 shipped before these changes)
 
 Off-app:
 
-- [ ] B-7: bring `opendungeonmaster.com` back up
-- [ ] B-7: publish an Android-specific privacy policy and a data deletion page
-- [ ] B-7: serve `/.well-known/assetlinks.json` with the correct fingerprints
+- [ ] B-7: publish the site so `opendungeonmaster.com` resolves (public repo plus GitHub Pages, needs your go)
+- [x] B-7: write the Android-specific privacy policy and the data deletion page (site `/privacy/`, `/delete-account/`; server `/privacy`, `/terms`)
+- [ ] B-7: redeploy `j-redirector` so `/.well-known/assetlinks.json` is served, with the Play-managed fingerprint added
+- [ ] B-6: `wrangler secret put RATE_LIMIT_SALT` in `workers/tunnel-broker`, then `wrangler deploy`
 - [ ] B-10: confirm developer account type and start the 12-tester closed test if required
 
 Console forms, answered from Part 1:

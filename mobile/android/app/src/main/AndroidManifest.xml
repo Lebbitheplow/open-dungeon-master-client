@@ -4,8 +4,15 @@
 
     <!-- usesCleartextTraffic: self-hosted servers on a LAN are commonly
          plain http; the connect flow tries https first. -->
+    <!-- Backups: the profile and server address may follow the user to a
+         new phone, but files/data (the world's database, password hashes,
+         an operator's API key), files/server (the unpacked payload) and the
+         logs never leave the device. See res/xml/data_extraction_rules.xml
+         (Android 12+) and res/xml/backup_rules.xml (older). -->
     <application
         android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -97,5 +104,17 @@
     <uses-permission
         android:name="android.permission.BLUETOOTH_SCAN"
         android:usesPermissionFlags="neverForLocation"
+        tools:node="replace" />
+    <!-- The same plugin declares both location permissions uncapped. The
+         app never reads location; only Android 8 to 11 need fine location
+         to BLE-scan at all, so cap them there. On 12+ the neverForLocation
+         scan flag above covers it and the listing shows no location use. -->
+    <uses-permission
+        android:name="android.permission.ACCESS_FINE_LOCATION"
+        android:maxSdkVersion="30"
+        tools:node="replace" />
+    <uses-permission
+        android:name="android.permission.ACCESS_COARSE_LOCATION"
+        android:maxSdkVersion="30"
         tools:node="replace" />
 </manifest>
