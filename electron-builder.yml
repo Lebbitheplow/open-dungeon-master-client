@@ -30,6 +30,11 @@ publish:
 protocols:
   - name: Open Dungeon Master invite
     schemes: [odm]
+# The default AppImage runtime dynamically links libfuse.so.2, which modern
+# distros (Fedora 41+, Ubuntu 24.04+) no longer ship; toolset 1.0.3 packs the
+# static type2 runtime that works with plain fuse3/kernel fuse.
+toolsets:
+  appimage: "1.0.3"
 linux:
   target: [AppImage, deb, rpm, tar.gz]
   category: Game
@@ -48,8 +53,10 @@ mac:
   # server-side, which broke electron-builder's upload conflict handling,
   # and the two mac arch jobs must not collide on asset names.
   artifactName: ${name}-${version}-${arch}-mac.${ext}
+# NSIS installer only; a portable exe would double the Windows downloads and
+# the installer is what latest.yml / the in-app updater track.
 win:
-  target: [nsis, portable]
+  target: [nsis]
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true

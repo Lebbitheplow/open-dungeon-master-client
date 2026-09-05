@@ -207,6 +207,9 @@ export class LocalServer {
           HOSTNAME: "127.0.0.1",
           SQLITE_DB_PATH: this.dbPath,
           DB_ENCRYPTION_KEY: this.dbEncryptionKey(),
+          // Tells the server it is the shell's own world, so its admin panel
+          // hides what the shell manages (address, sign-ups, voice, Discord).
+          ODM_DEVICE_WORLD: "1",
         },
         stdio: ["ignore", log, log],
       });

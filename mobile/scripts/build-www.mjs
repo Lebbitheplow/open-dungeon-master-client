@@ -48,7 +48,7 @@ for (const name of ["app", "topo"]) {
   });
 }
 
-for (const name of ["style.css", "story.png"]) {
+for (const name of ["style.css", "controls.css", "home.css", "story.png"]) {
   fs.copyFileSync(path.join(repo, "src", "renderer", name), path.join(www, name));
 }
 fs.copyFileSync(path.join(mobile, "src", "index.html"), path.join(www, "index.html"));

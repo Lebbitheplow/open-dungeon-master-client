@@ -60,7 +60,7 @@ export interface LocalWorldDeps {
   tokenIsValid(origin: string, token: string): Promise<boolean>;
   patchAdminSettings(origin: string, token: string, patch: object): Promise<void>;
   // Plants the session and opens the world's pages in the game webview.
-  open(origin: string, token: string, joinCode: string): Promise<void>;
+  open(origin: string, token: string, joinCode: string, path: string): Promise<void>;
   emit(event: ShellEvent): void;
   randomSecret(): string;
   // The public address while the world is shared through a tunnel, "" when
@@ -71,7 +71,7 @@ export interface LocalWorldDeps {
 const OPENAI_BASE_URL = "https://api.openai.com/v1";
 const DEFAULT_MODEL = "gpt-5.1";
 
-function tokenAlive(profile: LocalProfile | null): boolean {
+export function tokenAlive(profile: LocalProfile | null): boolean {
   if (!profile?.token) return false;
   return !profile.tokenExpiresAt || Date.parse(profile.tokenExpiresAt) > Date.now();
 }
@@ -190,7 +190,7 @@ export function createLocalWorld(deps: LocalWorldDeps) {
     return null;
   }
 
-  async function play(joinCode: string): Promise<ConnectResult> {
+  async function play(joinCode: string, path = ""): Promise<ConnectResult> {
     let origin: string;
     let freshWorld: boolean;
     try {
@@ -209,7 +209,7 @@ export function createLocalWorld(deps: LocalWorldDeps) {
       return { ok: false, needsLogin: true, error: "Sign in to your world." };
     }
     await settleWorldSettings(origin, profile.token);
-    await deps.open(origin, profile.token, joinCode);
+    await deps.open(origin, profile.token, joinCode, path);
     return { ok: true };
   }
 

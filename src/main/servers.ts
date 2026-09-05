@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import type { HomeCache } from "../shared/home-feed-logic";
 import type { ServerSummary } from "../shared/types";
 
 // The reserved id for the bundled offline server's account entry. Its origin
@@ -21,6 +22,11 @@ export interface StoredServer {
   tokenCipher: string;
   tokenExpiresAt: string;
   secretCipher?: string;
+  // The world's stable id from /api/auth/providers ("" or absent on servers
+  // that predate it). Lets the shell recognize a device world that came back
+  // at a new tunnel address and move this entry there instead of adding a
+  // duplicate.
+  instanceId?: string;
 }
 
 // Injected so tests can run without Electron's safeStorage.
@@ -32,6 +38,9 @@ export interface TokenCrypt {
 interface RegistryFile {
   version: 1;
   servers: StoredServer[];
+  // The home screen's last campaign list per host id (the local entry
+  // included), so an unreachable host still lists what it had.
+  homeCache?: HomeCache;
 }
 
 export class ServerStore {
@@ -87,8 +96,18 @@ export class ServerStore {
     );
   }
 
-  // Adds or refreshes a server entry. Remote entries dedupe by origin; the
-  // local entry is addressed by its fixed id.
+  findByInstanceId(instanceId: string): StoredServer | null {
+    if (!instanceId) return null;
+    return (
+      this.load().servers.find(
+        (server) => server.id !== LOCAL_SERVER_ID && server.instanceId === instanceId,
+      ) ?? null
+    );
+  }
+
+  // Adds or refreshes a server entry. Remote entries dedupe by origin, then
+  // by the world's instanceId (a device world back at a new tunnel address);
+  // the local entry is addressed by its fixed id.
   upsert(input: {
     id?: string;
     origin: string;
@@ -97,11 +116,18 @@ export class ServerStore {
     token: string;
     tokenExpiresAt: string;
     secret?: string;
+    instanceId?: string;
   }): StoredServer {
     const registry = this.load();
-    const existing = registry.servers.find((server) =>
-      input.id ? server.id === input.id : server.id !== LOCAL_SERVER_ID && server.origin === input.origin,
-    );
+    const existing =
+      registry.servers.find((server) =>
+        input.id ? server.id === input.id : server.id !== LOCAL_SERVER_ID && server.origin === input.origin,
+      ) ??
+      (input.id || !input.instanceId
+        ? undefined
+        : registry.servers.find(
+            (server) => server.id !== LOCAL_SERVER_ID && server.instanceId === input.instanceId,
+          ));
     const entry: StoredServer = {
       id: existing?.id ?? input.id ?? randomUUID(),
       origin: input.origin,
@@ -113,6 +139,7 @@ export class ServerStore {
       // A token refresh must not drop the stored local password.
       secretCipher:
         input.secret !== undefined ? this.crypt.encrypt(input.secret) : existing?.secretCipher,
+      instanceId: input.instanceId || existing?.instanceId,
     };
     if (existing) {
       registry.servers[registry.servers.indexOf(existing)] = entry;
@@ -159,9 +186,46 @@ export class ServerStore {
     this.save(registry);
   }
 
+  // Moves an entry to a new address, keeping its id, token and home cache:
+  // the same world reached a different way, not a different server.
+  rebindOrigin(id: string, origin: string): StoredServer | null {
+    const registry = this.load();
+    const server = registry.servers.find((entry) => entry.id === id);
+    if (!server) return null;
+    server.origin = origin;
+    server.lastUsedAt = new Date().toISOString();
+    this.save(registry);
+    return server;
+  }
+
+  // Best-effort backfill for entries saved before the server exposed its
+  // instanceId (or before this shell stored it).
+  setInstanceId(id: string, instanceId: string): void {
+    if (!instanceId) return;
+    const registry = this.load();
+    const server = registry.servers.find((entry) => entry.id === id);
+    if (!server || server.instanceId === instanceId) return;
+    server.instanceId = instanceId;
+    this.save(registry);
+  }
+
   remove(id: string): void {
     const registry = this.load();
     registry.servers = registry.servers.filter((server) => server.id !== id);
+    if (registry.homeCache) delete registry.homeCache[id];
+    this.save(registry);
+  }
+
+  homeCache(): HomeCache {
+    const cache = this.load().homeCache;
+    return cache && typeof cache === "object" && !Array.isArray(cache) ? cache : {};
+  }
+
+  // Replaces the whole record: the feed writes every host it knows in one
+  // go, which also forgets hosts that are gone.
+  saveHomeCache(cache: HomeCache): void {
+    const registry = this.load();
+    registry.homeCache = cache;
     this.save(registry);
   }
 }

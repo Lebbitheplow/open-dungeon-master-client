@@ -11,7 +11,7 @@ export const DEFAULT_BROKER_URL = "https://odm-tunnel-broker.tunnel-broker.worke
 // official zone (one level so the free Universal SSL wildcard covers them);
 // a broker that hands back anything else does not get its hostname shown to
 // the user or written into the server's publicUrl.
-const BROKER_HOST_SHAPE = /^play-[a-z0-9]+\.opendungeonmaster\.com$/;
+export const BROKER_HOST_SHAPE = /^play-[a-z0-9]+\.opendungeonmaster\.com$/;
 const HOSTNAME_SHAPE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
 
 // What a quick tunnel prints once the edge has assigned it an address.

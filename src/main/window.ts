@@ -99,7 +99,7 @@ export class ShellWindow {
         label: "View",
         submenu: [
           {
-            label: "Servers",
+            label: "Home",
             accelerator: "CmdOrCtrl+M",
             click: () => this.showManager(),
           },

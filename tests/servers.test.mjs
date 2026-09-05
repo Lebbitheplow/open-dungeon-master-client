@@ -73,6 +73,70 @@ test("upsert dedupes remote servers by origin and keeps the id", () => {
   assert.equal(store.token(first.id), "tok2");
 });
 
+test("upsert falls back to the instanceId so a moved world keeps one entry", () => {
+  const { store } = freshStore();
+  const first = store.upsert({
+    origin: "https://play-OLDCODE.example",
+    name: "Dave's world",
+    username: "kaleb",
+    token: "tok1",
+    tokenExpiresAt: future,
+    instanceId: "world-1",
+  });
+  // Same world, new tunnel hostname: refreshed in place, not duplicated.
+  const second = store.upsert({
+    origin: "https://play-NEWCODE.example",
+    name: "Dave's world",
+    username: "kaleb",
+    token: "tok2",
+    tokenExpiresAt: future,
+    instanceId: "world-1",
+  });
+  assert.equal(first.id, second.id);
+  assert.equal(store.list().length, 1);
+  assert.equal(store.get(first.id).origin, "https://play-NEWCODE.example");
+  // A blank instanceId never matches anything.
+  store.upsert({
+    origin: "https://old-server-a.example",
+    name: "A",
+    username: "kaleb",
+    token: "tok",
+    tokenExpiresAt: future,
+    instanceId: "",
+  });
+  store.upsert({
+    origin: "https://old-server-b.example",
+    name: "B",
+    username: "kaleb",
+    token: "tok",
+    tokenExpiresAt: future,
+  });
+  assert.equal(store.list().length, 3);
+});
+
+test("findByInstanceId, rebindOrigin and setInstanceId move a world, not copy it", () => {
+  const { store } = freshStore();
+  const entry = store.upsert({
+    origin: "https://play-OLDCODE.example",
+    name: "Dave's world",
+    username: "kaleb",
+    token: "tok",
+    tokenExpiresAt: future,
+  });
+  // Entries saved before the server exposed an instanceId get it backfilled.
+  assert.equal(store.findByInstanceId("world-1"), null);
+  store.setInstanceId(entry.id, "world-1");
+  assert.equal(store.findByInstanceId("world-1")?.id, entry.id);
+  assert.equal(store.findByInstanceId(""), null);
+
+  const moved = store.rebindOrigin(entry.id, "https://play-NEWCODE.example");
+  assert.equal(moved.id, entry.id);
+  assert.equal(store.get(entry.id).origin, "https://play-NEWCODE.example");
+  assert.equal(store.token(entry.id), "tok");
+  assert.equal(store.list().length, 1);
+  assert.equal(store.rebindOrigin("missing", "https://x.example"), null);
+});
+
 test("expired or missing tokens read as null and summaries reflect it", () => {
   const { store } = freshStore();
   const live = store.upsert({
@@ -134,6 +198,19 @@ test("registry persists across instances and survives corruption", () => {
   fs.writeFileSync(path.join(dir, "servers.json"), "{not json");
   const corrupted = new ServerStore(path.join(dir, "servers.json"), crypt);
   assert.deepEqual(corrupted.list(), []);
+});
+
+test("the home cache is kept beside the servers and replaced whole", () => {
+  const { store, dir } = freshStore();
+  assert.deepEqual(store.homeCache(), {});
+  const entry = { status: "online", campaigns: [], lastSeenAt: "2026-09-04T00:00:00.000Z" };
+  store.saveHomeCache({ local: entry, gone: entry });
+  assert.deepEqual(new ServerStore(path.join(dir, "servers.json"), crypt).homeCache(), {
+    local: entry,
+    gone: entry,
+  });
+  store.saveHomeCache({ local: entry });
+  assert.deepEqual(Object.keys(store.homeCache()), ["local"]);
 });
 
 test("remove forgets the server", () => {

@@ -1,6 +1,6 @@
 # Builds and publishes every release artifact to the GitHub release for the
-# pushed tag: Linux (AppImage, deb, rpm, tar.gz), Windows (NSIS installer,
-# portable exe), macOS (dmg, zip; unsigned until we have an Apple Developer
+# pushed tag: Linux (AppImage, deb, rpm, tar.gz), Windows (NSIS installer),
+# macOS (dmg, zip; unsigned until we have an Apple Developer
 # identity, so Gatekeeper warns and auto-update stays off there), a flatpak
 # bundle, and the signed Android APK. The in-app updater reads latest.yml
 # (NSIS) and latest-linux.yml (AppImage) straight from the release assets.

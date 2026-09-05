@@ -17,17 +17,20 @@ import {
   parseAnyLink,
   type JoinLink,
 } from "../shared/deep-link";
+import { landingPath, safeInnerPath } from "../shared/open-path";
+import { createDesktopHomeFeed } from "./home-feed";
 import type { LocalAiManager } from "./local-ai/manager";
 import { wireImageAi, wireTextAi } from "./local-ai/wiring";
 import type { LocalServer } from "./local-server";
 import {
+  deleteAccount,
   loginForToken,
   patchAdminSettings,
   probeServer,
   registerAccount,
   tokenIsValid,
-  whoAmI,
   type TokenGrant,
+  whoAmI,
 } from "./odm-api";
 import { LOCAL_SERVER_ID, type ServerStore, type StoredServer } from "./servers";
 import { applySessionCookie, clearPartition, partitionFor } from "./session-cookies";
@@ -87,10 +90,28 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
   // (src/preload/game.ts): drop the world's view and land on the server list.
   ipcMain.on("shell:show-servers", () => win.showManager());
 
-  local.onStatus(() => win.sendEvent({ kind: "local-status", status: localStatus() }));
+  // The home screen's campaigns across every host. A world coming up or a
+  // tunnel changing state is a reason to look again; the feed itself
+  // announces the result as a home-feed event.
+  const homeFeed = createDesktopHomeFeed({
+    store,
+    localStatus,
+    emit: (event) => win.sendEvent(event),
+  });
+  const refreshHomeFeed = (): void => {
+    homeFeed.refresh().catch(() => undefined);
+  };
+  ipcMain.handle("home:feed", () => homeFeed.refresh());
+  ipcMain.handle("home:feed-cached", () => homeFeed.cached());
+
+  local.onStatus(() => {
+    win.sendEvent({ kind: "local-status", status: localStatus() });
+    refreshHomeFeed();
+  });
   tunnel.onStatus(() => {
     win.sendEvent({ kind: "tunnel-status", status: tunnel.status() });
     if (localPageShowing()) win.sendToGame("odm:share-status", shellShareStatus());
+    refreshHomeFeed();
   });
   localAi.onStatus(() => win.sendEvent({ kind: "local-ai-progress", status: localAi.status() }));
   updater.onStatus(() => win.sendEvent({ kind: "update-progress", progress: updater.progress() }));
@@ -122,13 +143,24 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     entry: StoredServer,
     token: string,
     joinCode: string,
+    path = "",
   ): Promise<void> => {
     await applySessionCookie(partitionFor(entry.id), entry.origin, token, entry.tokenExpiresAt);
     store.touch(entry.id);
-    win.attachView(entry.origin, partitionFor(entry.id), joinCode ? `/join/${joinCode}` : "/");
+    // Best effort: learn the world's stable id on every connect, so entries
+    // saved before the server exposed one can still be matched when a device
+    // world comes back at a new tunnel address.
+    void probeServer(entry.origin)
+      .then((probe) => store.setInstanceId(entry.id, probe.instanceId))
+      .catch(() => undefined);
+    win.attachView(entry.origin, partitionFor(entry.id), landingPath(joinCode, path));
   };
 
-  const connectRemote = async (id: string, joinCode: string): Promise<ConnectResult> => {
+  const connectRemote = async (
+    id: string,
+    joinCode: string,
+    path = "",
+  ): Promise<ConnectResult> => {
     const entry = store.get(id);
     if (!entry || entry.id === LOCAL_SERVER_ID) {
       return { ok: false, needsLogin: false, error: "Unknown server." };
@@ -137,7 +169,7 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     if (!token || !(await tokenIsValid(entry.origin, token))) {
       return { ok: false, needsLogin: true, error: "Your session expired. Sign in again." };
     }
-    await attachRemote(entry, token, joinCode);
+    await attachRemote(entry, token, joinCode, path);
     return { ok: true };
   };
 
@@ -149,8 +181,11 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     joinCode: string,
   ): Promise<Result<{ server: ServerSummary }>> => {
     let name = "";
+    let instanceId = "";
     try {
-      name = (await probeServer(origin)).serverName;
+      const probe = await probeServer(origin);
+      name = probe.serverName;
+      instanceId = probe.instanceId;
     } catch {
       // The name is cosmetic; the login already proved the server is real.
     }
@@ -160,6 +195,7 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
       username: grant.username,
       token: grant.token,
       tokenExpiresAt: grant.expiresAt,
+      instanceId,
     });
     await attachRemote(entry, grant.token, joinCode);
     return { ok: true, server: summaryOf(entry) };
@@ -167,7 +203,20 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
 
   const handleJoinLink = async (link: JoinLink): Promise<void> => {
     win.focus();
-    const known = store.findByOrigin(link.origin);
+    let known = store.findByOrigin(link.origin);
+    if (!known) {
+      // A device world gets a fresh tunnel hostname every share session. If
+      // the server at the new address identifies as a world this shell
+      // already has an account on, move that entry to the new address and
+      // walk in with the stored token instead of asking for a second login.
+      try {
+        const probe = await probeServer(link.origin);
+        const match = store.findByInstanceId(probe.instanceId);
+        if (match) known = store.rebindOrigin(match.id, link.origin);
+      } catch {
+        // Unreachable or not an ODM server; the add screen will say so.
+      }
+    }
     if (known) {
       const result = await connectRemote(known.id, link.code);
       if (result.ok) return;
@@ -330,9 +379,30 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     }
   });
 
-  ipcMain.handle("servers:connect", (_event, id: unknown, joinCode: unknown) =>
-    connectRemote(str(id, 64), joinCodeOf(joinCode)),
+  ipcMain.handle("servers:connect", (_event, id: unknown, joinCode: unknown, path: unknown) =>
+    connectRemote(str(id, 64), joinCodeOf(joinCode), safeInnerPath(path)),
   );
+
+  // The account is gone (or going) on the server side, so the session it
+  // minted is dropped here too; the entry stays listed so "Sign in" before
+  // the due date can still keep it, and Forget removes it like any other.
+  ipcMain.handle("servers:delete-account", async (_event, input: Record<string, unknown>) => {
+    const serverId = str(input?.serverId, 64);
+    if (!serverId || serverId === LOCAL_SERVER_ID) return fail(new Error("Unknown server."));
+    const entry = store.get(serverId);
+    const token = store.token(serverId);
+    if (!entry || !token) {
+      return fail(new Error("Sign in to this server first, then delete the account."));
+    }
+    try {
+      const deletion = await deleteAccount(entry.origin, token, str(input?.password, 100));
+      store.clearToken(serverId);
+      await clearPartition(partitionFor(serverId)).catch(() => undefined);
+      return { ok: true, deletion };
+    } catch (err) {
+      return fail(err);
+    }
+  });
 
   ipcMain.handle("servers:remove", async (_event, id: unknown) => {
     const serverId = str(id, 64);
@@ -450,7 +520,7 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     }
   });
 
-  ipcMain.handle("local:play", async (_event, joinCode: unknown): Promise<ConnectResult> => {
+  ipcMain.handle("local:play", async (_event, joinCode: unknown, path: unknown): Promise<ConnectResult> => {
     // Read before start(): booting the server creates the database, which is
     // the "has this world ever existed" signal.
     const freshWorld = local.status(localHasAccount()).firstRun;
@@ -505,8 +575,11 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
       token,
       entry.tokenExpiresAt,
     );
-    const code = joinCodeOf(joinCode);
-    win.attachView(local.origin, partitionFor(LOCAL_SERVER_ID), code ? `/join/${code}` : "/");
+    win.attachView(
+      local.origin,
+      partitionFor(LOCAL_SERVER_ID),
+      landingPath(joinCodeOf(joinCode), safeInnerPath(path)),
+    );
     return { ok: true };
   });
 

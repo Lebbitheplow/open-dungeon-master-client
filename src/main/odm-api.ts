@@ -1,4 +1,4 @@
-import type { ServerProbe, SignupMode } from "../shared/types";
+import type { AccountDeletionResult, ServerProbe, SignupMode } from "../shared/types";
 
 // Thin fetch helpers for talking to an Open Dungeon Master server's REST API
 // from the main process. Errors are thrown as ApiError with a message safe to
@@ -33,6 +33,7 @@ export async function probeServer(origin: string): Promise<ServerProbe> {
         signupMode?: string;
         serverName?: string;
         version?: string;
+        instanceId?: string;
       } | null)
     : null;
   if (!body || typeof body.password !== "boolean") {
@@ -46,6 +47,7 @@ export async function probeServer(origin: string): Promise<ServerProbe> {
     version: typeof body.version === "string" ? body.version : "",
     signupMode,
     discord: Boolean(body.discord),
+    instanceId: typeof body.instanceId === "string" ? body.instanceId : "",
   };
 }
 
@@ -141,4 +143,29 @@ export async function patchAdminSettings(
     body: JSON.stringify(patch),
   });
   if (!res.ok) throw await errorFrom(res, "Saving server settings failed.");
+}
+
+// Self-service account deletion (the server's DELETE /api/profile). Password
+// accounts must send their password; Discord-only accounts send "".
+export async function deleteAccount(
+  origin: string,
+  token: string,
+  password: string,
+): Promise<AccountDeletionResult> {
+  const res = await api(origin, "/api/profile", {
+    method: "DELETE",
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    body: JSON.stringify(password ? { password } : {}),
+  });
+  if (!res.ok) throw await errorFrom(res, "Could not delete the account.");
+  const body = (await res.json().catch(() => null)) as {
+    dueAt?: string;
+    graceDays?: number;
+    purged?: boolean;
+  } | null;
+  return {
+    dueAt: typeof body?.dueAt === "string" ? body.dueAt : "",
+    graceDays: typeof body?.graceDays === "number" ? body.graceDays : 0,
+    purged: body?.purged === true,
+  };
 }

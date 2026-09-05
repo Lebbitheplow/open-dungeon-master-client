@@ -321,6 +321,9 @@ public final class WorldRuntime {
             env.put("SQLITE_DB_PATH", dbFile().getAbsolutePath());
             env.put("DB_ENCRYPTION_KEY", dbEncryptionKey());
             env.put("ODM_SQLITE_DRIVER", "node");
+            // Tells the server it is the shell's own world, so its admin panel
+            // hides what the shell manages (address, sign-ups, voice, Discord).
+            env.put("ODM_DEVICE_WORLD", "1");
             env.put("HOME", app.getFilesDir().getAbsolutePath());
             env.put("TMPDIR", tmp.getAbsolutePath());
             env.put("LD_LIBRARY_PATH", app.getApplicationInfo().nativeLibraryDir);

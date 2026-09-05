@@ -12,8 +12,14 @@ import { Share } from "@capacitor/share";
 import { BackgroundColor, InAppBrowser, ToolBarType } from "@capgo/inappbrowser";
 import { createBleRelay } from "./ble-relay";
 import { createDownloadRelay } from "./download-relay";
-import { createLocalWorld, LocalWorld, type LocalProfile } from "./local-world";
-import { createShareTunnel, type SharePlugin } from "./share-tunnel";
+import { createAndroidHomeFeed } from "./home-feed";
+import {
+  createLocalWorld,
+  LocalWorld,
+  tokenAlive as profileTokenAlive,
+  type LocalProfile,
+} from "./local-world";
+import { createShareTunnel, type JsonReply, type SharePlugin } from "./share-tunnel";
 import {
   CODE_SHAPE,
   normalizeOrigin,
@@ -21,7 +27,9 @@ import {
   parseAnyLink,
   type JoinLink,
 } from "../../src/shared/deep-link";
+import { landingPath, safeInnerPath } from "../../src/shared/open-path";
 import type {
+  AccountDeletionResult,
   ConnectResult,
   OdmBridge,
   ShellShareStatus,
@@ -49,6 +57,11 @@ interface StoredServer {
   // moving tokens into a Keystore-backed store is a planned hardening step.
   token: string;
   tokenExpiresAt: string;
+  // The world's stable id from /api/auth/providers ("" or absent on servers
+  // that predate it). Lets the shell recognize a device world that came back
+  // at a new tunnel address and move this entry there instead of adding a
+  // duplicate.
+  instanceId?: string;
 }
 
 const SERVERS_KEY = "odm-servers";
@@ -129,6 +142,7 @@ async function probeOrigin(origin: string): Promise<ServerProbe> {
     signupMode?: string;
     serverName?: string;
     version?: string;
+    instanceId?: string;
   } | null;
   if (reply.status !== 200 || !body || typeof body.password !== "boolean") {
     throw new Error(`${origin} does not look like an Open Dungeon Master server.`);
@@ -141,6 +155,7 @@ async function probeOrigin(origin: string): Promise<ServerProbe> {
     version: typeof body.version === "string" ? body.version : "",
     signupMode,
     discord: Boolean(body.discord),
+    instanceId: typeof body.instanceId === "string" ? body.instanceId : "",
   };
 }
 
@@ -173,6 +188,27 @@ async function registerAccount(
   const reply = await http(origin, "/api/auth/register", { method: "POST", body });
   if (reply.status !== 201) throw new Error(errorText(reply, "Could not create the account."));
   return loginForToken(origin, input.username, input.password);
+}
+
+// Self-service account deletion (DELETE /api/profile). Password accounts
+// must send their password; Discord-only accounts send "".
+async function deleteAccount(
+  origin: string,
+  token: string,
+  password: string,
+): Promise<AccountDeletionResult> {
+  const reply = await http(origin, "/api/profile", {
+    method: "DELETE",
+    token,
+    body: password ? { password } : {},
+  });
+  if (reply.status !== 200) throw new Error(errorText(reply, "Could not delete the account."));
+  const body = reply.data as { dueAt?: string; graceDays?: number; purged?: boolean } | null;
+  return {
+    dueAt: typeof body?.dueAt === "string" ? body.dueAt : "",
+    graceDays: typeof body?.graceDays === "number" ? body.graceDays : 0,
+    purged: body?.purged === true,
+  };
 }
 
 async function tokenIsValid(origin: string, token: string): Promise<boolean> {
@@ -328,14 +364,14 @@ async function openGameWebView(url: string, title: string): Promise<void> {
   void ensureNotificationPermission();
 }
 
-async function openServer(server: StoredServer, joinCode: string): Promise<void> {
+async function openServer(server: StoredServer, joinCode: string, path = ""): Promise<void> {
   await CapacitorCookies.setCookie({
     url: server.origin,
     key: "odm_session",
     value: server.token,
   });
   worldPageOpen = false;
-  await openGameWebView(`${server.origin}${joinCode ? `/join/${joinCode}` : "/"}`, server.name);
+  await openGameWebView(`${server.origin}${landingPath(joinCode, path)}`, server.name);
 }
 
 // ---------- the device-hosted world ----------
@@ -354,17 +390,19 @@ function randomSecret(): string {
     .replaceAll("=", "");
 }
 
+async function loadLocalProfile(): Promise<LocalProfile | null> {
+  try {
+    const { value } = await Preferences.get({ key: LOCAL_PROFILE_KEY });
+    const parsed = value ? (JSON.parse(value) as LocalProfile) : null;
+    return parsed && typeof parsed.username === "string" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 const localWorld = createLocalWorld({
   plugin: LocalWorld,
-  async loadProfile() {
-    try {
-      const { value } = await Preferences.get({ key: LOCAL_PROFILE_KEY });
-      const parsed = value ? (JSON.parse(value) as LocalProfile) : null;
-      return parsed && typeof parsed.username === "string" ? parsed : null;
-    } catch {
-      return null;
-    }
-  },
+  loadProfile: loadLocalProfile,
   async saveProfile(profile) {
     if (profile) {
       await Preferences.set({ key: LOCAL_PROFILE_KEY, value: JSON.stringify(profile) });
@@ -376,10 +414,10 @@ const localWorld = createLocalWorld({
   registerAccount,
   tokenIsValid,
   patchAdminSettings,
-  async open(origin, token, joinCode) {
+  async open(origin, token, joinCode, path) {
     await CapacitorCookies.setCookie({ url: origin, key: "odm_session", value: token });
     worldPageOpen = true;
-    await openGameWebView(`${origin}${joinCode ? `/join/${joinCode}` : "/"}`, "This device");
+    await openGameWebView(`${origin}${landingPath(joinCode, path)}`, "This device");
   },
   emit,
   randomSecret,
@@ -392,32 +430,39 @@ const localWorld = createLocalWorld({
 // a page's odmShell.share requests do anything.
 let worldPageOpen = false;
 
+// Native JSON round trip that reports bad statuses instead of throwing;
+// only no reply at all rejects. Shared by the tunnel and the home feed.
+async function fetchJson(
+  url: string,
+  init: { method?: string; headers?: Record<string, string>; body?: unknown; timeoutMs?: number } = {},
+): Promise<JsonReply> {
+  const timeout = init.timeoutMs ?? TIMEOUT_MS;
+  const response = await CapacitorHttp.request({
+    url,
+    method: init.method ?? "GET",
+    headers: {
+      ...(init.body !== undefined ? { "content-type": "application/json" } : {}),
+      ...(init.headers ?? {}),
+    },
+    data: init.body,
+    connectTimeout: timeout,
+    readTimeout: timeout,
+    responseType: "json",
+  });
+  let data: unknown = response.data;
+  if (typeof data === "string") {
+    try {
+      data = JSON.parse(data);
+    } catch {
+      // Not JSON (a health page, an error body); the caller only needs the status then.
+    }
+  }
+  return { status: response.status, data };
+}
+
 const shareTunnel = createShareTunnel({
   plugin: LocalWorld as unknown as SharePlugin,
-  async fetchJson(url, init = {}) {
-    const timeout = init.timeoutMs ?? TIMEOUT_MS;
-    const response = await CapacitorHttp.request({
-      url,
-      method: init.method ?? "GET",
-      headers: {
-        ...(init.body !== undefined ? { "content-type": "application/json" } : {}),
-        ...(init.headers ?? {}),
-      },
-      data: init.body,
-      connectTimeout: timeout,
-      readTimeout: timeout,
-      responseType: "json",
-    });
-    let data: unknown = response.data;
-    if (typeof data === "string") {
-      try {
-        data = JSON.parse(data);
-      } catch {
-        // Not JSON (a health page, an error body); the caller only needs the status then.
-      }
-    }
-    return { status: response.status, data };
-  },
+  fetchJson,
   brokerUrl: () => "",
   async worldPort() {
     const origin = await localWorld.start();
@@ -457,6 +502,38 @@ listeners.add((event) => {
   void localWorld.status().then((world) => {
     pushShareStatus(undefined, { supported: true, ...event.status, lanUrl: world.lanOrigin });
   });
+});
+
+// ---------- the home screen's campaign feed ----------
+
+const homeFeed = createAndroidHomeFeed({
+  async servers() {
+    return (await loadServers()).map((server) => ({
+      id: server.id,
+      origin: server.origin,
+      name: server.name,
+      username: server.username,
+      lastUsedAt: server.lastUsedAt,
+      token: tokenAlive(server) ? server.token : "",
+    }));
+  },
+  localStatus: () => localWorld.status(),
+  async localToken() {
+    const profile = await loadLocalProfile();
+    return profileTokenAlive(profile) ? (profile?.token ?? "") : "";
+  },
+  fetchJson,
+  getPref: async (key) => (await Preferences.get({ key })).value,
+  setPref: async (key, value) => Preferences.set({ key, value }),
+  emit,
+});
+
+// The world coming up or the tunnel changing are reasons to look again; the
+// feed announces the outcome itself as a home-feed event.
+listeners.add((event) => {
+  if (event.kind === "local-status" || event.kind === "tunnel-status") {
+    homeFeed.refresh().catch(() => undefined);
+  }
 });
 
 // The lobby's invite dialog asks to share the world (or stop). A start is
@@ -569,7 +646,7 @@ async function onWebviewUrl(url: string): Promise<void> {
   }
 }
 
-async function connectById(id: string, joinCode: string): Promise<ConnectResult> {
+async function connectById(id: string, joinCode: string, path = ""): Promise<ConnectResult> {
   const servers = await loadServers();
   const server = servers.find((entry) => entry.id === id);
   if (!server) return { ok: false, needsLogin: false, error: "Unknown server." };
@@ -578,7 +655,22 @@ async function connectById(id: string, joinCode: string): Promise<ConnectResult>
   }
   server.lastUsedAt = new Date().toISOString();
   await saveServers(servers);
-  await openServer(server, joinCode);
+  // Best effort: learn the world's stable id, so entries saved before the
+  // server exposed one can still be matched when a device world comes back
+  // at a new tunnel address.
+  if (!server.instanceId) {
+    void probeOrigin(server.origin)
+      .then(async (probe) => {
+        if (!probe.instanceId) return;
+        const latest = await loadServers();
+        const entry = latest.find((item) => item.id === server.id);
+        if (!entry || entry.instanceId === probe.instanceId) return;
+        entry.instanceId = probe.instanceId;
+        await saveServers(latest);
+      })
+      .catch(() => undefined);
+  }
+  await openServer(server, joinCode, path);
   return { ok: true };
 }
 
@@ -589,13 +681,21 @@ async function rememberGrant(
   grant: TokenGrant,
 ): Promise<{ ok: true; server: ServerSummary; stored: StoredServer }> {
   let name = "";
+  let instanceId = "";
   try {
-    name = (await probeOrigin(origin)).serverName;
+    const probe = await probeOrigin(origin);
+    name = probe.serverName;
+    instanceId = probe.instanceId;
   } catch {
     // Cosmetic; the login already proved the server is real.
   }
   const servers = await loadServers();
-  const existing = servers.find((entry) => entry.origin === origin);
+  // Dedupe by origin first, then by the world's stable id: a device world
+  // back at a new tunnel address refreshes its old entry instead of adding
+  // a second one.
+  const existing =
+    servers.find((entry) => entry.origin === origin) ??
+    (instanceId ? servers.find((entry) => entry.instanceId === instanceId) : undefined);
   const server: StoredServer = {
     id: existing?.id ?? crypto.randomUUID(),
     origin,
@@ -604,6 +704,7 @@ async function rememberGrant(
     lastUsedAt: new Date().toISOString(),
     token: grant.token,
     tokenExpiresAt: grant.expiresAt,
+    instanceId: instanceId || existing?.instanceId,
   };
   if (existing) servers[servers.indexOf(existing)] = server;
   else servers.push(server);
@@ -634,7 +735,27 @@ function cleanCode(value: unknown): string {
 
 async function handleJoinLink(link: JoinLink): Promise<void> {
   const servers = await loadServers();
-  const known = servers.find((entry) => entry.origin === link.origin);
+  let known = servers.find((entry) => entry.origin === link.origin);
+  if (!known) {
+    // A device world gets a fresh tunnel hostname every share session. If
+    // the server at the new address identifies as a world this app already
+    // has an account on, move that entry to the new address and walk in
+    // with the stored token instead of asking for a second login.
+    try {
+      const probe = await probeOrigin(link.origin);
+      const match = probe.instanceId
+        ? servers.find((entry) => entry.instanceId === probe.instanceId)
+        : undefined;
+      if (match) {
+        match.origin = link.origin;
+        match.lastUsedAt = new Date().toISOString();
+        await saveServers(servers);
+        known = match;
+      }
+    } catch {
+      // Unreachable or not an ODM server; the add screen will say so.
+    }
+  }
   if (known) {
     const result = await connectById(known.id, link.code);
     if (result.ok) return;
@@ -711,7 +832,8 @@ const bridge: OdmBridge = {
     return startDiscordLogin(origin, cleanCode(input.joinCode));
   },
 
-  connect: (serverId, joinCode) => connectById(String(serverId), cleanCode(joinCode)),
+  connect: (serverId, joinCode, path) =>
+    connectById(String(serverId), cleanCode(joinCode), safeInnerPath(path)),
 
   // Back on the home screen: finish the activity, which is what Android
   // users expect from a root screen (the launcher, not a dead tap).
@@ -747,6 +869,27 @@ const bridge: OdmBridge = {
     }
   },
 
+  // Mirrors the desktop handler: the session goes, the entry stays so a
+  // sign-in before the due date can still keep the account.
+  async deleteAccount(input) {
+    const serverId = String(input?.serverId ?? "");
+    const servers = await loadServers();
+    const server = servers.find((entry) => entry.id === serverId);
+    if (!server || !tokenAlive(server)) {
+      return fail(new Error("Sign in to this server first, then delete the account."));
+    }
+    try {
+      const deletion = await deleteAccount(server.origin, server.token, String(input?.password ?? ""));
+      server.token = "";
+      server.tokenExpiresAt = "";
+      await saveServers(servers);
+      await CapacitorCookies.clearCookies({ url: server.origin }).catch(() => undefined);
+      return { ok: true, deletion };
+    } catch (err) {
+      return fail(err);
+    }
+  },
+
   async removeServer(serverId) {
     const servers = await loadServers();
     const server = servers.find((entry) => entry.id === serverId);
@@ -755,6 +898,9 @@ const bridge: OdmBridge = {
       await CapacitorCookies.clearCookies({ url: server.origin }).catch(() => undefined);
     }
   },
+
+  homeFeed: () => homeFeed.refresh(),
+  homeFeedCached: () => homeFeed.cached(),
 
   async localStart() {
     try {
@@ -775,7 +921,7 @@ const bridge: OdmBridge = {
       password: String(input?.password ?? ""),
     }),
   localConfigureAi: (setup) => localWorld.configureAi(setup),
-  localPlay: (joinCode) => localWorld.play(cleanCode(joinCode)),
+  localPlay: (joinCode, path) => localWorld.play(cleanCode(joinCode), safeInnerPath(path)),
   async shareStart() {
     const status = await shareTunnel.start();
     if (status.state !== "running") return fail(new Error(status.error || "Sharing failed."));

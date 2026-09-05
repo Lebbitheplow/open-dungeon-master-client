@@ -12,15 +12,19 @@ const bridge: OdmBridge = {
   login: (input) => ipcRenderer.invoke("servers:login", input),
   register: (input) => ipcRenderer.invoke("servers:register", input),
   discordLogin: (input) => ipcRenderer.invoke("servers:discord-login", input),
-  connect: (serverId: string, joinCode?: string) =>
-    ipcRenderer.invoke("servers:connect", serverId, joinCode),
+  connect: (serverId: string, joinCode?: string, path?: string) =>
+    ipcRenderer.invoke("servers:connect", serverId, joinCode, path),
   removeServer: (serverId: string) => ipcRenderer.invoke("servers:remove", serverId),
+  deleteAccount: (input) => ipcRenderer.invoke("servers:delete-account", input),
+  homeFeed: () => ipcRenderer.invoke("home:feed"),
+  homeFeedCached: () => ipcRenderer.invoke("home:feed-cached"),
   openInviteLink: (raw: string) => ipcRenderer.invoke("servers:open-invite", raw),
   localStart: () => ipcRenderer.invoke("local:start"),
   localCreateAccount: (input) => ipcRenderer.invoke("local:create-account", input),
   localLogin: (input) => ipcRenderer.invoke("local:login", input),
   localConfigureAi: (setup: AiSetup) => ipcRenderer.invoke("local:configure-ai", setup),
-  localPlay: (joinCode?: string) => ipcRenderer.invoke("local:play", joinCode),
+  localPlay: (joinCode?: string, path?: string) =>
+    ipcRenderer.invoke("local:play", joinCode, path),
   shareStart: () => ipcRenderer.invoke("share:start"),
   shareStop: () => ipcRenderer.invoke("share:stop"),
   localAiScan: () => ipcRenderer.invoke("local-ai:scan"),
