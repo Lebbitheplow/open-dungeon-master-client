@@ -169,7 +169,8 @@ derived stats. The prototype keeps four steps. Gaps:
 
 ### 3.5 Workshop hub (4a) and shelf
 
-Covered: target party bar, ten system cards with counts, help. Gaps:
+Covered: target party bar, twelve system cards with counts (Party and Homebrew
+joined the ten on 2026-09-05), help. Gaps:
 
 - Shelf page: workshop list, New workshop form (name, party size, level),
   Import bundle, Duplicate, Delete.
@@ -186,10 +187,34 @@ Covered: target party bar, ten system cards with counts, help. Gaps:
 - **Battle maps (4c, 5b):** complete for brushes, stamps, themes, ambient,
   backdrop sliders, tokens. Missing: generator hint input, Size fields, notes,
   seed readout, Keep the board, Open it as a scene (campaigns only), Duplicate,
-  Forget, tooltips on long-press.
+  Forget, tooltips on long-press. Added on the server 2026-09-05 and not in
+  the mockup: shape tools (line, rectangle, ellipse, fill) with drag preview,
+  undo and redo, brush radius, lights with presets, labels, props, doors,
+  light zones, ambience cues and a DM-only overlay image. Hotkeys are desktop
+  only; on a phone the toolbox is the whole path, and every tool is a tap.
 - **Region (6a):** prototype lacks Move a place, Party is in transit, Clear
   pins, Rename while holding, stranded-location warning. The AI "describe"
-  authoring block below the map is gated on `story.configured`.
+  authoring block below the map is gated on `story.configured`. Added on the
+  server 2026-09-05: Draw a line (road, river, border, tapped point by point
+  with Finish, Undo a point, Cancel and an optional name), Write a label
+  (place or region size), Erase (lines, labels, pins), a picture in place of
+  the tiles, Read an Azgaar map (one or more GeoJSON files, with a size
+  pick), Save as PNG, and a size select on Roll a world. Pinch zoom and drag
+  pan are unchanged. On phones the file pickers open the system chooser.
+- **Party (new system, 2026-09-05):** the target party restated, the roster
+  of pregens with a level mismatch chip, Add from the library (select),
+  Build a new one (links to the character wizard), take off the roster.
+- **Homebrew (new system, 2026-09-05):** items, spells, feats, backgrounds,
+  species and subclasses, each started from a catalog pick, with a
+  validator readout. Long forms; on phones they should open in a sheet.
+- **Lore (server 2026-09-05):** visibility toggle (the table reads it, or
+  only the DM), picture upload as a handout, markdown body with `[[links]]`
+  that open the linked entry.
+- **Tables (server 2026-09-05):** Draw without replacement checkbox with a
+  reset showing the dealt count, `x3` weights and `@table`, `@monster`,
+  `@item`, `@npc` rows, and a roll result that shows the chain.
+- **Share (server 2026-09-05):** the import preview is a row of ticks, one
+  per kind, and house rules are one of them.
 - **Rules (6b):** missing Crit damage mods toggle, rule-section on/off and pin
   buttons, ruleset delete, Unsaved changes marker, read-only summary for
   non-authorities.
@@ -430,6 +455,21 @@ tests, Android www bundle builds):
   tiles, grouped campaigns, hide-offline toggle, drawer and desktop rail.
 - `connect` and `localPlay` accept a sanitized inner path
   (`src/shared/open-path.ts`) so the home lands on a campaign or page.
+
+Workshop parity pass (2026-09-05), server repo, uncommitted, tsc and lint
+clean, full suite green: everything in `docs/workshop-parity-audit.md`
+section 6 (shape tools, undo, lights, homebrew editors, stat block extras,
+scene layer, lore handouts and links, table weights and nesting, region
+lines, labels, backdrop, Azgaar import, PNG export, pregens, Party card,
+selective bundle import). All of it is web UI the shells already render;
+the desktop app picks it up after a server commit and `npm run
+bundle-server`, Android after the www bundle. Device testing of the new
+tools on phones and foldables has not happened yet.
+
+Payload trim (2026-09-05): the desktop and Android bundlers now share
+`scripts/prune-server-payload.mjs`, which keeps only what the server reaches
+at runtime. The repo's docs and plans, sources, scripts, workers, CI and
+Docker files and agent notes no longer ship in any install.
 
 Still open after this pass:
 

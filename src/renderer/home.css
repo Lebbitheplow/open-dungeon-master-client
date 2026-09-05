@@ -427,6 +427,9 @@
 .nav-item > svg { width: 16px; height: 16px; color: var(--gold-300); flex-shrink: 0; }
 .nav-item:hover { background: rgba(48, 40, 83, 0.4); color: var(--ink-100); }
 .drawer-hint { margin: 0.25rem 0.65rem 0.5rem; }
+.drawer-legal { display: flex; gap: 0.9rem; padding: 0 0.65rem; font-size: 0.72rem; }
+.drawer-legal a { color: var(--ink-500); text-decoration: none; }
+.drawer-legal a:hover { color: var(--gold-300); text-decoration: underline; }
 
 /* ---------- widths ---------- */
 

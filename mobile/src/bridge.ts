@@ -25,6 +25,7 @@ import {
   normalizeOrigin,
   originCandidates,
   parseAnyLink,
+  parseServerAddress,
   type JoinLink,
 } from "../../src/shared/deep-link";
 import { landingPath, safeInnerPath } from "../../src/shared/open-path";
@@ -846,8 +847,9 @@ const bridge: OdmBridge = {
     return true;
   },
 
-  // The in-app QR path for invite codes; the plugin owns the camera UI and
-  // its runtime permission prompt.
+  // The in-app QR path: an invite (room code plus server) or a bare server
+  // address, which is what the server's own corner QR button shows. The
+  // plugin owns the camera UI and its runtime permission prompt.
   async scanInvite() {
     try {
       const result = await CapacitorBarcodeScanner.scanBarcode({
@@ -856,10 +858,20 @@ const bridge: OdmBridge = {
       const raw = String(result.ScanResult ?? "").trim();
       if (!raw) return { ok: true };
       const link = parseAnyLink(raw);
-      if (!link) {
-        return { ok: false, error: "That QR code is not an Open Dungeon Master invite." };
+      if (link) {
+        await handleJoinLink(link);
+        return { ok: true };
       }
-      await handleJoinLink(link);
+      const address = parseServerAddress(raw);
+      if (!address) {
+        return {
+          ok: false,
+          error: "That QR code is not an Open Dungeon Master invite or server address.",
+        };
+      }
+      // No room code: the same path an invite takes, minus the join. A known
+      // server opens straight away; a new one lands on its sign-in screen.
+      await handleJoinLink({ origin: address, code: "" });
       return { ok: true };
     } catch (err) {
       // Backing out of the scanner is not an error worth showing.

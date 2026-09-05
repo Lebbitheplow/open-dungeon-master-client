@@ -73,6 +73,16 @@ window.odm.onEvent((event) => {
           return;
         }
       }
+      // A scanned server address (no room code) skips the address form: the
+      // address is already known, so go straight to that server's sign-in,
+      // and fall back to the form only when the server does not answer.
+      if (!event.code) {
+        void window.odm.probeServer(event.origin).then((probed) => {
+          if (probed.ok) renderAuth(probed.probe, "login", "");
+          else renderAdd(event.origin);
+        });
+        return;
+      }
       renderAdd(event.origin);
     });
   }

@@ -257,7 +257,8 @@ export interface OdmBridge {
   // flow as a clicked deep link. False means the text was not an invite link.
   openInviteLink(raw: string): Promise<boolean>;
   // Present only where a camera scanner exists (Android). Scans one QR code
-  // and routes a recognized invite into the join flow.
+  // and routes a recognized invite into the join flow, or a bare server
+  // address (the server's own corner QR button) into the add-server flow.
   scanInvite?(): Promise<Result>;
   removeServer(serverId: string): Promise<void>;
   // Deletes the player's account on one remote server (the server's own

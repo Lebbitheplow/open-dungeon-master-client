@@ -20,6 +20,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { pruneServerPayload } from "../../scripts/prune-server-payload.mjs";
 
 const mobile = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const repo = path.dirname(mobile);
@@ -55,6 +56,10 @@ try {
     const target = path.join(staging, rel);
     if (fs.existsSync(target)) fs.rmSync(target, { recursive: true, force: true });
   }
+  // The desktop bundler already pruned the payload to what the server
+  // reaches at runtime; run the same prune again so a payload staged some
+  // other way (an older artifact, a hand copy) ships nothing extra either.
+  console.log(`Dropped from the payload: ${pruneServerPayload(staging).join(", ")}`);
   // Aliases of pruned packages would dangle after the prune; drop them too.
   const modules = path.join(staging, "node_modules");
   for (const entry of fs.readdirSync(modules)) {

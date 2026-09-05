@@ -7,6 +7,7 @@ import {
   originCandidates,
   parseAnyLink,
   parseJoinLink,
+  parseServerAddress,
 } from "../dist/shared/deep-link.js";
 
 test("normalizeOrigin keeps clean http(s) origins", () => {
@@ -84,4 +85,31 @@ test("code shape matches the server invite alphabet", () => {
   assert.ok(!CODE_SHAPE.test("ABC"));
   assert.ok(!CODE_SHAPE.test("ABCDEFGHJKLMN"));
   assert.ok(!CODE_SHAPE.test("ABCO23"));
+});
+
+test("parseAnyLink accepts a server's own readable /join/CODE link", () => {
+  assert.deepEqual(parseAnyLink("https://play.example.com/join/abcd2345"), {
+    origin: "https://play.example.com",
+    code: "ABCD2345",
+  });
+  assert.deepEqual(parseAnyLink("http://192.168.1.50:3005/join/ABCD2345/"), {
+    origin: "http://192.168.1.50:3005",
+    code: "ABCD2345",
+  });
+  assert.equal(parseAnyLink("https://play.example.com/join/ab"), null);
+  assert.equal(parseAnyLink("https://play.example.com/join/ABCD2345/extra"), null);
+  assert.equal(parseAnyLink("https://play.example.com/lobby"), null);
+});
+
+test("parseServerAddress takes a bare origin and nothing more", () => {
+  assert.equal(parseServerAddress("http://192.168.1.50:3005"), "http://192.168.1.50:3005");
+  assert.equal(parseServerAddress("https://play.example.com/"), "https://play.example.com");
+  assert.equal(parseServerAddress("  https://play.example.com  "), "https://play.example.com");
+  // A join link is an invite, not a server address; callers try invites first
+  // and this must not swallow one that failed to parse as an invite.
+  assert.equal(parseServerAddress("https://play.example.com/join/ABCD2345"), null);
+  assert.equal(parseServerAddress("https://play.example.com/?x=1"), null);
+  assert.equal(parseServerAddress("play.example.com"), null);
+  assert.equal(parseServerAddress("ftp://play.example.com"), null);
+  assert.equal(parseServerAddress("https://good.com@evil.com"), null);
 });

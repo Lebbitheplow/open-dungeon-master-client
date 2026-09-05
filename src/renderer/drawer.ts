@@ -175,6 +175,26 @@ function settingsItem(): HTMLElement {
   return wrap;
 }
 
+// The privacy policy and terms, reachable from every screen: the policy must
+// be readable inside the app, and the drawer is the one place that is always
+// a tap away. Both hosts open it in the system browser: Electron through the
+// window-open handler target=_blank triggers, Capacitor because any
+// navigation off the app origin becomes an ACTION_VIEW intent.
+function legal(): HTMLElement {
+  const wrap = el("div", "drawer-legal");
+  for (const [label, href] of [
+    ["Privacy policy", "https://opendungeonmaster.com/privacy/"],
+    ["Terms", "https://opendungeonmaster.com/terms/"],
+  ] as const) {
+    const link = el("a", "", label);
+    link.href = href;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    wrap.append(link);
+  }
+  return wrap;
+}
+
 export function renderDrawer(): void {
   const items: HTMLElement[] = [profile(), hosts()];
   const nav = el("nav", "drawer-nav");
@@ -190,6 +210,6 @@ export function renderDrawer(): void {
     nav.append(navItem("sparkles", "Story AI", () => renderLocalAi(true)));
   }
   nav.append(settingsItem());
-  items.push(nav);
+  items.push(nav, legal());
   drawer.replaceChildren(...items);
 }

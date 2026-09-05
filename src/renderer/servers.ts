@@ -176,12 +176,21 @@ export function renderAdd(prefill: string): void {
     })();
   });
   const hint = el("p", "hint center", "An invite link or QR link pasted here works too.");
+  const card = formCard(form, hint);
+  // Where there is a camera: the server's own corner QR button shows its
+  // address as a code, and an invite QR carries a room code as well. Both
+  // land in the same flow as a paste.
+  if (window.odm.scanInvite) {
+    const scan = button("secondary", "Scan a QR code", (btn) => void scanInvite(btn, error), "qr");
+    scan.classList.add("block");
+    card.append(scan);
+  }
   show(
     "narrow",
     backLink("Home", () => renderHome()),
     intro("Add a server", "Where does your party gather?"),
     joinBanner(),
-    formCard(form, hint),
+    card,
   );
   originField.focus();
 }

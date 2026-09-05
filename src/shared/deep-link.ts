@@ -63,9 +63,11 @@ export function parseJoinLink(raw: string): JoinLink | null {
   return { origin, code };
 }
 
-// Any invite shape a person might paste, scan, or open: the odm:// link, or
-// the https interstitial link the QR codes carry
-// (https://opendungeonmaster.com/j?s=...&c=CODE, also /j/CODE?s=...).
+// Any invite shape a person might paste, scan, or open: the odm:// link, the
+// https interstitial link the QR codes carry
+// (https://opendungeonmaster.com/j?s=...&c=CODE, also /j/CODE?s=...), or a
+// server's own readable join link (https://host/join/CODE), which is the one
+// people see printed next to the room code.
 export function parseAnyLink(raw: string): JoinLink | null {
   const direct = parseJoinLink(raw);
   if (direct) return direct;
@@ -76,14 +78,41 @@ export function parseAnyLink(raw: string): JoinLink | null {
   } catch {
     return null;
   }
-  if (url.protocol !== "https:" || url.host !== "opendungeonmaster.com") return null;
-  if (!url.pathname.startsWith("/j")) return null;
-  const origin = normalizeOrigin(url.searchParams.get("s") ?? "");
-  const code = (url.searchParams.get("c") ?? url.pathname.split("/")[2] ?? "")
-    .trim()
-    .toUpperCase();
+  if (url.protocol === "https:" && url.host === "opendungeonmaster.com") {
+    if (!url.pathname.startsWith("/j")) return null;
+    const origin = normalizeOrigin(url.searchParams.get("s") ?? "");
+    const code = (url.searchParams.get("c") ?? url.pathname.split("/")[2] ?? "")
+      .trim()
+      .toUpperCase();
+    if (!origin || !CODE_SHAPE.test(code)) return null;
+    return { origin, code };
+  }
+  const joined = /^\/join\/([^/]+)\/?$/.exec(url.pathname);
+  if (!joined) return null;
+  const origin = normalizeOrigin(url.href);
+  const code = decodeURIComponent(joined[1] ?? "").trim().toUpperCase();
   if (!origin || !CODE_SHAPE.test(code)) return null;
   return { origin, code };
+}
+
+// A bare server address, the shape the server's own floating QR button
+// encodes (its origin, nothing else): scanning one means "add this server",
+// with no campaign to join. Only http(s) with no path to speak of counts, so
+// a join link never reads as a server address by accident; the invite shapes
+// above are tried first by every caller.
+export function parseServerAddress(raw: string): string | null {
+  if (typeof raw !== "string" || raw.length > 300) return null;
+  const origin = normalizeOrigin(raw);
+  if (!origin) return null;
+  let url: URL;
+  try {
+    url = new URL(raw.trim());
+  } catch {
+    return null;
+  }
+  if (url.pathname !== "/" && url.pathname !== "") return null;
+  if (url.search || url.hash) return null;
+  return origin;
 }
 
 // Picks the odm:// link out of a process argv, if one is present.

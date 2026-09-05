@@ -84,10 +84,16 @@ export function joinBanner(): HTMLElement | null {
   const banner = el("div", "panel ornate banner");
   banner.append(chip("link"));
   const grow = el("div", "grow");
-  grow.append(el("div", "detail", "You were invited to a campaign"));
-  const line = el("div");
-  line.append(el("span", "code", intent.code), el("span", "detail", `  on ${intent.origin}`));
-  grow.append(line);
+  if (intent.code) {
+    grow.append(el("div", "detail", "You were invited to a campaign"));
+    const line = el("div");
+    line.append(el("span", "code", intent.code), el("span", "detail", `  on ${intent.origin}`));
+    grow.append(line);
+  } else {
+    // A scanned server address: there is no room to join, only a server to
+    // add, and the form below already holds its address.
+    grow.append(el("div", "detail", "Adding a server"), el("div", "", intent.origin));
+  }
   banner.append(grow);
   return banner;
 }

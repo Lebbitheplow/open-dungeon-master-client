@@ -13,6 +13,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { pruneServerPayload } from "./prune-server-payload.mjs";
 
 const repo = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const serverDir = path.resolve(
@@ -83,6 +84,9 @@ try {
       2,
     ),
   );
+  // The tracer swept the whole worktree into the payload; keep only what
+  // the server reaches at runtime (scripts/prune-server-payload.mjs).
+  console.log(`Dropped from the payload: ${pruneServerPayload(vendorDir).join(", ")}`);
 } finally {
   fs.rmSync(path.join(buildDir, "node_modules"), { recursive: true, force: true });
   run("git", ["-C", serverDir, "worktree", "remove", "--force", buildDir]);
