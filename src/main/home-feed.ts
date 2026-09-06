@@ -1,8 +1,10 @@
 import {
   CAMPAIGNS_PATH,
+  COVER_MAX_BYTES,
   HOME_FETCH_TIMEOUT_MS,
   createHomeFeed,
   hostKindFor,
+  imageDataUrl,
   type FetchOutcome,
   type HomeFeedController,
   type HostInput,
@@ -23,6 +25,25 @@ export async function fetchCampaigns(origin: string, token: string): Promise<Fet
     return { kind: "reply", status: res.status, body: await res.json().catch(() => null) };
   } catch {
     return { kind: "failed", error: `Could not reach ${origin}.` };
+  }
+}
+
+// One cover as a data URL, or "" for anything but an image answered with
+// 200 within the size cap. url must already have passed coverRequestUrl.
+export async function fetchCoverImage(url: string, token: string): Promise<string> {
+  try {
+    const res = await fetch(url, {
+      headers: { authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(HOME_FETCH_TIMEOUT_MS),
+    });
+    if (res.status !== 200) return "";
+    const length = Number(res.headers.get("content-length") ?? 0);
+    if (length > COVER_MAX_BYTES) return "";
+    const bytes = Buffer.from(await res.arrayBuffer());
+    if (bytes.byteLength > COVER_MAX_BYTES) return "";
+    return imageDataUrl(res.headers.get("content-type") ?? "", bytes.toString("base64")) ?? "";
+  } catch {
+    return "";
   }
 }
 

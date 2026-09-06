@@ -25,9 +25,10 @@ import {
   normalizeOrigin,
   originCandidates,
   parseAnyLink,
-  parseServerAddress,
+  parseLinkOrAddress,
   type JoinLink,
 } from "../../src/shared/deep-link";
+import { coverRequestUrl, imageDataUrl, LOCAL_HOST_ID } from "../../src/shared/home-feed-logic";
 import { landingPath, safeInnerPath } from "../../src/shared/open-path";
 import type {
   AccountDeletionResult,
@@ -840,8 +841,9 @@ const bridge: OdmBridge = {
   // users expect from a root screen (the launcher, not a dead tap).
   leaveApp: () => App.exitApp(),
 
+  // A pasted invite or bare server address takes the same path as a scan.
   async openInviteLink(raw) {
-    const link = parseAnyLink(String(raw ?? ""));
+    const link = parseLinkOrAddress(String(raw ?? ""));
     if (!link) return false;
     await handleJoinLink(link);
     return true;
@@ -857,21 +859,18 @@ const bridge: OdmBridge = {
       });
       const raw = String(result.ScanResult ?? "").trim();
       if (!raw) return { ok: true };
-      const link = parseAnyLink(raw);
-      if (link) {
-        await handleJoinLink(link);
-        return { ok: true };
-      }
-      const address = parseServerAddress(raw);
-      if (!address) {
+      const link = parseLinkOrAddress(raw);
+      if (!link) {
         return {
           ok: false,
           error: "That QR code is not an Open Dungeon Master invite or server address.",
         };
       }
-      // No room code: the same path an invite takes, minus the join. A known
-      // server opens straight away; a new one lands on its sign-in screen.
-      await handleJoinLink({ origin: address, code: "" });
+      // A bare address is the same path an invite takes, minus the join. A
+      // known server (by address, or by the world's instanceId when a tunnel
+      // came back at a new hostname) opens straight away with its saved
+      // session; only a new one lands on its sign-in screen.
+      await handleJoinLink(link);
       return { ok: true };
     } catch (err) {
       // Backing out of the scanner is not an error worth showing.
@@ -913,6 +912,63 @@ const bridge: OdmBridge = {
 
   homeFeed: () => homeFeed.refresh(),
   homeFeedCached: () => homeFeed.cached(),
+
+  // A cover for the home screen, fetched natively with the host's own
+  // session (the WebView's image tags carry none, and the server keeps
+  // uploads behind its login) and only from that host. "" when it cannot
+  // be had right now.
+  async coverImage(hostId, url) {
+    const id = String(hostId ?? "");
+    let origin = "";
+    let token = "";
+    if (id === LOCAL_HOST_ID) {
+      const profile = await loadLocalProfile();
+      origin = (await localWorld.status()).origin;
+      token = profileTokenAlive(profile) ? (profile?.token ?? "") : "";
+    } else {
+      const server = (await loadServers()).find((entry) => entry.id === id);
+      if (server && tokenAlive(server)) {
+        origin = server.origin;
+        token = server.token;
+      }
+    }
+    const target = coverRequestUrl(origin, String(url ?? ""));
+    if (!target || !token) return "";
+    try {
+      // On native, a blob response arrives as a base64 string.
+      const response = await CapacitorHttp.request({
+        url: target,
+        method: "GET",
+        headers: { authorization: `Bearer ${token}` },
+        connectTimeout: TIMEOUT_MS,
+        readTimeout: TIMEOUT_MS,
+        responseType: "blob",
+      });
+      if (response.status !== 200 || typeof response.data !== "string") return "";
+      const headers = (response.headers ?? {}) as Record<string, string>;
+      const type = Object.entries(headers).find(([name]) => name.toLowerCase() === "content-type")?.[1] ?? "";
+      return imageDataUrl(type, response.data) ?? "";
+    } catch {
+      return "";
+    }
+  },
+
+  // The OS share sheet for the world's public address (or any link the
+  // shell hands out): chat apps, mail, whatever the phone has.
+  async shareLink(input) {
+    try {
+      await Share.share({
+        title: String(input?.title ?? ""),
+        text: String(input?.text ?? ""),
+        url: String(input?.url ?? ""),
+        dialogTitle: String(input?.title ?? "Share"),
+      });
+      return true;
+    } catch {
+      // Dismissing the sheet rejects; that is not a failure worth a word.
+      return false;
+    }
+  },
 
   async localStart() {
     try {
@@ -1018,6 +1074,13 @@ async function routeWebviewMessage(event: unknown): Promise<void> {
     await handleShareRequest(share);
     return;
   }
+  const link = shareLinkRequestOf(detail);
+  if (link) {
+    // A page's share button (invite dialog, server address card): the
+    // webview has no Web Share API, so the sheet opens from here.
+    await bridge.shareLink?.(link);
+    return;
+  }
   if (await bleRelay.handleMessage(detail)) return;
   await downloadRelay.handleMessage(detail);
 }
@@ -1028,6 +1091,20 @@ function isShellRequest(detail: unknown): boolean {
     typeof detail === "object" &&
     (detail as { odmShell?: unknown }).odmShell === "servers"
   );
+}
+
+function shareLinkRequestOf(detail: unknown): { title: string; text: string; url: string } | null {
+  if (!detail || typeof detail !== "object") return null;
+  const message = detail as { odmShell?: unknown; url?: unknown; title?: unknown; text?: unknown };
+  if (message.odmShell !== "share-link" || typeof message.url !== "string") return null;
+  // Only web addresses leave the app; nothing else could open a sheet
+  // anyone would want.
+  if (!/^https?:\/\//i.test(message.url)) return null;
+  return {
+    title: typeof message.title === "string" ? message.title : "",
+    text: typeof message.text === "string" ? message.text : "",
+    url: message.url,
+  };
 }
 
 function shareRequestOf(detail: unknown): { action: string; id?: number } | null {

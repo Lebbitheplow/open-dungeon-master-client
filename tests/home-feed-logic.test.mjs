@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   classifyOutcome,
+  coverRequestUrl,
   createHomeFeed,
   hostFromCache,
   hostKindFor,
+  imageDataUrl,
   isTunnelOrigin,
   localOutcome,
   orderHosts,
@@ -312,4 +314,24 @@ test("a refresh requested mid-flight runs once more afterwards", async () => {
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.equal(asked, 2);
   assert.equal(events.length, 2);
+});
+
+test("a cover is only requested from its own host, under /uploads", () => {
+  const host = "https://dungeon.example";
+  assert.equal(coverRequestUrl(host, `${host}/uploads/keep.png`), `${host}/uploads/keep.png`);
+  // Another host, another path, or no host at all: the token stays home.
+  assert.equal(coverRequestUrl(host, "https://evil.example/uploads/keep.png"), null);
+  assert.equal(coverRequestUrl(host, `${host}/api/admin/settings`), null);
+  assert.equal(coverRequestUrl(host, `${host}/uploadsx/keep.png`), null);
+  assert.equal(coverRequestUrl("", `${host}/uploads/keep.png`), null);
+  assert.equal(coverRequestUrl(host, "/uploads/keep.png"), null);
+  assert.equal(coverRequestUrl(host, ""), null);
+});
+
+test("only image bodies become data URLs", () => {
+  assert.equal(imageDataUrl("image/png", "AAAA"), "data:image/png;base64,AAAA");
+  assert.equal(imageDataUrl("Image/JPEG; charset=binary", "AAAA"), "data:image/jpeg;base64,AAAA");
+  assert.equal(imageDataUrl("text/html", "AAAA"), null);
+  assert.equal(imageDataUrl("", "AAAA"), null);
+  assert.equal(imageDataUrl("image/png", ""), null);
 });

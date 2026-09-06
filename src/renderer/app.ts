@@ -6,7 +6,9 @@ import { closeDrawer, createDrawer, isDrawerOpen } from "./drawer.js";
 import { renderHome } from "./home.js";
 import { aiProgress } from "./local-ai.js";
 import { renderAdd, renderAuth } from "./servers.js";
+import { renderSettings } from "./settings.js";
 import { refresh, refreshFeed, state } from "./state.js";
+import { endTour, isTourActive, maybeStartAppTour } from "./tour.js";
 
 const { drawer, scrim } = createDrawer();
 mountShell(drawer, scrim);
@@ -19,22 +21,31 @@ function rerenderHome(): void {
   if (state.screenName === "home") renderHome();
 }
 
+// Screens that show live status (the device world, the tunnel) repaint in
+// place when it changes; the others keep what they have.
+function rerenderLive(): void {
+  if (state.screenName === "home") renderHome();
+  else if (state.screenName === "settings") renderSettings();
+}
+
 window.odm.onEvent((event) => {
   if (event.kind === "show-manager") {
     goHome();
     void refreshFeed();
   } else if (event.kind === "back") {
-    // Android's back gesture: an open drawer closes first, any inner screen
-    // returns home, and home leaves the app, the way a root screen should.
-    if (isDrawerOpen()) closeDrawer();
+    // Android's back gesture: a running tour ends first, then an open
+    // drawer closes, any inner screen returns home, and home leaves the
+    // app, the way a root screen should.
+    if (isTourActive()) endTour();
+    else if (isDrawerOpen()) closeDrawer();
     else if (state.screenName === "home") void window.odm.leaveApp?.();
     else goHome();
   } else if (event.kind === "local-status") {
     state.local = event.status;
-    rerenderHome();
+    rerenderLive();
   } else if (event.kind === "tunnel-status") {
     state.tunnel = event.status;
-    rerenderHome();
+    rerenderLive();
   } else if (event.kind === "home-feed") {
     state.feed = event.feed;
     rerenderHome();
@@ -59,7 +70,7 @@ window.odm.onEvent((event) => {
     } else if (progress.state === "error") {
       state.updateNote = progress.error;
     }
-    rerenderHome();
+    rerenderLive();
   } else if (event.kind === "join-request") {
     state.joinIntent = { origin: event.origin, code: event.code, knownServerId: event.knownServerId };
     void refresh().then(() => {
@@ -105,4 +116,5 @@ void window.odm
 void refresh().then(() => {
   renderHome();
   void refreshFeed();
+  maybeStartAppTour();
 });

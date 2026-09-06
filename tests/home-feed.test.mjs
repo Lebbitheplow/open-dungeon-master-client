@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { createDesktopHomeFeed } from "../dist/main/home-feed.js";
+import { createDesktopHomeFeed, fetchCoverImage } from "../dist/main/home-feed.js";
 import { LOCAL_SERVER_ID, ServerStore } from "../dist/main/servers.js";
 
 // The desktop wiring: hosts come out of the servers registry with their
@@ -151,4 +152,52 @@ test("removing a server drops its cache entry", async () => {
   assert.ok(h.store.homeCache()[h.remote.id]);
   h.store.remove(h.remote.id);
   assert.equal(h.store.homeCache()[h.remote.id], undefined);
+});
+
+// The cover fetch against a real listener: the bearer token rides along,
+// and anything but an image answered with 200 comes back as "".
+async function coverServer(handler) {
+  const server = http.createServer(handler);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  return { origin, close: () => new Promise((resolve) => server.close(resolve)) };
+}
+
+test("fetchCoverImage sends the host's token and returns an image as a data URL", async () => {
+  const seen = [];
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+  const srv = await coverServer((req, res) => {
+    seen.push(`${req.url}|${req.headers.authorization}`);
+    if (req.headers.authorization !== "Bearer remote-tok") {
+      res.writeHead(401, { "content-type": "application/json" });
+      res.end('{"error":"Login required."}');
+      return;
+    }
+    if (req.url === "/uploads/page.html") {
+      res.writeHead(200, { "content-type": "text/html" });
+      res.end("<p>not art</p>");
+      return;
+    }
+    res.writeHead(200, { "content-type": "image/png" });
+    res.end(png);
+  });
+  try {
+    const data = await fetchCoverImage(`${srv.origin}/uploads/keep.png`, "remote-tok");
+    assert.equal(data, `data:image/png;base64,${png.toString("base64")}`);
+    assert.equal(await fetchCoverImage(`${srv.origin}/uploads/keep.png`, "wrong"), "");
+    assert.equal(await fetchCoverImage(`${srv.origin}/uploads/page.html`, "remote-tok"), "");
+    assert.deepEqual(seen, [
+      "/uploads/keep.png|Bearer remote-tok",
+      "/uploads/keep.png|Bearer wrong",
+      "/uploads/page.html|Bearer remote-tok",
+    ]);
+  } finally {
+    await srv.close();
+  }
+});
+
+test("fetchCoverImage answers \"\" when the host is gone", async () => {
+  const srv = await coverServer(() => undefined);
+  await srv.close();
+  assert.equal(await fetchCoverImage(`${srv.origin}/uploads/keep.png`, "remote-tok"), "");
 });

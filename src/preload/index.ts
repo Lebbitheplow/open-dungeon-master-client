@@ -19,6 +19,7 @@ const bridge: OdmBridge = {
   homeFeed: () => ipcRenderer.invoke("home:feed"),
   homeFeedCached: () => ipcRenderer.invoke("home:feed-cached"),
   openInviteLink: (raw: string) => ipcRenderer.invoke("servers:open-invite", raw),
+  coverImage: (hostId: string, url: string) => ipcRenderer.invoke("home:cover", hostId, url),
   localStart: () => ipcRenderer.invoke("local:start"),
   localCreateAccount: (input) => ipcRenderer.invoke("local:create-account", input),
   localLogin: (input) => ipcRenderer.invoke("local:login", input),

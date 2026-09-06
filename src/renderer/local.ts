@@ -1,10 +1,12 @@
 // The device world: entering it (which starts it), the first-run name and
 // the account screens, and the share row that shows the world's public
 // address and the switch for it.
+import { encodeQr, qrSvg } from "../shared/qr.js";
 import { backLink, formCard, intro, show } from "./chrome.js";
 import { badge, button, copyText, el, input, spinner } from "./dom.js";
 import { renderHome } from "./home.js";
 import { renderLocalAi } from "./local-ai.js";
+import { renderSettings } from "./settings.js";
 import { localPlayAt, refresh, state } from "./state.js";
 
 // Opens the device world, starting it first when it sleeps. path is the
@@ -40,10 +42,37 @@ export function openLocal(path: string): Promise<void> {
   return playLocal(null, path);
 }
 
+// Repaints whichever screen holds the share row.
+function rerenderShareScreen(): void {
+  if (state.screenName === "home") renderHome();
+  else if (state.screenName === "settings") renderSettings();
+}
+
+// The public address as a QR code: the app's scanner reads it as a server
+// to add, a phone camera opens it in a browser. Built inline (the shell's
+// own encoder in src/shared/qr.ts), so it works offline and under the
+// page's script-src 'self' policy.
+function qrPanel(url: string): HTMLElement {
+  const panel = el("div", "qr-panel");
+  const frame = el("div", "qr-frame");
+  frame.innerHTML = qrSvg(encodeQr(url));
+  frame.querySelector("svg")?.setAttribute("aria-label", `QR code for ${url}`);
+  panel.append(
+    frame,
+    el(
+      "p",
+      "hint center",
+      "Scan with the Open Dungeon Master app to add this world, or with a phone camera to open it in a browser.",
+    ),
+  );
+  return panel;
+}
+
 // Sharing only means anything while the world runs, and it is a property
 // of that world rather than a peer of it. Inviting players from a campaign
 // lobby starts it too, so this row is the overview and the off switch more
-// than the usual way in.
+// than the usual way in. While shared, the address can be copied, sent
+// through the system share sheet where there is one, or shown as a QR.
 export function shareRow(): HTMLElement {
   const row = el("div", "hero-actions stacked share-row");
   const tunnel = state.tunnel;
@@ -55,12 +84,32 @@ export function shareRow(): HTMLElement {
         copy.lastChild!.textContent = worked ? "Copied" : "Copy failed";
         setTimeout(() => (copy.lastChild!.textContent = "Copy link"), 1500);
       });
-    }, "link");
+    }, "copy");
+    row.append(copy);
+    if (window.odm.shareLink) {
+      row.append(
+        button("secondary", "Share", () => {
+          void window.odm.shareLink?.({
+            title: "Join my world on Open Dungeon Master",
+            text: `Join my world on Open Dungeon Master: ${tunnel.url}`,
+            url: tunnel.url,
+          });
+        }, "share"),
+      );
+    }
+    row.append(
+      button("secondary", state.shareQrOpen ? "Hide QR" : "QR code", () => {
+        state.shareQrOpen = !state.shareQrOpen;
+        rerenderShareScreen();
+      }, "qr"),
+    );
     const stop = button("quiet", "Stop sharing", (btn) => {
       btn.disabled = true;
+      state.shareQrOpen = false;
       void window.odm.shareStop();
     });
-    row.append(copy, stop);
+    row.append(stop);
+    if (state.shareQrOpen) row.append(qrPanel(tunnel.url));
     return row;
   }
   if (tunnel.state === "starting") {
@@ -79,7 +128,7 @@ export function shareRow(): HTMLElement {
       void window.odm.shareStart().then(async (result) => {
         if (!result.ok) state.tunnel = { state: "error", url: "", mode: "", error: result.error };
         await refresh().catch(() => undefined);
-        if (state.screenName === "home") renderHome();
+        rerenderShareScreen();
       });
     },
     "globe",

@@ -14,11 +14,12 @@ import {
   CODE_SHAPE,
   normalizeOrigin,
   originCandidates,
-  parseAnyLink,
+  parseLinkOrAddress,
   type JoinLink,
 } from "../shared/deep-link";
+import { coverRequestUrl } from "../shared/home-feed-logic";
 import { landingPath, safeInnerPath } from "../shared/open-path";
-import { createDesktopHomeFeed } from "./home-feed";
+import { createDesktopHomeFeed, fetchCoverImage } from "./home-feed";
 import type { LocalAiManager } from "./local-ai/manager";
 import { wireImageAi, wireTextAi } from "./local-ai/wiring";
 import type { LocalServer } from "./local-server";
@@ -103,6 +104,17 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
   };
   ipcMain.handle("home:feed", () => homeFeed.refresh());
   ipcMain.handle("home:feed-cached", () => homeFeed.cached());
+  // A cover for the home screen, fetched with the host's own session and
+  // only from that host (the renderer names the host; the url must belong
+  // to it). "" for anything that cannot be had right now.
+  ipcMain.handle("home:cover", async (_event, hostId: unknown, url: unknown) => {
+    const id = str(hostId, 64);
+    const origin = id === LOCAL_SERVER_ID ? localStatus().origin : (store.get(id)?.origin ?? "");
+    const target = coverRequestUrl(origin, str(url, 700));
+    const token = id ? store.token(id) : null;
+    if (!target || !token) return "";
+    return fetchCoverImage(target, token);
+  });
 
   local.onStatus(() => {
     win.sendEvent({ kind: "local-status", status: localStatus() });
@@ -230,10 +242,13 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     });
   };
 
-  // Paste-an-invite support: the same links QR codes carry, typed or pasted
-  // into the Add a server screen, behave exactly like a clicked deep link.
+  // Paste-an-invite support: the same links QR codes carry, or a server's
+  // bare address (its own corner QR), typed or pasted into the Add a server
+  // screen, behave exactly like a clicked deep link or a scan: a server the
+  // shell already has opens with its saved session rather than being added
+  // a second time.
   ipcMain.handle("servers:open-invite", async (_event, raw: unknown) => {
-    const link = parseAnyLink(str(raw, 700));
+    const link = parseLinkOrAddress(str(raw, 700));
     if (!link) return false;
     await handleJoinLink(link);
     return true;

@@ -169,16 +169,22 @@ body::before {
   cursor: default;
   font: inherit;
 }
+.brand { min-width: 0; }
 .brand.link { cursor: pointer; }
 .brand.link:hover .wordmark { color: var(--gold-200); }
 
 .wordmark {
   font-family: var(--font-display);
-  font-size: clamp(0.95rem, 3.6vw, 1.1rem);
+  font-size: clamp(0.85rem, 3.2vw, 1.1rem);
   letter-spacing: 0.04em;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   transition: color 150ms var(--ease-snap);
 }
+/* A phone's topbar holds the menu, the tile and three tool buttons; the
+   wordmark would only be an ellipsis there, so the tile carries the brand. */
+@media (max-width: 439px) { .wordmark { display: none; } }
 
 .tile {
   display: inline-flex;

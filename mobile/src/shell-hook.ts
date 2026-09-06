@@ -9,6 +9,9 @@
 //       from the campaign lobby's invite dialog. Requests go up as messages;
 //       every answer (and every unsolicited change) comes back down as an
 //       "odm-share-status" message on the messageFromNative event.
+//   odmShell.shareLink      the OS share sheet for a link (the webview has
+//       no navigator.share); the invite dialog and the server address card
+//       use it to offer Share next to Copy and the QR code.
 (() => {
   interface ShareStatus {
     supported: boolean;
@@ -21,6 +24,7 @@
   interface ShellHost {
     platform: "android";
     showServers(): void;
+    shareLink(input: { title: string; text: string; url: string }): Promise<boolean>;
     share: {
       status(): Promise<ShareStatus>;
       start(): Promise<ShareStatus>;
@@ -89,6 +93,12 @@
     platform: "android",
     showServers() {
       post({ odmShell: "servers" });
+    },
+    shareLink(input) {
+      post({ odmShell: "share-link", title: input.title, text: input.text, url: input.url });
+      // The sheet's outcome never comes back; the page only needs to know
+      // the request left.
+      return Promise.resolve(true);
     },
     share: {
       status: () => request("status"),

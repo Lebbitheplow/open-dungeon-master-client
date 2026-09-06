@@ -3,7 +3,9 @@
 // card, the invite banner, and the footer with the updater controls.
 import { button, chip, el, icon, iconButton, spinner, tile } from "./dom.js";
 import { renderDrawer, toggleDrawer } from "./drawer.js";
+import { renderHelp } from "./help.js";
 import { renderHome } from "./home.js";
+import { renderSettings } from "./settings.js";
 import { isAndroid, refresh, state } from "./state.js";
 
 const root = document.getElementById("app") as HTMLDivElement;
@@ -17,22 +19,38 @@ export function mountShell(drawer: HTMLElement, scrim: HTMLElement): void {
   root.replaceChildren(drawer, scrim, page);
 }
 
+function goHome(): void {
+  void refresh().then(() => renderHome());
+}
+
+// The frame's constant row: menu and wordmark on the left; on the right,
+// Home (off the home screen), the user guide and Settings, so no screen is
+// ever more than one tap from any of them.
 function topbar(): HTMLElement {
   const bar = el("header", "topbar");
   const lead = el("div", "lead");
-  lead.append(iconButton("menu", "Menu", () => toggleDrawer(), "hamburger"));
-  const brand = el("button", state.screenName === "home" ? "brand" : "brand link");
+  const menu = iconButton("menu", "Menu", () => toggleDrawer(), "hamburger");
+  menu.dataset.tour = "topbar-menu";
+  lead.append(menu);
+  const atHome = state.screenName === "home";
+  const brand = el("button", atHome ? "brand" : "brand link");
   brand.type = "button";
+  brand.dataset.tour = "brand";
   brand.append(tile(), el("span", "wordmark", "Open Dungeon Master"));
-  if (state.screenName !== "home") {
-    brand.addEventListener("click", () => void refresh().then(() => renderHome()));
+  if (!atHome) {
+    brand.addEventListener("click", goHome);
     brand.title = "Back home";
   }
   lead.append(brand);
   bar.append(lead);
-  const meta = el("div", "meta");
-  if (state.appInfo?.version) meta.append(el("span", "", `v${state.appInfo.version}`));
-  bar.append(meta);
+  const tools = el("div", "meta tools");
+  tools.dataset.tour = "topbar-tools";
+  if (!atHome) tools.append(iconButton("home", "Home", goHome));
+  if (state.screenName !== "help") tools.append(iconButton("help", "User guide", () => renderHelp()));
+  if (state.screenName !== "settings") {
+    tools.append(iconButton("gear", "Settings", () => renderSettings()));
+  }
+  bar.append(tools);
   return bar;
 }
 
@@ -108,14 +126,10 @@ function rerenderHome(): void {
   if (state.screenName === "home") renderHome();
 }
 
-// Version, update state and the way home, in one quiet line at the bottom.
-export function footer(): HTMLElement {
-  const foot = el("footer", "foot");
-  const version = state.appInfo?.version
-    ? `Open Dungeon Master ${state.appInfo.version}`
-    : "Open Dungeon Master";
-  foot.append(el("span", "", state.updateNote || version));
-  if (isAndroid) return foot;
+// The update button: install when one is ready, otherwise check. Shared by
+// the home footer and the Settings screen; rerender repaints whichever
+// screen asked, once the answer lands in state.updateNote.
+export function updateControls(rerender: () => void): HTMLElement {
   const update = state.updateStatus;
   if (update?.available && update.canSelfUpdate) {
     const install = button("primary", `Update to ${update.latest}`, (btn) => {
@@ -124,35 +138,43 @@ export function footer(): HTMLElement {
       void window.odm.updateInstall().then((result) => {
         if (!result.ok) {
           state.updateNote = result.error;
-          rerenderHome();
+          rerender();
         }
       });
-      renderHome();
+      rerender();
     }, "download");
     install.classList.add("quiet-size");
-    foot.append(install);
-  } else {
-    foot.append(
-      button("quiet", "Check for updates", (btn) => {
-        btn.disabled = true;
-        state.updateNote = "Checking...";
-        void window.odm.updateCheck().then((result) => {
-          if (result.ok) {
-            state.updateStatus = result.update;
-            state.updateNote = !result.update.available
-              ? "You have the latest version."
-              : result.update.canSelfUpdate
-                ? `Version ${result.update.latest} is ready to install.`
-                : `Update available: ${result.update.latest}. ${result.update.instruction}`;
-          } else {
-            state.updateNote = result.error;
-          }
-          rerenderHome();
-        });
-        renderHome();
-      }),
-    );
+    return install;
   }
+  return button("quiet", "Check for updates", (btn) => {
+    btn.disabled = true;
+    state.updateNote = "Checking...";
+    void window.odm.updateCheck().then((result) => {
+      if (result.ok) {
+        state.updateStatus = result.update;
+        state.updateNote = !result.update.available
+          ? "You have the latest version."
+          : result.update.canSelfUpdate
+            ? `Version ${result.update.latest} is ready to install.`
+            : `Update available: ${result.update.latest}. ${result.update.instruction}`;
+      } else {
+        state.updateNote = result.error;
+      }
+      rerender();
+    });
+    rerender();
+  });
+}
+
+// Version, update state and the way home, in one quiet line at the bottom.
+export function footer(): HTMLElement {
+  const foot = el("footer", "foot");
+  const version = state.appInfo?.version
+    ? `Open Dungeon Master ${state.appInfo.version}`
+    : "Open Dungeon Master";
+  foot.append(el("span", "", state.updateNote || version));
+  if (isAndroid) return foot;
+  foot.append(updateControls(rerenderHome));
   foot.append(el("span", "", "Ctrl+M brings you back here from any world."));
   return foot;
 }

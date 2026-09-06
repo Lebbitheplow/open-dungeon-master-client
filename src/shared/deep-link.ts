@@ -115,6 +115,19 @@ export function parseServerAddress(raw: string): string | null {
   return origin;
 }
 
+// Everything a scan or a paste can carry: an invite of any shape, or a bare
+// server address read as a join with no room code. Both bridges route the
+// result through the one join handler, which is what keeps a server the
+// player already has from being added twice: the handler matches the
+// address against the saved list (and the world's instanceId when a tunnel
+// came back at a new play-CODE hostname) before it ever shows a sign-in.
+export function parseLinkOrAddress(raw: string): JoinLink | null {
+  const link = parseAnyLink(raw);
+  if (link) return link;
+  const origin = parseServerAddress(raw);
+  return origin ? { origin, code: "" } : null;
+}
+
 // Picks the odm:// link out of a process argv, if one is present.
 export function joinLinkFromArgv(argv: readonly string[]): JoinLink | null {
   for (const arg of argv) {

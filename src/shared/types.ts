@@ -253,9 +253,19 @@ export interface OdmBridge {
   connect(serverId: string, joinCode?: string, path?: string): Promise<ConnectResult>;
   // Android only: the back gesture on the home screen leaves the app.
   leaveApp?(): Promise<void>;
-  // Feeds a pasted invite link (odm:// or the https /j shape) into the same
-  // flow as a clicked deep link. False means the text was not an invite link.
+  // Feeds a pasted invite link (odm:// or the https /j shape) or a bare
+  // server address into the same flow as a clicked deep link or a scan: a
+  // server the player already has (by address, or by the world's instanceId
+  // when a tunnel came back at a new hostname) opens with its saved session
+  // instead of being added again. False means the text was neither.
   openInviteLink(raw: string): Promise<boolean>;
+  // One campaign cover as a data URL, fetched with the host's session (the
+  // server keeps uploads behind its login). "" when it cannot be had.
+  coverImage(hostId: string, url: string): Promise<string>;
+  // The system share sheet, where the platform has one (Android). Absent
+  // on desktop, so the share buttons are withheld rather than dead. False
+  // means the sheet was dismissed or could not open.
+  shareLink?(input: { title: string; text: string; url: string }): Promise<boolean>;
   // Present only where a camera scanner exists (Android). Scans one QR code
   // and routes a recognized invite into the join flow, or a bare server
   // address (the server's own corner QR button) into the add-server flow.

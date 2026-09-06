@@ -162,11 +162,15 @@ export function renderAdd(prefill: string): void {
     submit.disabled = true;
     error.textContent = "";
     void (async () => {
-      // A pasted invite link takes the exact deep-link path: auto-connect on
-      // a known server, or a join-request event that re-renders this screen
-      // with the banner and the origin filled in.
+      // A pasted invite link or server address takes the exact deep-link
+      // path: auto-connect on a known server (by address, or by the world's
+      // instanceId when it moved), or a join-request event that lands on
+      // that server's sign-in. A bare host without a scheme is probed first
+      // so the address that answered is the one the path sees; only a
+      // server that never answers stays here with the error.
       if (await window.odm.openInviteLink(originField.value)) return;
       const result = await window.odm.probeServer(originField.value);
+      if (result.ok && (await window.odm.openInviteLink(result.probe.origin))) return;
       submit.disabled = false;
       if (result.ok) {
         renderAuth(result.probe, "login", "");

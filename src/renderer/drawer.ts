@@ -4,9 +4,11 @@
 // replaced the old server-list screen, and the doors to everything else.
 import { el, icon, iconButton, statusDot } from "./dom.js";
 import { hostStatusLabel, relativeTime } from "../shared/home-view-logic.js";
+import { renderHelp } from "./help.js";
 import { renderLocalAi } from "./local-ai.js";
-import { openLocal, playLocal } from "./local.js";
+import { playLocal } from "./local.js";
 import { connectServer, forgetServer, renderAdd, renderDeleteAccount, scanInvite } from "./servers.js";
+import { renderSettings } from "./settings.js";
 import { DEVICE, isAndroid, state } from "./state.js";
 import type { HomeHost, ServerSummary } from "../shared/types";
 
@@ -25,6 +27,12 @@ export function createDrawer(): { drawer: HTMLElement; scrim: HTMLElement } {
   // drawer hanging over the page when the window shrinks again.
   WIDE.addEventListener("change", () => closeDrawer());
   return { drawer, scrim };
+}
+
+// The drawer node itself, for the tour to tell a drawer item from a page
+// element (the former needs the drawer open on a phone).
+export function drawerElement(): HTMLElement {
+  return drawer;
 }
 
 export function isDrawerOpen(): boolean {
@@ -77,9 +85,11 @@ function navItem(
   iconName: Parameters<typeof icon>[0],
   label: string,
   onClick: (btn: HTMLButtonElement) => void,
+  tour = "",
 ): HTMLButtonElement {
   const btn = el("button", "nav-item");
   btn.type = "button";
+  if (tour) btn.dataset.tour = tour;
   btn.append(icon(iconName), el("span", "grow", label));
   btn.addEventListener("click", () => {
     closeDrawer();
@@ -142,6 +152,7 @@ function serverRow(server: ServerSummary): HTMLElement {
 
 function hosts(): HTMLElement {
   const wrap = el("div", "drawer-hosts");
+  wrap.dataset.tour = "hosts";
   wrap.append(el("div", "drawer-eyebrow", "Hosts"));
   if (state.local.state !== "unavailable") {
     const detail = state.local.username || (state.local.firstRun ? "Not started yet" : "");
@@ -152,26 +163,6 @@ function hosts(): HTMLElement {
     );
   }
   for (const server of state.servers) wrap.append(serverRow(server));
-  return wrap;
-}
-
-function settingsItem(): HTMLElement {
-  const wrap = el("div");
-  const hint = el("p", "hint drawer-hint");
-  wrap.append(
-    navItem("sliders", "Account & settings", () => {
-      if (state.local.state === "running") {
-        void openLocal("/settings");
-        return;
-      }
-      hint.textContent =
-        state.local.state === "unavailable"
-          ? "Your account lives on the server you play on. Open it and use the account menu there."
-          : "Your device world must be running first. Enter it, then come back here.";
-      wrap.append(hint);
-      openDrawer();
-    }),
-  );
   return wrap;
 }
 
@@ -198,18 +189,23 @@ function legal(): HTMLElement {
 export function renderDrawer(): void {
   const items: HTMLElement[] = [profile(), hosts()];
   const nav = el("nav", "drawer-nav");
-  nav.append(navItem("plus", "Add a server", () => renderAdd(state.joinIntent?.origin ?? "")));
+  nav.append(
+    navItem("plus", "Add a server", () => renderAdd(state.joinIntent?.origin ?? ""), "add-server"),
+  );
   nav.append(
     window.odm.scanInvite
-      ? navItem("qr", "Scan / paste invite", (btn) => void scanInvite(btn))
-      : navItem("link", "Paste invite link", () => renderAdd(state.joinIntent?.origin ?? "")),
+      ? navItem("qr", "Scan / paste invite", (btn) => void scanInvite(btn), "invite")
+      : navItem("link", "Paste invite link", () => renderAdd(state.joinIntent?.origin ?? ""), "invite"),
   );
   // Story AI is chosen on the world's first run; the door only makes sense
   // once that world exists.
   if (state.local.state !== "unavailable" && !state.local.firstRun) {
-    nav.append(navItem("sparkles", "Story AI", () => renderLocalAi(true)));
+    nav.append(navItem("sparkles", "Story AI", () => renderLocalAi(true), "drawer-story-ai"));
   }
-  nav.append(settingsItem());
+  // Settings and the guide sit in the topbar of every screen too; here
+  // they keep the menu complete for anyone who looks for them in it.
+  nav.append(navItem("gear", "Settings", () => renderSettings(), "drawer-settings"));
+  nav.append(navItem("help", "Help & guide", () => renderHelp(), "drawer-help"));
   items.push(nav, legal());
   drawer.replaceChildren(...items);
 }

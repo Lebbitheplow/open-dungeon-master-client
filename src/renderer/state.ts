@@ -47,6 +47,9 @@ export const state = {
   // The last campaign feed, cached or fresh; null until the first answer.
   feed: null as HomeFeed | null,
   feedRefreshing: false,
+  // Whether the share row shows the public address as a QR code. Kept here
+  // because the row re-renders on every tunnel event.
+  shareQrOpen: false,
 };
 
 export async function refresh(): Promise<void> {

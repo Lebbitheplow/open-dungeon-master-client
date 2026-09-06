@@ -7,6 +7,7 @@ import {
   originCandidates,
   parseAnyLink,
   parseJoinLink,
+  parseLinkOrAddress,
   parseServerAddress,
 } from "../dist/shared/deep-link.js";
 
@@ -112,4 +113,28 @@ test("parseServerAddress takes a bare origin and nothing more", () => {
   assert.equal(parseServerAddress("play.example.com"), null);
   assert.equal(parseServerAddress("ftp://play.example.com"), null);
   assert.equal(parseServerAddress("https://good.com@evil.com"), null);
+});
+
+test("parseLinkOrAddress reads invites first, then a bare address as a codeless join", () => {
+  assert.deepEqual(parseLinkOrAddress("https://play.example.com/join/abcd2345"), {
+    origin: "https://play.example.com",
+    code: "ABCD2345",
+  });
+  assert.deepEqual(parseLinkOrAddress("odm://join?s=https%3A%2F%2Fplay.example.com&c=ABCD2345"), {
+    origin: "https://play.example.com",
+    code: "ABCD2345",
+  });
+  // The server's own corner QR: an address and nothing else.
+  assert.deepEqual(parseLinkOrAddress("https://play-abcd1234.opendungeonmaster.com/"), {
+    origin: "https://play-abcd1234.opendungeonmaster.com",
+    code: "",
+  });
+  assert.deepEqual(parseLinkOrAddress("http://192.168.1.50:3005"), {
+    origin: "http://192.168.1.50:3005",
+    code: "",
+  });
+  // A malformed invite is neither: it must not silently become an address.
+  assert.equal(parseLinkOrAddress("https://play.example.com/join/ab"), null);
+  assert.equal(parseLinkOrAddress("play.example.com"), null);
+  assert.equal(parseLinkOrAddress(""), null);
 });

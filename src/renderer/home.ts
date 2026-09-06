@@ -74,25 +74,46 @@ function sourceChip(host: HomeHost, label: string): HTMLElement {
   return wrap;
 }
 
-function coverArt(url: string | null, className: string): HTMLElement {
-  if (url) {
-    const img = el("img", className);
-    img.src = url;
-    img.alt = "";
-    img.loading = "lazy";
-    return img;
+// Covers sit behind each host's login, so the bridge fetches them with the
+// host's session and answers with a data URL; the page cannot load them by
+// address. Answers are kept for the session so a re-render is free, and a
+// miss (host offline, session lapsed) is asked again on the next paint.
+const covers = new Map<string, Promise<string>>();
+
+function loadCover(hostId: string, url: string): Promise<string> {
+  const key = `${hostId} ${url}`;
+  let pending = covers.get(key);
+  if (!pending) {
+    pending = window.odm.coverImage(hostId, url).catch(() => "");
+    covers.set(key, pending);
+    void pending.then((data) => {
+      if (!data) covers.delete(key);
+    });
   }
+  return pending;
+}
+
+function coverArt(host: HomeHost, url: string | null, className: string): HTMLElement {
   const holder = el("span", `${className} placeholder`);
   holder.append(tile(className === "cont-art"));
+  if (!url) return holder;
+  void loadCover(host.id, url).then((data) => {
+    if (!data || !holder.isConnected) return;
+    const img = el("img", className);
+    img.src = data;
+    img.alt = "";
+    holder.replaceWith(img);
+  });
   return holder;
 }
 
 function continueHero(pick: ContinuePick): HTMLElement {
   const { host, campaign } = pick;
   const wrap = el("section", "cont panel ornate");
+  wrap.dataset.tour = "hero";
   const cover = el("button", "cont-cover");
   cover.type = "button";
-  cover.append(coverArt(campaign.coverUrl, "cont-art"));
+  cover.append(coverArt(host, campaign.coverUrl, "cont-art"));
   cover.append(sourceChip(host, host.kind === "local" ? "This device" : host.name || hostOf(host.origin)));
   const caption = el("span", "cont-caption");
   caption.append(el("span", "cont-title", campaign.title), el("span", "cont-line", heroLine(campaign)));
@@ -111,6 +132,7 @@ function continueHero(pick: ContinuePick): HTMLElement {
 function localHero(): HTMLElement {
   const local = state.local;
   const hero = el("div", "panel ornate grain hero");
+  hero.dataset.tour = "hero";
   hero.append(chip(isAndroid ? "globe" : "monitor"));
   const body = el("div", "hero-body");
   const actions = el("div", "hero-actions");
@@ -157,6 +179,7 @@ function localHero(): HTMLElement {
 // spot so one tap continues where the player left off.
 function serverHero(server: ServerSummary): HTMLElement {
   const hero = el("div", "panel ornate grain hero");
+  hero.dataset.tour = "hero";
   hero.append(chip("server"));
   const body = el("div", "hero-body");
   body.append(el("h2", "", server.name || server.origin));
@@ -171,6 +194,7 @@ function serverHero(server: ServerSummary): HTMLElement {
 
 function welcomeHero(): HTMLElement {
   const hero = el("div", "panel ornate grain hero");
+  hero.dataset.tour = "hero";
   hero.append(chip("globe"));
   const body = el("div", "hero-body");
   body.append(
@@ -212,22 +236,25 @@ function quickTiles(primary: HomeHost | null): HTMLElement | null {
   // "Start playing" is the only door until then.
   if (!primary || (primary.kind === "local" && state.local.firstRun)) return null;
   const grid = el("div", "tiles");
-  const add = (name: IconName, label: string, path: string): void => {
+  const add = (name: IconName, label: string, path: string, tour: string): void => {
     const btn = el("button", "quick-tile panel");
     btn.type = "button";
+    btn.dataset.tour = tour;
     btn.append(chip(name), el("span", "", label));
     btn.addEventListener("click", () => openHost(primary, path, btn));
     grid.append(btn);
   };
-  add("scroll", "New campaign", "/?new=1");
-  add("user", "Characters", "/characters");
-  add("wand", "Workshop", "/workshop");
+  add("scroll", "New campaign", "/?new=1", "tile-new-campaign");
+  add("user", "Characters", "/characters", "tile-characters");
+  add("wand", "Workshop", "/workshop", "tile-workshop");
   return grid;
 }
 
 // ---------- campaigns by host ----------
 
-function offlineToggle(): HTMLElement {
+// The hide-offline switch, on the home screen and in Settings; rerender
+// repaints whichever screen holds it.
+export function offlineToggle(rerender: () => void = renderHome): HTMLElement {
   const on = hideOffline();
   const btn = el("button", on ? "toggle on" : "toggle");
   btn.type = "button";
@@ -237,7 +264,7 @@ function offlineToggle(): HTMLElement {
   btn.append(document.createTextNode("Hide offline"), track);
   btn.addEventListener("click", () => {
     setHideOffline(!on);
-    renderHome();
+    rerender();
   });
   return btn;
 }
@@ -259,7 +286,7 @@ function campaignRow(group: HostGroup, row: CampaignRow): HTMLElement {
   btn.type = "button";
   if (row.action === "blocked") btn.classList.add("blocked");
   if (host.stale) btn.classList.add("stale");
-  btn.append(coverArt(row.campaign.coverUrl, "camp-thumb"));
+  btn.append(coverArt(host, row.campaign.coverUrl, "camp-thumb"));
   const text = el("span", "grow");
   text.append(
     el("span", "camp-title", row.campaign.title),
@@ -367,7 +394,9 @@ function deviceBlock(localIsHero: boolean): HTMLElement[] {
   head.append(grow);
   const actions = el("div", "actions");
   if (local.state !== "starting") {
-    actions.append(button("secondary", "Story AI", () => renderLocalAi(true), "sparkles"));
+    const storyAi = button("secondary", "Story AI", () => renderLocalAi(true), "sparkles");
+    storyAi.dataset.tour = "story-ai";
+    actions.append(storyAi);
     if (!localIsHero) {
       actions.append(button("primary", "Enter your world", (btn) => void playLocal(btn), "play"));
     }

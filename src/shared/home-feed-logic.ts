@@ -110,6 +110,31 @@ function absoluteUrl(raw: string, origin: string): string | null {
   }
 }
 
+// Covers live behind the server's login (/uploads is player uploads, not a
+// public gallery), and the home page's image tags carry no session: the
+// shell fetches each cover with the host's bearer token and hands the page
+// a data URL. A cover is only ever asked of the host it was pinned to, and
+// only under /uploads, so the token goes nowhere else.
+export const COVER_MAX_BYTES = 4 * 1024 * 1024;
+
+export function coverRequestUrl(hostOrigin: string, url: string): string | null {
+  if (!hostOrigin || !url) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (parsed.origin !== hostOrigin || !parsed.pathname.startsWith("/uploads/")) return null;
+  return parsed.href;
+}
+
+export function imageDataUrl(contentType: string, base64: string): string | null {
+  const type = contentType.split(";")[0]?.trim().toLowerCase() ?? "";
+  if (!/^image\/[a-z0-9.+-]+$/.test(type) || !base64) return null;
+  return `data:${type};base64,${base64}`;
+}
+
 // The server's GET /api/campaigns body. Returns null when the body is not a
 // campaign list at all; entries without an id are dropped rather than
 // failing the whole host. cover and playingAs are newer fields and optional.

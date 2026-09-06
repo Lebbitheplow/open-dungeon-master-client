@@ -468,3 +468,98 @@
   .drawer, .scrim, .toggle .knob, .toggle .track, .camp-row, .quick-tile { transition: none; }
   .icon-btn.spin svg, .status-dot.starting { animation: none; }
 }
+
+/* ---------- topbar tools, settings, guide, QR and the tour ---------- */
+
+.topbar .tools { gap: 0.4rem; }
+
+.settings-section, .guide-section { padding: 1.1rem 1.2rem; margin-bottom: 1rem; }
+.settings-head, .guide-head { display: flex; align-items: center; gap: 0.9rem; min-width: 0; }
+.settings-head .grow { min-width: 0; }
+.settings-head .detail, .guide-section p { color: var(--ink-400); font-size: 0.9rem; margin: 0.25rem 0 0; }
+.guide-section p { margin-top: 0.75rem; line-height: 1.55; }
+.guide-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-bottom: 1.25rem; }
+.settings-body { display: flex; flex-direction: column; gap: 0.75rem; margin-top: 0.9rem; }
+.settings-body:empty { display: none; }
+.settings-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(107, 99, 148, 0.2);
+  color: var(--ink-300);
+  font-size: 0.9rem;
+}
+.settings-row .grow { flex: 1 1 14rem; min-width: 0; }
+.settings-row .hint { flex-basis: 100%; margin: 0; }
+.settings-note { margin: 0; color: var(--ink-500); font-size: 0.85rem; }
+.settings-note:empty { display: none; }
+.settings-share { padding-top: 0.75rem; border-top: 1px solid rgba(107, 99, 148, 0.2); }
+.settings-share .share-row { margin-top: 0.5rem; }
+.settings-label { font-size: 0.9rem; color: var(--ink-300); }
+.settings-link {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--ink-300);
+  text-decoration: none;
+  font-size: 0.9rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid rgba(107, 99, 148, 0.2);
+}
+.settings-link svg { width: 15px; height: 15px; margin-left: auto; color: var(--ink-600); }
+.settings-link:hover { color: var(--gold-200); }
+
+.qr-panel { flex-basis: 100%; display: flex; flex-direction: column; align-items: center; gap: 0.5rem; margin-top: 0.5rem; }
+.qr-frame {
+  width: min(224px, 70vw);
+  padding: 0.5rem;
+  border-radius: 0.75rem;
+  background: #fef3c7;
+  border: 1px solid rgba(227, 193, 92, 0.35);
+  box-shadow: var(--glow-gold);
+}
+.qr-frame svg { display: block; width: 100%; height: auto; }
+
+.tour-scrim { position: fixed; inset: 0; z-index: 100; }
+.tour-spot {
+  position: fixed;
+  z-index: 101;
+  pointer-events: none;
+  border-radius: 0.8rem;
+  border: 1px solid rgba(236, 210, 135, 0.65);
+  box-shadow: 0 0 0 9999px rgba(5, 3, 13, 0.76), 0 0 24px rgba(212, 171, 58, 0.35);
+  transition: top 260ms var(--ease-snap), left 260ms var(--ease-snap), width 260ms var(--ease-snap), height 260ms var(--ease-snap);
+}
+.tour-spot.none {
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border: 0;
+  border-radius: 50%;
+  box-shadow: none;
+}
+/* A centred step (no target) dims the whole page from the scrim instead. */
+.tour-scrim.dim { background: rgba(5, 3, 13, 0.76); }
+.tour-card {
+  position: fixed;
+  z-index: 102;
+  width: min(360px, calc(100vw - 1.5rem));
+  padding: 1rem 1.1rem 1.1rem;
+  transition: top 260ms var(--ease-snap), left 260ms var(--ease-snap);
+  animation: fade-up 260ms var(--ease-snap) both;
+}
+.tour-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.tour-head .eyebrow { margin: 0; }
+.tour-head .eyebrow::after { display: none; }
+.tour-close { width: 30px; height: 30px; border-color: transparent; background: none; }
+.tour-card h3 { margin: 0.5rem 0 0.35rem; }
+.tour-body { margin: 0; color: var(--ink-300); font-size: 0.92rem; line-height: 1.55; }
+.tour-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.9rem; }
+.tour-actions .btn { height: 38px; padding: 0 0.9rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tour-spot, .tour-card { transition: none; animation: none; }
+}
