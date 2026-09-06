@@ -88,6 +88,47 @@ function deviceSection(): HTMLElement | null {
   return card;
 }
 
+// A switch in the same dress as the home screen's hide-offline toggle.
+function switchButton(on: boolean, onChange: (next: boolean) => void): HTMLElement {
+  const btn = el("button", on ? "toggle on" : "toggle");
+  btn.type = "button";
+  btn.setAttribute("aria-pressed", String(on));
+  const track = el("span", "track");
+  track.append(el("span", "knob"));
+  btn.append(document.createTextNode(on ? "On" : "Off"), track);
+  btn.addEventListener("click", () => onChange(!on));
+  return btn;
+}
+
+// Portal mode (src/shared/portal-logic.ts). The answer is asked for on
+// each paint; until it lands the row shows the default.
+let portalOn: boolean | null = null;
+
+function worldsSection(): HTMLElement | null {
+  if (state.local.state === "unavailable") return null;
+  if (portalOn === null) {
+    void window.odm.portalMode().then((on) => {
+      portalOn = on;
+      if (state.screenName === "settings") renderSettings();
+    });
+  }
+  const { card, body } = section(
+    "link",
+    "Visiting hosts",
+    "How the screens of another server reach you.",
+  );
+  const line = row(
+    "Load worlds through the app: the screens come from this app and only game data travels to the host. Hosts running an older server open their own pages regardless.",
+    switchButton(portalOn ?? true, (next) => {
+      portalOn = next;
+      void window.odm.setPortalMode(next);
+      renderSettings();
+    }),
+  );
+  body.append(line);
+  return card;
+}
+
 function homeSection(): HTMLElement {
   const { card, body } = section("scroll", "Home screen", "");
   body.append(row("Hide hosts that are offline", offlineToggle(() => renderSettings())));
@@ -144,6 +185,7 @@ export function renderSettings(): void {
     intro("Settings", "The app, your device world, and the way home."),
     appSection(),
     deviceSection(),
+    worldsSection(),
     homeSection(),
     helpSection(),
     serversNote(),

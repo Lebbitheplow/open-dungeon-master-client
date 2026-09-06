@@ -266,6 +266,11 @@ export interface OdmBridge {
   // on desktop, so the share buttons are withheld rather than dead. False
   // means the sheet was dismissed or could not open.
   shareLink?(input: { title: string; text: string; url: string }): Promise<boolean>;
+  // Portal mode (src/shared/portal-logic.ts): worlds load their screens
+  // from the app's bundled server and only game data travels to the host.
+  // On by default; a host too old for it opens its own pages regardless.
+  portalMode(): Promise<boolean>;
+  setPortalMode(on: boolean): Promise<void>;
   // Present only where a camera scanner exists (Android). Scans one QR code
   // and routes a recognized invite into the join flow, or a bare server
   // address (the server's own corner QR button) into the add-server flow.

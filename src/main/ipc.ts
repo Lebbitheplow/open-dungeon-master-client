@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import os from "node:os";
 import { app, ipcMain, type IpcMainInvokeEvent } from "electron";
 import type {
+  ServerProbe,
   AiSetup,
   ConnectResult,
   LocalStatus,
@@ -34,7 +35,13 @@ import {
   whoAmI,
 } from "./odm-api";
 import { LOCAL_SERVER_ID, type ServerStore, type StoredServer } from "./servers";
-import { applySessionCookie, clearPartition, partitionFor } from "./session-cookies";
+import { portalEligible } from "../shared/portal-logic";
+import {
+  applyPortalCookies,
+  applySessionCookie,
+  clearPartition,
+  partitionFor,
+} from "./session-cookies";
 import type { QuickTunnel } from "./tunnel";
 import type { Updater } from "./updater";
 import type { ShellWindow } from "./window";
@@ -151,22 +158,57 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     }).catch(() => undefined);
   };
 
+  // Portal mode: the bundled server serves the screens and forwards data
+  // calls to the host. Only when the player has it on, this build carries
+  // a server, and the host is new enough for this UI; otherwise, or when
+  // the local server will not start, the host's own pages open as before.
+  const attachThroughPortal = async (
+    entry: StoredServer,
+    token: string,
+    probe: ServerProbe | null,
+    pathname: string,
+  ): Promise<boolean> => {
+    if (!store.portal() || localStatus().state === "unavailable") return false;
+    const verdict = portalEligible({
+      bundled: localStatus().serverVersion,
+      remote: probe?.version ?? "",
+    });
+    if (!verdict.ok) return false;
+    try {
+      await local.start();
+    } catch {
+      return false;
+    }
+    const origin = local.origin;
+    if (!origin) return false;
+    const partition = partitionFor(entry.id);
+    await applyPortalCookies(partition, origin, entry.origin, token, entry.tokenExpiresAt);
+    win.attachView(origin, partition, pathname, entry.origin);
+    return true;
+  };
+
   const attachRemote = async (
     entry: StoredServer,
     token: string,
     joinCode: string,
     path = "",
   ): Promise<void> => {
-    await applySessionCookie(partitionFor(entry.id), entry.origin, token, entry.tokenExpiresAt);
     store.touch(entry.id);
-    // Best effort: learn the world's stable id on every connect, so entries
-    // saved before the server exposed one can still be matched when a device
-    // world comes back at a new tunnel address.
-    void probeServer(entry.origin)
-      .then((probe) => store.setInstanceId(entry.id, probe.instanceId))
-      .catch(() => undefined);
-    win.attachView(entry.origin, partitionFor(entry.id), landingPath(joinCode, path));
+    // The probe learns the world's stable id (so entries saved before the
+    // server exposed one still match a device world back at a new tunnel
+    // address) and the version portal mode needs. Best effort either way.
+    const probe = await probeServer(entry.origin).catch(() => null);
+    if (probe) store.setInstanceId(entry.id, probe.instanceId);
+    const pathname = landingPath(joinCode, path);
+    if (await attachThroughPortal(entry, token, probe, pathname)) return;
+    await applySessionCookie(partitionFor(entry.id), entry.origin, token, entry.tokenExpiresAt);
+    win.attachView(entry.origin, partitionFor(entry.id), pathname);
   };
+
+  ipcMain.handle("prefs:portal", () => store.portal());
+  ipcMain.handle("prefs:set-portal", (_event, on: unknown) => {
+    store.setPortal(on !== false);
+  });
 
   const connectRemote = async (
     id: string,
@@ -314,8 +356,10 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     ...tunnel.status(),
     lanUrl: "",
   });
-  const localPageShowing = (): boolean => !!local.origin && win.viewOrigin() === local.origin;
+  const localPageShowing = (): boolean =>
+    !win.isPortalView() && !!local.origin && win.viewOrigin() === local.origin;
   const fromLocalPage = (event: IpcMainInvokeEvent): boolean => {
+    if (win.isPortalView()) return false;
     try {
       return !!local.origin && new URL(event.sender.getURL()).origin === local.origin;
     } catch {

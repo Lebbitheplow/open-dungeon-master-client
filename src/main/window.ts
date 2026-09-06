@@ -3,6 +3,7 @@ import { BrowserWindow, Menu, WebContentsView, session, shell } from "electron";
 import type { ShellEvent } from "../shared/types";
 import { appIconPath } from "./app-icon";
 import { autoConfirmBluetoothPairing, wireBluetoothChooser } from "./bluetooth";
+import { PORTAL_TOKEN_COOKIE } from "../shared/portal-logic";
 import { isShellCookieWrite } from "./session-cookies";
 
 // One window. Its own page is the shell UI (server picker, login, wizard);
@@ -46,6 +47,9 @@ export class ShellWindow {
   private win: BrowserWindow | null = null;
   private view: WebContentsView | null = null;
   private currentOrigin = "";
+  // The host a portal view forwards to, "" when the view shows a server's
+  // own pages or the device world itself.
+  private portalHost = "";
   private unwatchCookies: (() => void) | null = null;
   private onRevoked: ((origin: string) => void) | null = null;
   // Set while a browser-based sign-in (Discord OAuth) occupies the view.
@@ -138,6 +142,12 @@ export class ShellWindow {
     return this.view ? this.currentOrigin : "";
   }
 
+  // True while the local origin on screen is a portal to another host (so
+  // the page must not be mistaken for the device world).
+  isPortalView(): boolean {
+    return !!this.view && !!this.portalHost;
+  }
+
   // Pushes to the game page's preload (src/preload/game.ts).
   sendToGame(channel: string, payload: unknown): void {
     this.view?.webContents.send(channel, payload);
@@ -149,9 +159,10 @@ export class ShellWindow {
     this.view.setBounds({ x: 0, y: 0, width: width ?? 0, height: height ?? 0 });
   }
 
-  attachView(origin: string, partition: string, pathname: string): void {
+  attachView(origin: string, partition: string, pathname: string, portalHost = ""): void {
     if (!this.win) return;
     this.detachView();
+    this.portalHost = portalHost;
     hardenPartition(partition, origin);
     // The game preload exposes one thing, window.odmShell.showServers, so
     // the server's own account menu can offer the way back here.
@@ -293,7 +304,10 @@ export class ShellWindow {
       cause: string,
       removed: boolean,
     ): void => {
-      if (!removed || cookie.name !== "odm_session") return;
+      // The session cookie on a server's own pages, or the portal's token
+      // cookie on the local origin: either going away is a logout.
+      const watched = this.portalHost ? PORTAL_TOKEN_COOKIE : "odm_session";
+      if (!removed || cookie.name !== watched) return;
       if (cause !== "explicit" && cause !== "expired-overwrite") return;
       if (isShellCookieWrite()) return;
       if (cookie.domain && cookie.domain.replace(/^\./, "") !== host) return;
@@ -313,6 +327,7 @@ export class ShellWindow {
     this.view.webContents.close();
     this.view = null;
     this.currentOrigin = "";
+    this.portalHost = "";
   }
 
   showManager(): void {

@@ -121,12 +121,16 @@ export async function whoAmI(
   return { username: body.user.username, isAdmin: Boolean(body.user.isAdmin) };
 }
 
+// /api/auth/me answers 200 with a null user for a dead session, so the
+// body decides, not the status.
 export async function tokenIsValid(origin: string, token: string): Promise<boolean> {
   try {
     const res = await api(origin, "/api/auth/me", {
       headers: { authorization: `Bearer ${token}` },
     });
-    return res.ok;
+    if (!res.ok) return false;
+    const body = (await res.json().catch(() => null)) as { user?: unknown } | null;
+    return !!body?.user;
   } catch {
     return false;
   }

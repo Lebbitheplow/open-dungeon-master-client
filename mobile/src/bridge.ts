@@ -29,6 +29,11 @@ import {
   type JoinLink,
 } from "../../src/shared/deep-link";
 import { coverRequestUrl, imageDataUrl, LOCAL_HOST_ID } from "../../src/shared/home-feed-logic";
+import {
+  PORTAL_ORIGIN_COOKIE,
+  PORTAL_TOKEN_COOKIE,
+  portalEligible,
+} from "../../src/shared/portal-logic";
 import { landingPath, safeInnerPath } from "../../src/shared/open-path";
 import type {
   AccountDeletionResult,
@@ -213,9 +218,13 @@ async function deleteAccount(
   };
 }
 
+// /api/auth/me answers 200 with a null user for a dead session, so the
+// body decides, not the status.
 async function tokenIsValid(origin: string, token: string): Promise<boolean> {
   try {
-    return (await http(origin, "/api/auth/me", { token })).status === 200;
+    const reply = await http(origin, "/api/auth/me", { token });
+    const body = reply.data as { user?: unknown } | null;
+    return reply.status === 200 && !!body?.user;
   } catch {
     return false;
   }
@@ -366,14 +375,65 @@ async function openGameWebView(url: string, title: string): Promise<void> {
   void ensureNotificationPermission();
 }
 
+// Portal mode is on unless the player switched it off in Settings.
+const PORTAL_PREF_KEY = "odm-portal";
+
+async function portalMode(): Promise<boolean> {
+  try {
+    return (await Preferences.get({ key: PORTAL_PREF_KEY })).value !== "off";
+  } catch {
+    return true;
+  }
+}
+
+// The phone has one cookie jar, so the portal cookies on the local origin
+// must go before the device world's own pages open there, and come back
+// only when a host is visited through the portal.
+async function clearPortalCookies(localOrigin: string): Promise<void> {
+  for (const key of [PORTAL_ORIGIN_COOKIE, PORTAL_TOKEN_COOKIE]) {
+    await CapacitorCookies.deleteCookie({ url: localOrigin, key }).catch(() => undefined);
+  }
+}
+
+// Portal mode: the world on this phone serves the screens and forwards
+// data calls to the host, so the controls are the app's own and the
+// tunnel carries game data only. Falls back to the host's own pages when
+// the player has it off, the host is too old for this UI, or the device
+// world will not start.
+async function openThroughPortal(server: StoredServer, pathname: string): Promise<boolean> {
+  if (!(await portalMode())) return false;
+  const world = await localWorld.status();
+  if (world.state === "unavailable") return false;
+  let remoteVersion = "";
+  try {
+    remoteVersion = (await probeOrigin(server.origin)).version;
+  } catch {
+    return false;
+  }
+  if (!portalEligible({ bundled: world.serverVersion, remote: remoteVersion }).ok) return false;
+  let origin: string;
+  try {
+    origin = await localWorld.start();
+  } catch {
+    return false;
+  }
+  await CapacitorCookies.setCookie({ url: origin, key: PORTAL_ORIGIN_COOKIE, value: server.origin });
+  await CapacitorCookies.setCookie({ url: origin, key: PORTAL_TOKEN_COOKIE, value: server.token });
+  worldPageOpen = false;
+  await openGameWebView(`${origin}${pathname}`, server.name);
+  return true;
+}
+
 async function openServer(server: StoredServer, joinCode: string, path = ""): Promise<void> {
+  const pathname = landingPath(joinCode, path);
+  if (await openThroughPortal(server, pathname)) return;
   await CapacitorCookies.setCookie({
     url: server.origin,
     key: "odm_session",
     value: server.token,
   });
   worldPageOpen = false;
-  await openGameWebView(`${server.origin}${landingPath(joinCode, path)}`, server.name);
+  await openGameWebView(`${server.origin}${pathname}`, server.name);
 }
 
 // ---------- the device-hosted world ----------
@@ -417,6 +477,7 @@ const localWorld = createLocalWorld({
   tokenIsValid,
   patchAdminSettings,
   async open(origin, token, joinCode, path) {
+    await clearPortalCookies(origin);
     await CapacitorCookies.setCookie({ url: origin, key: "odm_session", value: token });
     worldPageOpen = true;
     await openGameWebView(`${origin}${landingPath(joinCode, path)}`, "This device");
@@ -951,6 +1012,11 @@ const bridge: OdmBridge = {
     } catch {
       return "";
     }
+  },
+
+  portalMode,
+  async setPortalMode(on) {
+    await Preferences.set({ key: PORTAL_PREF_KEY, value: on === false ? "off" : "on" });
   },
 
   // The OS share sheet for the world's public address (or any link the

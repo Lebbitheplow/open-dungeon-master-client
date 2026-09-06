@@ -57,6 +57,7 @@ export function renderHelp(): void {
       `Add a server by its address. Each server keeps its own accounts, so you sign in (or create an account) there; the app remembers the session and opens the server with one tap from then on.`,
       `An invite from a friend is a link or an eight-character room code. Paste either into Add a server and the app takes you straight to that table.${scan}`,
       `To leave a server behind, use the small buttons beside it in the menu: forget it on this device, or delete your account there for good.`,
+      `When you enter a host, the app draws the screens itself and only game data travels to that server, so the controls are the same everywhere and a shared world costs less traffic. Hosts running an older server open their own pages instead. Settings has the switch.`,
     ),
     section(
       isAndroid ? "globe" : "monitor",

@@ -41,6 +41,8 @@ interface RegistryFile {
   // The home screen's last campaign list per host id (the local entry
   // included), so an unreachable host still lists what it had.
   homeCache?: HomeCache;
+  // Portal mode off by choice; absent means on.
+  portalOff?: boolean;
 }
 
 export class ServerStore {
@@ -213,6 +215,17 @@ export class ServerStore {
     const registry = this.load();
     registry.servers = registry.servers.filter((server) => server.id !== id);
     if (registry.homeCache) delete registry.homeCache[id];
+    this.save(registry);
+  }
+
+  portal(): boolean {
+    return !this.load().portalOff;
+  }
+
+  setPortal(on: boolean): void {
+    const registry = this.load();
+    if (on) delete registry.portalOff;
+    else registry.portalOff = true;
     this.save(registry);
   }
 
