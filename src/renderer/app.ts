@@ -6,8 +6,9 @@ import { closeDrawer, createDrawer, isDrawerOpen } from "./drawer.js";
 import { renderHome } from "./home.js";
 import { aiProgress } from "./local-ai.js";
 import { renderAdd, renderAuth } from "./servers.js";
+import { gameBack, isGameShowing } from "./game-screen.js";
 import { renderSettings } from "./settings.js";
-import { refresh, refreshFeed, state } from "./state.js";
+import { refresh, refreshFeed, state, tunnelWatchers } from "./state.js";
 import { endTour, isTourActive, maybeStartAppTour } from "./tour.js";
 
 const { drawer, scrim } = createDrawer();
@@ -38,6 +39,7 @@ window.odm.onEvent((event) => {
     // app, the way a root screen should.
     if (isTourActive()) endTour();
     else if (isDrawerOpen()) closeDrawer();
+    else if (isGameShowing() && gameBack()) return;
     else if (state.screenName === "home") void window.odm.leaveApp?.();
     else goHome();
   } else if (event.kind === "local-status") {
@@ -45,6 +47,7 @@ window.odm.onEvent((event) => {
     rerenderLive();
   } else if (event.kind === "tunnel-status") {
     state.tunnel = event.status;
+    for (const watcher of tunnelWatchers) watcher();
     rerenderLive();
   } else if (event.kind === "home-feed") {
     state.feed = event.feed;

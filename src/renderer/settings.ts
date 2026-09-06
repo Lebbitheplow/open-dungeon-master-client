@@ -115,10 +115,10 @@ function worldsSection(): HTMLElement | null {
   const { card, body } = section(
     "link",
     "Visiting hosts",
-    "How the screens of another server reach you.",
+    "Hosts running server 0.16.1 or newer are drawn by the app itself: its own screens, fed by the host's data. This setting covers older hosts.",
   );
   const line = row(
-    "Load worlds through the app: the screens come from this app and only game data travels to the host. Hosts running an older server open their own pages regardless.",
+    "Load older worlds through the app: a host on server 0.16.0 gets this app's bundled screens, with only game data travelling to it. Hosts older than that open their own pages regardless.",
     switchButton(portalOn ?? true, (next) => {
       portalOn = next;
       void window.odm.setPortalMode(next);

@@ -83,6 +83,11 @@ export class ShellWindow {
       openExternally(url);
       return { action: "deny" };
     });
+    // The shell's own page draws the game screens now, so it pairs Pixels
+    // dice over Web Bluetooth too: same chooser and pairing prompts as a
+    // server's page in its view.
+    wireBluetoothChooser(contents, () => this.win);
+    autoConfirmBluetoothPairing(contents.session);
     contents.on("will-navigate", (event) => event.preventDefault());
     this.win.on("resize", () => this.layout());
     this.win.on("closed", () => {

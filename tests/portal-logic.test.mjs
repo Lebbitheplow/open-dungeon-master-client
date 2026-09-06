@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseVersion, portalEligible } from "../dist/shared/portal-logic.js";
+import { nativeEligible, parseVersion, portalEligible } from "../dist/shared/portal-logic.js";
 
 test("parseVersion reads the leading x.y.z and ignores tags", () => {
   assert.deepEqual(parseVersion("0.16.0"), [0, 16, 0]);
@@ -24,4 +24,12 @@ test("an older host, another major line, or an unknown version opens its own pag
 test("a bundled server without the proxy never portals", () => {
   assert.equal(portalEligible({ bundled: "0.15.0", remote: "0.16.0" }).ok, false);
   assert.equal(portalEligible({ bundled: "", remote: "0.16.0" }).ok, false);
+});
+
+test("the native screens need a host that answers the app's own origin", () => {
+  assert.deepEqual(nativeEligible("0.16.1"), { ok: true });
+  assert.deepEqual(nativeEligible("0.17.0"), { ok: true });
+  assert.deepEqual(nativeEligible("1.2.0"), { ok: true });
+  assert.equal(nativeEligible("0.16.0").ok, false);
+  assert.equal(nativeEligible("").ok, false);
 });

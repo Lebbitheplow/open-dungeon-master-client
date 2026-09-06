@@ -11,6 +11,14 @@ const mobile = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const repo = path.dirname(mobile);
 const www = path.join(mobile, "www");
 
+// The same compile options as the desktop renderer (JSX through Preact),
+// and Preact itself resolvable from this package's own node_modules when
+// CI installs only these.
+const { buildGameCss, gameBuildOptions, rendererBuildOptions, serverDir } = await import(
+  path.join(repo, "scripts", "build-renderer.mjs")
+);
+const shared = { ...rendererBuildOptions, nodePaths: [path.join(mobile, "node_modules")] };
+
 fs.rmSync(www, { recursive: true, force: true });
 fs.mkdirSync(www, { recursive: true });
 
@@ -39,14 +47,24 @@ for (const name of ["ble-polyfill", "download-shim", "shell-hook"]) {
 
 for (const name of ["app", "topo"]) {
   await build({
+    ...shared,
     entryPoints: [path.join(repo, "src", "renderer", `${name}.ts`)],
-    bundle: true,
     format: "iife",
-    platform: "browser",
-    target: "es2022",
     outfile: path.join(www, `${name}.js`),
   });
 }
+
+// The native game screens (src/renderer/game): the host's own pages,
+// bundled from the sibling server checkout the same way the desktop shell
+// does, with their stylesheet.
+const server = serverDir();
+const game = gameBuildOptions(server);
+await build({
+  ...game,
+  nodePaths: [...game.nodePaths, path.join(mobile, "node_modules")],
+  outdir: path.join(www, "game"),
+});
+buildGameCss(server, path.join(www, "game"));
 
 for (const name of ["style.css", "controls.css", "home.css", "story.png"]) {
   fs.copyFileSync(path.join(repo, "src", "renderer", name), path.join(www, name));

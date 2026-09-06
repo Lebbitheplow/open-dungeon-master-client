@@ -174,6 +174,10 @@ export interface HomeCampaign {
   maxPlayers: number;
   playingAs: string | null;
   coverUrl: string | null;
+  // The plate the server's own home draws before anyone paints a cover:
+  // one of three per genre, picked by the campaign id (the same rule as
+  // the server's src/lib/placeholders.ts), served publicly from the host.
+  placeholderUrl: string | null;
   updatedAt: string;
   role: "owner" | "player";
   dmMode: "ai" | "assisted" | "human";
@@ -271,6 +275,10 @@ export interface OdmBridge {
   // On by default; a host too old for it opens its own pages regardless.
   portalMode(): Promise<boolean>;
   setPortalMode(on: boolean): Promise<void>;
+  // The shell's native game screens call a host's API themselves. This
+  // hands them the host's address and the live bearer token for it (the
+  // device world included, by its host id), or null without a session.
+  hostSession(hostId: string): Promise<{ origin: string; token: string } | null>;
   // Present only where a camera scanner exists (Android). Scans one QR code
   // and routes a recognized invite into the join flow, or a bare server
   // address (the server's own corner QR button) into the add-server flow.

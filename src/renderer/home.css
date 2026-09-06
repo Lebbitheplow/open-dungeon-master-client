@@ -563,3 +563,50 @@
 @media (prefers-reduced-motion: reduce) {
   .tour-spot, .tour-card { transition: none; animation: none; }
 }
+
+/* ---------- the native game screens ---------- */
+
+/* The host's pages, drawn by the app inside its own column. The game's
+   stylesheet is confined to .game-root (scripts/scope-css.mjs); these
+   rules give that root the page's own font variables and the room the
+   table's full-height layout expects under the shell's topbar. */
+.page.game {
+  padding-bottom: 0;
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+}
+.page.game .topbar { padding: 0 1.25rem; max-width: none; }
+.page.game .screen.game { max-width: none; animation: none; }
+.screen.game > * { animation: none; }
+/* The room above the game root (topbar, paddings): measured by
+   game-screen.ts into --game-top, so the table's full-height layout
+   ends exactly at the bottom of the window. */
+.game-root { --game-top: 92px; }
+.game-root {
+  --font-geist-sans: var(--font-sans);
+  --font-geist-mono: var(--font-mono);
+  --font-source-serif: Georgia, "Times New Roman", serif;
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100dvh - var(--game-top));
+}
+.page .game-root { background: transparent; height: auto; }
+.page .game-root::before { display: none; }
+.game-root .h-dvh { height: calc(100dvh - var(--game-top)); }
+
+/* A short notice from the native side (a file saved, a save that failed). */
+.shell-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--safe-bottom) + 24px);
+  transform: translateX(-50%);
+  max-width: 90vw;
+  padding: 0.6rem 0.9rem;
+  border-radius: 0.6rem;
+  background: rgba(21, 18, 41, 0.95);
+  border: 1px solid rgba(212, 171, 58, 0.35);
+  color: var(--ink-100);
+  font-size: 0.9rem;
+  z-index: 200;
+  pointer-events: none;
+}

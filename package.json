@@ -1,6 +1,6 @@
 {
   "name": "open-dungeon-master-client",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "private": true,
   "description": "Desktop client for Open Dungeon Master: connect to any server, or play fully offline",
   "license": "MIT",
@@ -18,7 +18,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.main.json && tsc -p tsconfig.renderer.json && node scripts/copy-assets.mjs",
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.main.json && tsc -p tsconfig.renderer.json --noEmit && node scripts/build-renderer.mjs && node scripts/copy-assets.mjs",
     "start": "npm run build && electron .",
     "test": "npm run build && node --test \"tests/*.test.mjs\"",
     "lint": "eslint src scripts mobile/src mobile/scripts",
@@ -32,13 +32,28 @@
     "@electron/rebuild": "^4.0.1",
     "@eslint/js": "^9.30.0",
     "@fontsource/cinzel": "^5.3.0",
+    "@radix-ui/react-alert-dialog": "^1.1.23",
+    "@radix-ui/react-dialog": "^1.1.23",
+    "@radix-ui/react-dropdown-menu": "^2.1.24",
+    "@radix-ui/react-tooltip": "^1.2.16",
+    "@tailwindcss/cli": "^4.3.3",
     "@types/node": "^22",
+    "clsx": "^2.1.1",
     "electron": "^39.0.0",
     "electron-builder": "^26.0.12",
+    "esbuild": "^0.25.12",
     "eslint": "^9.30.0",
+    "lucide-react": "^1.41.0",
+    "mediasoup-client": "^3.23.1",
+    "preact": "^10.29.8",
+    "qrcode": "^1.5.4",
+    "react-easy-crop": "^6.2.3",
     "sharp": "^0.34.5",
+    "tailwind-merge": "^3.6.0",
+    "tailwindcss": "^4.3.3",
     "typescript": "^5.9.0",
-    "typescript-eslint": "^8.40.0"
+    "typescript-eslint": "^8.40.0",
+    "zod": "^4.5.4"
   },
   "dependencies": {
     "electron-updater": "^6.8.9"

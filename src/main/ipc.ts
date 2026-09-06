@@ -114,6 +114,14 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
   // A cover for the home screen, fetched with the host's own session and
   // only from that host (the renderer names the host; the url must belong
   // to it). "" for anything that cannot be had right now.
+  // The native game screens' way onto a host's API: its address and the
+  // live token. The token leaves the store only for the shell's own page.
+  ipcMain.handle("host:session", (_event, hostId: unknown) => {
+    const id = str(hostId, 64);
+    const origin = id === LOCAL_SERVER_ID ? localStatus().origin : (store.get(id)?.origin ?? "");
+    const token = id ? store.token(id) : null;
+    return origin && token ? { origin, token } : null;
+  });
   ipcMain.handle("home:cover", async (_event, hostId: unknown, url: unknown) => {
     const id = str(hostId, 64);
     const origin = id === LOCAL_SERVER_ID ? localStatus().origin : (store.get(id)?.origin ?? "");

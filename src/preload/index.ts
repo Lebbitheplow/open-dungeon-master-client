@@ -20,6 +20,7 @@ const bridge: OdmBridge = {
   homeFeedCached: () => ipcRenderer.invoke("home:feed-cached"),
   openInviteLink: (raw: string) => ipcRenderer.invoke("servers:open-invite", raw),
   coverImage: (hostId: string, url: string) => ipcRenderer.invoke("home:cover", hostId, url),
+  hostSession: (hostId: string) => ipcRenderer.invoke("host:session", hostId),
   portalMode: () => ipcRenderer.invoke("prefs:portal"),
   setPortalMode: (on: boolean) => ipcRenderer.invoke("prefs:set-portal", on),
   localStart: () => ipcRenderer.invoke("local:start"),

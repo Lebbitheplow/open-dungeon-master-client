@@ -22,6 +22,7 @@ function campaign(overrides = {}) {
     maxPlayers: 5,
     playingAs: "Kaleb",
     coverUrl: null,
+    placeholderUrl: null,
     updatedAt: "2026-09-03T12:00:00.000Z",
     role: "player",
     dmMode: "ai",

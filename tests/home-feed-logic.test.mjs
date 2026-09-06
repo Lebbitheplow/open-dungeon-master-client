@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  campaignPlaceholderPath,
   classifyOutcome,
   coverRequestUrl,
   createHomeFeed,
@@ -29,6 +30,24 @@ function host(overrides = {}) {
   };
 }
 
+// The server's FNV-1a pick, so the test states the expected plate rather
+// than trusting the function under test to name it.
+function fnv(value) {
+  let acc = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    acc ^= value.charCodeAt(index);
+    acc = Math.imul(acc, 16777619);
+  }
+  return acc >>> 0;
+}
+
+test("campaignPlaceholderPath matches the server's rule: genre slug, three variants, custom fallback", () => {
+  assert.equal(campaignPlaceholderPath("Dark Fantasy", "c1"), `/assets/placeholders/campaign/dark-fantasy-${1 + (fnv("c1") % 3)}.webp`);
+  assert.equal(campaignPlaceholderPath("high_fantasy", "x"), `/assets/placeholders/campaign/high-fantasy-${1 + (fnv("x") % 3)}.webp`);
+  assert.equal(campaignPlaceholderPath("space opera", "y"), `/assets/placeholders/campaign/custom-${1 + (fnv("y") % 3)}.webp`);
+  assert.equal(campaignPlaceholderPath("", ""), `/assets/placeholders/campaign/custom-${1 + (fnv("custom") % 3)}.webp`);
+});
+
 const rawCampaign = {
   id: "c1",
   title: "The Sunken Keep",
@@ -37,7 +56,7 @@ const rawCampaign = {
   maxPlayers: 5,
   updatedAt: "2026-09-03T12:00:00.000Z",
   role: "owner",
-  gameSettings: { dmMode: "assisted" },
+  gameSettings: { dmMode: "assisted", genre: "Dark Fantasy" },
   cover: { url: "/uploads/keep.png" },
   playingAs: "Ser Vell",
 };
@@ -51,6 +70,7 @@ function campaign(overrides = {}) {
     maxPlayers: 5,
     playingAs: "Ser Vell",
     coverUrl: `${origin}/uploads/keep.png`,
+    placeholderUrl: `${origin}${campaignPlaceholderPath("Dark Fantasy", "c1")}`,
     updatedAt: "2026-09-03T12:00:00.000Z",
     role: "owner",
     dmMode: "assisted",
@@ -86,6 +106,7 @@ test("a campaign list is parsed, covers pinned to the host, new fields optional"
       maxPlayers: 0,
       playingAs: null,
       coverUrl: null,
+      placeholderUrl: `${origin}/assets/placeholders/campaign/custom-${1 + (fnv("c2") % 3)}.webp`,
       updatedAt: "",
       role: "player",
       dmMode: "ai",

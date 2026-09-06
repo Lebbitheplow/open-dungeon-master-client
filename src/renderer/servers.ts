@@ -2,8 +2,10 @@
 // forgetting, plus the error screen every flow falls back to. The
 // behaviour here is unchanged from the single-file shell; only the frame
 // around it moved.
+import { landingPath } from "../shared/open-path.js";
 import { backLink, formCard, intro, joinBanner, show } from "./chrome.js";
 import { button, el, input } from "./dom.js";
+import { tryOpenNative } from "./game-screen.js";
 import { renderHome } from "./home.js";
 import { connectAt, refresh, state } from "./state.js";
 import type { ServerProbe, ServerSummary } from "../shared/types";
@@ -113,6 +115,21 @@ export async function connectServer(
   path = "",
 ): Promise<void> {
   btn.disabled = true;
+  // The app's own screens first: they need the host's version (for the
+  // gate) and a live session; either missing, the web view opens instead.
+  const probed = await window.odm.probeServer(server.origin).catch(() => null);
+  if (probed?.ok) {
+    const native = await tryOpenNative(
+      server.id,
+      landingPath(state.joinIntent?.code ?? "", path),
+      probed.probe.version,
+    ).catch(() => false);
+    if (native) {
+      btn.disabled = false;
+      state.joinIntent = null;
+      return;
+    }
+  }
   const result = await connectAt(server.id, state.joinIntent?.code, path);
   btn.disabled = false;
   if (result.ok) {

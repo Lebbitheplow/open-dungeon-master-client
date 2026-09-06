@@ -135,6 +135,40 @@ export function imageDataUrl(contentType: string, base64: string): string | null
   return `data:${type};base64,${base64}`;
 }
 
+// The cover plate a campaign shows before anyone paints one: three per
+// genre under /assets/placeholders/campaign, picked by a hash of the id so
+// the pick never reshuffles. A port of campaignPlaceholder in the server's
+// src/lib/placeholders.ts, kept identical so the app's home shows the same
+// picture the server's home does.
+const PLACEHOLDER_BASE = "/assets/placeholders/campaign";
+const COVER_VARIANTS = 3;
+const COVER_GENRES = new Set([
+  "high-fantasy",
+  "dark-fantasy",
+  "mystery",
+  "horror",
+  "cyberpunk",
+  "steampunk",
+  "post-apocalyptic",
+  "custom",
+]);
+
+function fnvHash(value: string): number {
+  let acc = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    acc ^= value.charCodeAt(index);
+    acc = Math.imul(acc, 16777619);
+  }
+  return acc >>> 0;
+}
+
+export function campaignPlaceholderPath(genre: string, seed: string): string {
+  const slug = genre.trim().toLowerCase().replace(/[\s_]+/g, "-");
+  const known = COVER_GENRES.has(slug) ? slug : "custom";
+  const variant = (fnvHash(seed || known) % COVER_VARIANTS) + 1;
+  return `${PLACEHOLDER_BASE}/${known}-${variant}.webp`;
+}
+
 // The server's GET /api/campaigns body. Returns null when the body is not a
 // campaign list at all; entries without an id are dropped rather than
 // failing the whole host. cover and playingAs are newer fields and optional.
@@ -147,7 +181,10 @@ export function parseCampaigns(body: unknown, origin: string): HomeCampaign[] | 
     const entry = raw as Record<string, unknown>;
     const id = str(entry.id);
     if (!id) continue;
-    const settings = entry.gameSettings as { dmMode?: unknown } | null | undefined;
+    const settings = entry.gameSettings as
+      | { dmMode?: unknown; genre?: unknown }
+      | null
+      | undefined;
     const cover = entry.cover as { url?: unknown } | null | undefined;
     campaigns.push({
       id,
@@ -157,6 +194,7 @@ export function parseCampaigns(body: unknown, origin: string): HomeCampaign[] | 
       maxPlayers: num(entry.maxPlayers),
       playingAs: str(entry.playingAs) || null,
       coverUrl: absoluteUrl(str(cover?.url), origin),
+      placeholderUrl: absoluteUrl(campaignPlaceholderPath(str(settings?.genre), id), origin),
       updatedAt: str(entry.updatedAt),
       role: pick(entry.role, ["owner", "player"] as const, "player"),
       dmMode: pick(settings?.dmMode, ["ai", "assisted", "human"] as const, "ai"),

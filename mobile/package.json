@@ -1,6 +1,6 @@
 {
   "name": "open-dungeon-master-mobile",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "private": true,
   "description": "Android client for Open Dungeon Master: hosts a world on the phone, or connects to any server",
   "license": "MIT",
@@ -21,7 +21,8 @@
     "@capacitor/local-notifications": "^7.0.7",
     "@capacitor/preferences": "^7.0.0",
     "@capacitor/share": "^7.0.4",
-    "@capgo/inappbrowser": "^7.0.0"
+    "@capgo/inappbrowser": "^7.0.0",
+    "preact": "^10.29.8"
   },
   "devDependencies": {
     "@capacitor/cli": "^7.0.0",

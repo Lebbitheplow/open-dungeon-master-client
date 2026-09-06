@@ -3,6 +3,7 @@
 // card, the invite banner, and the footer with the updater controls.
 import { button, chip, el, icon, iconButton, spinner, tile } from "./dom.js";
 import { renderDrawer, toggleDrawer } from "./drawer.js";
+import { unmountGame } from "./game-screen.js";
 import { renderHelp } from "./help.js";
 import { renderHome } from "./home.js";
 import { renderSettings } from "./settings.js";
@@ -54,17 +55,21 @@ function topbar(): HTMLElement {
   return bar;
 }
 
-export type Layout = "wide" | "narrow" | "mid";
+export type Layout = "wide" | "narrow" | "mid" | "game";
 
 // A screen re-rendering itself (a status event landing while it shows)
 // keeps its scroll position and skips the entrance animation; only moving
 // to another screen starts at the top.
 export function show(layout: Layout, ...nodes: (HTMLElement | null)[]): void {
+  // Leaving a world for any shell screen takes the native game down with
+  // it; the game screen itself mounts after this call.
+  if (layout !== "game") unmountGame();
   const same = lastScreen === state.screenName;
   lastScreen = state.screenName;
   const screen = el("section", layout === "wide" ? "screen" : `screen ${layout}`);
   if (same) screen.classList.add("still");
   screen.append(...nodes.filter((node): node is HTMLElement => node !== null));
+  page.classList.toggle("game", layout === "game");
   page.replaceChildren(topbar(), screen);
   renderDrawer();
   if (!same) window.scrollTo({ top: 0 });

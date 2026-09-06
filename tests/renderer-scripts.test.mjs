@@ -58,6 +58,9 @@ test("renderer modules import each other with .js suffixes", () => {
   for (const file of walk(rendererSrc).filter((name) => name.endsWith(".ts"))) {
     const source = fs.readFileSync(file, "utf8");
     for (const [, spec] of source.matchAll(/^import (?!type )[^"']*["']([^"']+)["']/gm)) {
+      // Bare specifiers are npm packages the bundler resolves; only files
+      // of our own need the suffix.
+      if (!spec.startsWith(".")) continue;
       assert.match(spec, /\.js$/, `${path.basename(file)} imports ${spec} without .js`);
     }
   }

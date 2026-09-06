@@ -4,6 +4,7 @@
 import { encodeQr, qrSvg } from "../shared/qr.js";
 import { backLink, formCard, intro, show } from "./chrome.js";
 import { badge, button, copyText, el, input, spinner } from "./dom.js";
+import { tryOpenNativeLocal } from "./game-screen.js";
 import { renderHome } from "./home.js";
 import { renderLocalAi } from "./local-ai.js";
 import { renderSettings } from "./settings.js";
@@ -13,6 +14,14 @@ import { localPlayAt, refresh, state } from "./state.js";
 // page to land on ("" for the world's root).
 export async function playLocal(btn: HTMLButtonElement | null, path = ""): Promise<void> {
   if (btn) btn.disabled = true;
+  // The app's own screens once the world has a profile; the first run and
+  // a lapsed sign-in go through the shell's own flow below.
+  const native = await tryOpenNativeLocal(state.joinIntent?.code, path).catch(() => false);
+  if (native) {
+    if (btn) btn.disabled = false;
+    state.joinIntent = null;
+    return;
+  }
   const result = await localPlayAt(state.joinIntent?.code, path);
   if (btn) btn.disabled = false;
   if (result.ok) {
@@ -168,7 +177,7 @@ export function renderLocalAccount(mode: "create" | "login"): void {
       if (mode === "create") {
         renderLocalAi();
       } else {
-        void window.odm.localPlay(state.joinIntent?.code);
+        void playLocal(null);
       }
     });
   });

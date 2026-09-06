@@ -5,6 +5,7 @@ import { backLink, formCard, intro, loadingScreen, show } from "./chrome.js";
 import { button, chip, el, input } from "./dom.js";
 import type { IconName } from "./dom.js";
 import { renderHome } from "./home.js";
+import { playLocal } from "./local.js";
 import { renderError } from "./servers.js";
 import { isAndroid, state } from "./state.js";
 import type { AiSetup, HardwareInfo, LocalAiStatus, LocalAiTier } from "../shared/types";
@@ -223,7 +224,7 @@ function renderLocalAiInstall(tier: LocalAiTier): void {
 }
 
 async function enterLocalWorld(): Promise<void> {
-  await window.odm.localPlay(state.joinIntent?.code);
+  await playLocal(null);
   state.joinIntent = null;
 }
 
@@ -336,6 +337,6 @@ async function finishAi(setup: AiSetup): Promise<void> {
     renderError(result.error);
     return;
   }
-  await window.odm.localPlay(state.joinIntent?.code);
+  await playLocal(null);
   state.joinIntent = null;
 }

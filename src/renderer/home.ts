@@ -11,7 +11,7 @@ import {
   reconcileLocal,
 } from "../shared/home-view-logic.js";
 import type { CampaignRow, ContinuePick, HostGroup } from "../shared/home-view-logic.js";
-import type { HomeFeed, HomeHost, ServerSummary } from "../shared/types";
+import type { HomeCampaign, HomeFeed, HomeHost, ServerSummary } from "../shared/types";
 import { footer, joinBanner, show } from "./chrome.js";
 import { badge, button, chip, el, icon, iconButton, spinner, statusDot, tile } from "./dom.js";
 import type { IconName } from "./dom.js";
@@ -93,16 +93,37 @@ function loadCover(hostId: string, url: string): Promise<string> {
   return pending;
 }
 
-function coverArt(host: HomeHost, url: string | null, className: string): HTMLElement {
+// Swaps the placeholder tile for a picture once one loads; a picture that
+// fails to load leaves the tile alone (or tries the next source).
+function swapIn(holder: HTMLElement, className: string, src: string, onFail?: () => void): void {
+  const img = el("img", className);
+  img.alt = "";
+  img.addEventListener("load", () => {
+    if (holder.isConnected) holder.replaceWith(img);
+  });
+  if (onFail) img.addEventListener("error", onFail);
+  img.src = src;
+}
+
+// The picture for a campaign, best source first: the painted cover fetched
+// with the host's session; the same cover by address (a phone's shared
+// cookie jar may carry the session already); and the genre plate the host
+// serves publicly, which is what its own home shows before a cover exists.
+function coverArt(host: HomeHost, campaign: HomeCampaign, className: string): HTMLElement {
   const holder = el("span", `${className} placeholder`);
   holder.append(tile(className === "cont-art"));
-  if (!url) return holder;
+  const plate = (): void => {
+    if (campaign.placeholderUrl) swapIn(holder, className, campaign.placeholderUrl);
+  };
+  const url = campaign.coverUrl;
+  if (!url) {
+    plate();
+    return holder;
+  }
   void loadCover(host.id, url).then((data) => {
-    if (!data || !holder.isConnected) return;
-    const img = el("img", className);
-    img.src = data;
-    img.alt = "";
-    holder.replaceWith(img);
+    if (!holder.isConnected) return;
+    if (data) swapIn(holder, className, data, () => swapIn(holder, className, url, plate));
+    else swapIn(holder, className, url, plate);
   });
   return holder;
 }
@@ -113,7 +134,7 @@ function continueHero(pick: ContinuePick): HTMLElement {
   wrap.dataset.tour = "hero";
   const cover = el("button", "cont-cover");
   cover.type = "button";
-  cover.append(coverArt(host, campaign.coverUrl, "cont-art"));
+  cover.append(coverArt(host, campaign, "cont-art"));
   cover.append(sourceChip(host, host.kind === "local" ? "This device" : host.name || hostOf(host.origin)));
   const caption = el("span", "cont-caption");
   caption.append(el("span", "cont-title", campaign.title), el("span", "cont-line", heroLine(campaign)));
@@ -286,7 +307,7 @@ function campaignRow(group: HostGroup, row: CampaignRow): HTMLElement {
   btn.type = "button";
   if (row.action === "blocked") btn.classList.add("blocked");
   if (host.stale) btn.classList.add("stale");
-  btn.append(coverArt(host, row.campaign.coverUrl, "camp-thumb"));
+  btn.append(coverArt(host, row.campaign, "camp-thumb"));
   const text = el("span", "grow");
   text.append(
     el("span", "camp-title", row.campaign.title),

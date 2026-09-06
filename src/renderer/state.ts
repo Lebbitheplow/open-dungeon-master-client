@@ -52,6 +52,10 @@ export const state = {
   shareQrOpen: false,
 };
 
+// The game screens' share dialog follows the tunnel through these; app.ts
+// calls them on every tunnel-status event.
+export const tunnelWatchers = new Set<() => void>();
+
 export async function refresh(): Promise<void> {
   const data = await window.odm.listServers();
   state.servers = data.servers;

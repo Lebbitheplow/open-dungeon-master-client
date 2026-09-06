@@ -10,8 +10,10 @@ import { LocalNotifications } from "@capacitor/local-notifications";
 import { Preferences } from "@capacitor/preferences";
 import { Share } from "@capacitor/share";
 import { BackgroundColor, InAppBrowser, ToolBarType } from "@capgo/inappbrowser";
+import { createWebBluetooth } from "./ble-polyfill-core";
 import { createBleRelay } from "./ble-relay";
 import { createDownloadRelay } from "./download-relay";
+import { createDownloadShim, noticeText } from "./download-shim-core";
 import { createAndroidHomeFeed } from "./home-feed";
 import {
   createLocalWorld,
@@ -275,9 +277,19 @@ async function ensureNotificationPermission(): Promise<void> {
 // the InAppBrowser message channel and this relay runs them natively.
 const GRANTED_DICE_KEY = "odm-ble-granted";
 
+// Answers from the native side reach two audiences: a server's page in the
+// game webview (through the plugin's channel) and this page's own game
+// screens (an in-page event), whichever asked.
+const NATIVE_REPLY = "odm-native-reply";
+
+function replyToPages(detail: Record<string, unknown>): void {
+  void InAppBrowser.postMessage({ detail }).catch(() => undefined);
+  window.dispatchEvent(new CustomEvent(NATIVE_REPLY, { detail }));
+}
+
 const bleRelay = createBleRelay({
   ble: BleClient,
-  send: (detail) => void InAppBrowser.postMessage({ detail }).catch(() => undefined),
+  send: (detail) => replyToPages(detail),
   async loadGranted() {
     try {
       const { value } = await Preferences.get({ key: GRANTED_DICE_KEY });
@@ -316,14 +328,80 @@ const downloadRelay = createDownloadRelay({
   async share(title, uri) {
     await Share.share({ title, files: [uri] });
   },
-  // The manager UI sits hidden under the game webview, so the message goes
-  // back down to the page, where the shim renders it as a toast.
+  // The message goes to whichever page asked: the game webview renders it
+  // as a toast through its shim, this page through showShellToast.
   notify(message) {
-    void InAppBrowser.postMessage({
-      detail: { type: "odm-download-notice", message },
-    }).catch(() => undefined);
+    replyToPages({ type: "odm-download-notice", message });
   },
 });
+
+// ---------- the same bridges for this page's own game screens ----------
+// The native game screens (src/renderer/game) run in this WebView rather
+// than the game webview, so the Web Bluetooth stand-in and the download
+// bridge are installed here directly, talking to the relays in-process.
+
+const TOAST_MS = 4000;
+let shellToast: HTMLDivElement | null = null;
+let shellToastTimer: ReturnType<typeof setTimeout> | null = null;
+
+function showShellToast(text: string): void {
+  if (!shellToast) {
+    shellToast = document.createElement("div");
+    shellToast.className = "shell-toast";
+    shellToast.setAttribute("role", "status");
+  }
+  shellToast.textContent = text;
+  if (!shellToast.isConnected) document.body.append(shellToast);
+  if (shellToastTimer) clearTimeout(shellToastTimer);
+  shellToastTimer = setTimeout(() => {
+    shellToast?.remove();
+    shellToastTimer = null;
+  }, TOAST_MS);
+}
+
+function installPageBridges(): void {
+  const nav = navigator as Navigator & { bluetooth?: unknown };
+  if (!nav.bluetooth) {
+    Object.defineProperty(nav, "bluetooth", {
+      configurable: true,
+      value: createWebBluetooth({
+        send: (message) => void bleRelay.handleMessage(message).catch(() => undefined),
+        onMessage(listener) {
+          window.addEventListener(NATIVE_REPLY, (event) => {
+            const detail = (event as CustomEvent<Record<string, unknown>>).detail;
+            if (detail && typeof detail === "object") listener(detail);
+          });
+        },
+      }),
+    });
+  }
+  const pageOrigin = window.location.origin;
+  const shim = createDownloadShim({
+    origin: pageOrigin,
+    // A root-relative link resolves against this page; handing the path
+    // back to fetch lets the game runtime send it to the host with the
+    // session (src/renderer/game/runtime.ts).
+    fetch: (url) => fetch(url.startsWith(pageOrigin) ? url.slice(pageOrigin.length) : url),
+    channel: () => ({
+      postMessage(message) {
+        const detail = (message as { detail?: unknown }).detail ?? message;
+        void downloadRelay.handleMessage(detail).catch(() => undefined);
+      },
+    }),
+  });
+  document.addEventListener("click", (event) => shim.onClick(event), true);
+  const proto = HTMLAnchorElement.prototype as HTMLAnchorElement & { click(): void };
+  const nativeClick = proto.click;
+  proto.click = function click(this: HTMLAnchorElement): void {
+    if (!shim.handleAnchor(this)) nativeClick.call(this);
+  };
+  window.addEventListener(NATIVE_REPLY, (event) => {
+    const text = noticeText((event as CustomEvent<unknown>).detail);
+    if (text) showShellToast(text);
+  });
+}
+
+installPageBridges();
 
 // The manager UI ships the game-page scripts as sibling assets. Each is a
 // self-contained IIFE, so they concatenate into one preShowScript; a missing
@@ -1012,6 +1090,20 @@ const bridge: OdmBridge = {
     } catch {
       return "";
     }
+  },
+
+  // The native game screens' way onto a host's API (see coverImage for the
+  // same lookup): the address and live token, or null without a session.
+  async hostSession(hostId) {
+    const id = String(hostId ?? "");
+    if (id === LOCAL_HOST_ID) {
+      const profile = await loadLocalProfile();
+      const origin = (await localWorld.status()).origin;
+      const token = profileTokenAlive(profile) ? (profile?.token ?? "") : "";
+      return origin && token ? { origin, token } : null;
+    }
+    const server = (await loadServers()).find((entry) => entry.id === id);
+    return server && tokenAlive(server) ? { origin: server.origin, token: server.token } : null;
   },
 
   portalMode,

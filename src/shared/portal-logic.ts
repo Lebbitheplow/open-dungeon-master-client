@@ -47,3 +47,18 @@ export function portalEligible(input: { bundled: string; remote: string }): Port
   }
   return { ok: true };
 }
+
+// The first server whose API the app's own screens can call directly: it
+// answers the apps' cross-origin requests (the server's src/lib/app-cors.ts)
+// and routes its navigations through the app. An older host still opens
+// its pages in the web view.
+export const NATIVE_MIN_SERVER = "0.16.1";
+
+export function nativeEligible(remote: string): PortalVerdict {
+  const version = parseVersion(remote);
+  if (!version) return { ok: false, reason: "The host did not say which version it runs." };
+  if (!atLeast(version, parseVersion(NATIVE_MIN_SERVER)!)) {
+    return { ok: false, reason: `The host runs ${remote}; the app's screens need ${NATIVE_MIN_SERVER} or newer.` };
+  }
+  return { ok: true };
+}
