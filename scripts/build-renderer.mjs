@@ -78,10 +78,14 @@ export function gameBuildOptions(server) {
 export function buildGameCss(server, outDir) {
   const entry = path.join(outDir, "game-entry.css");
   const rel = (target) => path.relative(outDir, target).split(path.sep).join("/");
+  // The server's stylesheet is copied in rather than imported: its own
+  // `@import "tailwindcss"` must resolve from this repo's node_modules,
+  // since the server checkout beside it (CI) has none installed.
+  const globals = fs.readFileSync(path.join(server, "src", "app", "globals.css"), "utf8");
   fs.writeFileSync(
     entry,
     [
-      `@import "${rel(path.join(server, "src", "app", "globals.css"))}";`,
+      globals,
       `@source "${rel(path.join(server, "src", "app"))}";`,
       `@source "${rel(path.join(server, "src", "components"))}";`,
       `@source "${rel(path.join(server, "src", "lib"))}";`,
