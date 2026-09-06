@@ -1,9 +1,10 @@
 // The user guide: what each part of the shell is for and how to get around,
 // in one scrollable screen, with the guided tour a tap away. Reachable
 // from the topbar on every screen and from Settings.
-import { backLink, intro, show } from "./chrome.js";
+import { backLink, closeOverlay, intro, show, showOverlay } from "./chrome.js";
 import { button, chip, el } from "./dom.js";
 import type { IconName } from "./dom.js";
+import { isGameShowing } from "./game-screen.js";
 import { renderHome } from "./home.js";
 import { renderSettings } from "./settings.js";
 import { isAndroid, refresh, state } from "./state.js";
@@ -19,7 +20,8 @@ function section(iconName: IconName, title: string, ...paragraphs: string[]): HT
 }
 
 export function renderHelp(): void {
-  state.screenName = "help";
+  const overlaid = isGameShowing();
+  if (!overlaid) state.screenName = "help";
   const device = isAndroid ? "phone" : "computer";
   const wayBack = isAndroid
     ? "On Android, the back gesture at a page's root closes that world too."
@@ -40,9 +42,11 @@ export function renderHelp(): void {
     button("secondary", "Settings", () => renderSettings(), "gear"),
   );
 
-  show(
-    "mid",
-    backLink("Home", () => renderHome()),
+  const present = overlaid
+    ? (...nodes: (HTMLElement | null)[]) =>
+        showOverlay("help", backLink("Back to the game", () => closeOverlay()), ...nodes)
+    : (...nodes: (HTMLElement | null)[]) => show("mid", backLink("Home", () => renderHome()), ...nodes);
+  present(
     intro("User guide", "Where everything lives, and how to get around."),
     actions,
     section(

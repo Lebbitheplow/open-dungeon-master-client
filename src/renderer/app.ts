@@ -1,7 +1,7 @@
 // The shell UI's entry point: mounts the frame, wires the bridge's events
 // to the screens, and paints the home. The screens themselves live in the
 // sibling modules; all privileged work happens across window.odm.
-import { mountShell } from "./chrome.js";
+import { closeOverlay, mountShell } from "./chrome.js";
 import { closeDrawer, createDrawer, isDrawerOpen } from "./drawer.js";
 import { renderHome } from "./home.js";
 import { aiProgress } from "./local-ai.js";
@@ -39,6 +39,7 @@ window.odm.onEvent((event) => {
     // app, the way a root screen should.
     if (isTourActive()) endTour();
     else if (isDrawerOpen()) closeDrawer();
+    else if (closeOverlay()) return;
     else if (isGameShowing() && gameBack()) return;
     else if (state.screenName === "home") void window.odm.leaveApp?.();
     else goHome();

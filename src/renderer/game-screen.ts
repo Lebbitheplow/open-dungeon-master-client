@@ -23,6 +23,7 @@ interface GameMount {
 }
 
 interface GameModule {
+  mountDeviceSettings(root: HTMLElement): () => void;
   mountGame(
     root: HTMLElement,
     options: {
@@ -81,6 +82,14 @@ function loadBundle(): Promise<GameModule> {
 
 export function isGameShowing(): boolean {
   return mount !== null;
+}
+
+// The audio and dice controls on the shell's Settings screen, drawn by the
+// game bundle (loaded on first use). Resolves to the unmount.
+export async function mountDeviceSettings(root: HTMLElement): Promise<() => void> {
+  const game = await loadBundle();
+  root.replaceChildren();
+  return game.mountDeviceSettings(root);
 }
 
 // The shell's back gesture inside a world: the previous page, or false at

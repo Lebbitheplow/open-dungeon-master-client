@@ -6,3 +6,10 @@ declare module "@/app/*" {
   const page: import("preact").ComponentType<{ params: unknown; searchParams?: unknown }>;
   export default page;
 }
+
+// The server's device panel (src/components/DeviceSettings.tsx), mounted on
+// the shell's Settings screen.
+declare module "@/components/DeviceSettings" {
+  import type { ComponentType } from "preact/compat";
+  export const DeviceSettings: ComponentType<Record<string, never>>;
+}

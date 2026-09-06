@@ -13,6 +13,26 @@ const root = document.getElementById("app") as HTMLDivElement;
 // The column screens render into; the drawer and its scrim sit beside it.
 const page = el("div", "page");
 let lastScreen = "";
+// A shell screen laid over a running world, if any (showOverlay).
+let overlay: HTMLElement | null = null;
+// Cleanups a screen registers for the moment it is replaced or its overlay
+// closes: a microphone test still running, a mounted component. A screen
+// registers them while it is being built, before show() is called, so
+// they wait in `pending` and become the shown screen's on show; the
+// previous screen's run at that moment.
+let pendingHooks = new Set<() => void>();
+let leaveHooks = new Set<() => void>();
+
+export function onLeaveScreen(cleanup: () => void): void {
+  pendingHooks.add(cleanup);
+}
+
+function runLeaveHooks(): void {
+  const hooks = [...leaveHooks];
+  leaveHooks = pendingHooks;
+  pendingHooks = new Set();
+  for (const hook of hooks) hook();
+}
 
 // Builds the shell once: drawer, scrim and page. Screens replace the page's
 // children, so the drawer keeps its scroll and open state across renders.
@@ -47,12 +67,70 @@ function topbar(): HTMLElement {
   const tools = el("div", "meta tools");
   tools.dataset.tour = "topbar-tools";
   if (!atHome) tools.append(iconButton("home", "Home", goHome));
-  if (state.screenName !== "help") tools.append(iconButton("help", "User guide", () => renderHelp()));
+  // Inside a world the guide and Settings open over it and their buttons
+  // close them again; elsewhere they are screens of their own.
+  const helpOpen = state.overlayName === "help";
+  const settingsOpen = state.overlayName === "settings";
+  if (state.screenName !== "help") {
+    const help = iconButton("help", helpOpen ? "Close the guide" : "User guide", () =>
+      helpOpen ? closeOverlay() : renderHelp(),
+    );
+    help.classList.toggle("active", helpOpen);
+    tools.append(help);
+  }
   if (state.screenName !== "settings") {
-    tools.append(iconButton("gear", "Settings", () => renderSettings()));
+    const gear = iconButton("gear", settingsOpen ? "Close settings" : "Settings", () =>
+      settingsOpen ? closeOverlay() : renderSettings(),
+    );
+    gear.classList.toggle("active", settingsOpen);
+    tools.append(gear);
   }
   bar.append(tools);
   return bar;
+}
+
+function refreshTopbar(): void {
+  page.querySelector(":scope > .topbar")?.replaceWith(topbar());
+}
+
+export function isOverlayOpen(): boolean {
+  return overlay !== null;
+}
+
+// Lays a shell screen over the world on show without taking the world
+// down: the call, the event stream and the table keep running underneath.
+// The same screen shown again keeps its scroll position.
+export function showOverlay(name: "settings" | "help", ...nodes: (HTMLElement | null)[]): void {
+  const previous = overlay;
+  const keepScroll = previous && state.overlayName === name ? previous.scrollTop : 0;
+  runLeaveHooks();
+  previous?.remove();
+  const sheet = el("div", `overlay ${name}`);
+  sheet.setAttribute("role", "dialog");
+  sheet.setAttribute("aria-label", name === "settings" ? "Settings" : "User guide");
+  const panel = el("section", "screen mid overlay-panel");
+  panel.append(...nodes.filter((node): node is HTMLElement => node !== null));
+  sheet.append(panel);
+  // Under the topbar and beside the drawer, whatever the window's shape.
+  const bar = page.querySelector(":scope > .topbar");
+  const top = bar ? bar.getBoundingClientRect().bottom : 0;
+  sheet.style.setProperty("--overlay-top", `${Math.max(0, Math.round(top))}px`);
+  sheet.style.setProperty("--overlay-left", `${Math.round(page.getBoundingClientRect().left)}px`);
+  overlay = sheet;
+  state.overlayName = name;
+  page.append(sheet);
+  sheet.scrollTop = keepScroll;
+  refreshTopbar();
+}
+
+export function closeOverlay(): boolean {
+  if (!overlay) return false;
+  runLeaveHooks();
+  overlay.remove();
+  overlay = null;
+  state.overlayName = "";
+  refreshTopbar();
+  return true;
 }
 
 export type Layout = "wide" | "narrow" | "mid" | "game";
@@ -64,6 +142,9 @@ export function show(layout: Layout, ...nodes: (HTMLElement | null)[]): void {
   // Leaving a world for any shell screen takes the native game down with
   // it; the game screen itself mounts after this call.
   if (layout !== "game") unmountGame();
+  runLeaveHooks();
+  overlay = null;
+  state.overlayName = "";
   const same = lastScreen === state.screenName;
   lastScreen = state.screenName;
   const screen = el("section", layout === "wide" ? "screen" : `screen ${layout}`);

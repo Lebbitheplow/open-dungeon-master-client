@@ -7,6 +7,7 @@
 // handed back to the shell (onLeave), which opens it the old way.
 import { Component, Suspense, lazy, type ComponentType, type ReactNode } from "preact/compat";
 import { render } from "preact";
+import { DeviceSettings } from "@/components/DeviceSettings";
 import { HostClient, type HostSession } from "../api/host.js";
 import { GameRouter, matchRoute } from "./router.js";
 import { setNavigation } from "./shims/next-navigation.js";
@@ -164,10 +165,18 @@ export function mountGame(root: HTMLElement, options: GameOptions): GameMount {
   };
 }
 
+// The machine's audio and dice controls (the server's DeviceSettings), for
+// the shell's own Settings screen: the same stores the table's hooks read,
+// so a change here reaches a call or a table already running.
+export function mountDeviceSettings(root: HTMLElement): () => void {
+  render(<DeviceSettings />, root);
+  return () => render(null, root);
+}
+
 declare global {
   interface Window {
-    odmGame?: { mountGame: typeof mountGame };
+    odmGame?: { mountGame: typeof mountGame; mountDeviceSettings: typeof mountDeviceSettings };
   }
 }
 
-window.odmGame = { mountGame };
+window.odmGame = { mountGame, mountDeviceSettings };

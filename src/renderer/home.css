@@ -610,3 +610,35 @@
   z-index: 200;
   pointer-events: none;
 }
+
+/* ---------- shell screens over a running world ---------- */
+
+/* Settings and the guide opened from inside a world sit over the table,
+   under the topbar and beside the drawer (the drawer and its scrim stay
+   above), so the call and the stream keep running underneath. */
+.overlay {
+  position: fixed;
+  top: var(--overlay-top, 0);
+  left: var(--overlay-left, 0);
+  right: 0;
+  bottom: 0;
+  z-index: 25;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0.5rem 1.25rem calc(var(--safe-bottom) + 2rem);
+  background: rgba(9, 7, 20, 0.96);
+  backdrop-filter: blur(6px);
+  animation: fade-up 220ms var(--ease-snap) both;
+}
+.overlay .overlay-panel { margin: 0 auto; animation: none; }
+.topbar .tools .icon-btn.active,
+.topbar .tools button.active { border-color: rgba(212, 171, 58, 0.55); color: var(--gold-300, #e8c66a); }
+
+/* The audio and dice card: the game's own panel inside a shell card, so
+   the game root's full-height table layout must not apply here. */
+.device-settings.game-root {
+  display: block;
+  min-height: 0;
+  padding: 0.25rem 0;
+}
+.device-settings.game-root > .spinner { margin: 0.5rem auto; }

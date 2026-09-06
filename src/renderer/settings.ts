@@ -3,9 +3,10 @@
 // and QR), the home screen's hide-offline toggle, help and the tour, and
 // the legal links. Servers keep their own account settings; this screen
 // says so and points there.
-import { backLink, intro, show, updateControls } from "./chrome.js";
-import { button, chip, el, icon } from "./dom.js";
+import { backLink, closeOverlay, intro, onLeaveScreen, show, showOverlay, updateControls } from "./chrome.js";
+import { button, chip, el, icon, spinner } from "./dom.js";
 import type { IconName } from "./dom.js";
+import { isGameShowing, mountDeviceSettings } from "./game-screen.js";
 import { offlineToggle, renderHome } from "./home.js";
 import { renderHelp } from "./help.js";
 import { openLocal, shareRow } from "./local.js";
@@ -33,6 +34,37 @@ function row(label: string, control: HTMLElement): HTMLElement {
   const line = el("div", "settings-row");
   line.append(el("span", "grow", label), control);
   return line;
+}
+
+// Microphone, playback, levels and dice: the server's own DeviceSettings
+// panel, drawn by the game bundle into this card. Its controls write the
+// stores the table reads, so a call or table in progress follows along.
+function audioSection(): HTMLElement {
+  const { card, body } = section(
+    "sliders",
+    "Audio and dice",
+    "The microphone and output this device uses, how loud each part of the table is, and the dice on it. Changes reach a call or a table already in progress.",
+  );
+  const host = el("div", "game-root device-settings");
+  host.append(spinner());
+  body.append(host);
+  // The panel arrives after the screen is shown; whichever comes first,
+  // leaving the screen takes the panel (and any microphone test) down.
+  let gone = false;
+  let unmount: (() => void) | null = null;
+  onLeaveScreen(() => {
+    gone = true;
+    unmount?.();
+  });
+  void mountDeviceSettings(host)
+    .then((release) => {
+      if (gone) release();
+      else unmount = release;
+    })
+    .catch(() => {
+      host.replaceChildren(el("p", "hint", "The audio and dice controls did not load."));
+    });
+  return card;
 }
 
 function appSection(): HTMLElement {
@@ -178,11 +210,9 @@ function legalSection(): HTMLElement {
 }
 
 export function renderSettings(): void {
-  state.screenName = "settings";
-  show(
-    "mid",
-    backLink("Home", () => renderHome()),
+  const sections = (): (HTMLElement | null)[] => [
     intro("Settings", "The app, your device world, and the way home."),
+    audioSection(),
     appSection(),
     deviceSection(),
     worldsSection(),
@@ -190,5 +220,13 @@ export function renderSettings(): void {
     helpSection(),
     serversNote(),
     legalSection(),
-  );
+  ];
+  // Inside a world, Settings opens over the table so the call and the
+  // stream keep running; the way back is to the game, not home.
+  if (isGameShowing()) {
+    showOverlay("settings", backLink("Back to the game", () => closeOverlay()), ...sections());
+    return;
+  }
+  state.screenName = "settings";
+  show("mid", backLink("Home", () => renderHome()), ...sections());
 }

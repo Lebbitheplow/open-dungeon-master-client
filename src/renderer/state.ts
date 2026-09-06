@@ -40,6 +40,8 @@ export const state = {
   tunnel: { state: "stopped", url: "", mode: "", error: "" } as TunnelStatus,
   joinIntent: null as JoinIntent | null,
   screenName: "home",
+  // A shell screen laid over a running world (chrome.ts showOverlay).
+  overlayName: "" as "" | "settings" | "help",
   appInfo: null as AppInfo | null,
   updateStatus: null as UpdateStatus | null,
   // One-line update state shown in the footer instead of the version.
