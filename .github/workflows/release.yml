@@ -239,7 +239,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          version=$(node -p "require('./mobile/package.json').version")
+          version=$(node -p "require('./package.json').version")
+          # A stale version file once pointed gh at the previous tag, so the
+          # APK and bundle quietly clobbered a release that had already
+          # shipped. Refuse to upload anywhere but the tag being built.
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::package.json is $version but the tag is $GITHUB_REF_NAME"
+            exit 1
+          fi
           cp mobile/android/app/build/outputs/apk/release/app-release.apk \
             "open-dungeon-master-client-$version.apk"
           cp mobile/android/app/build/outputs/bundle/release/app-release.aab \

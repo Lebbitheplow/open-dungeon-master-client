@@ -1,10 +1,13 @@
 apply plugin: 'com.android.application'
 
-// The app version lives in mobile/package.json; Play requires versionCode to
-// only ever grow, so it is derived as major*10000 + minor*100 + patch.
-def versionMatch = file('../../package.json').text =~ /"version"\s*:\s*"(\d+)\.(\d+)\.(\d+)"/
+// The app version comes from the repo's root package.json, the same file
+// electron-builder names the desktop installers from and the release tag
+// tracks, so the Android build cannot drift to a version of its own.
+// Play requires versionCode to only ever grow, so it is derived as
+// major*10000 + minor*100 + patch.
+def versionMatch = file('../../../package.json').text =~ /"version"\s*:\s*"(\d+)\.(\d+)\.(\d+)"/
 if (!versionMatch.find()) {
-    throw new GradleException('mobile/package.json has no x.y.z version')
+    throw new GradleException('the root package.json has no x.y.z version')
 }
 def appVersionName = "${versionMatch.group(1)}.${versionMatch.group(2)}.${versionMatch.group(3)}"
 def appVersionCode = versionMatch.group(1).toInteger() * 10000 +
