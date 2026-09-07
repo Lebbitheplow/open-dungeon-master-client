@@ -149,13 +149,31 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
   // QR codes generated inside the game point at the tunnel while one runs
   // (the host plays on 127.0.0.1, an address guests cannot reach) and go
   // back to normal when it stops. Best effort: links, not correctness.
+  // Whenever the world's public address changes, so does where its room
+  // codes point. Both the app's own Share button and the game's invite
+  // dialog land here, which is why the registry is driven from this one
+  // place rather than from either button.
+  let publishedCodes: string[] = [];
   const syncPublicUrl = async (): Promise<void> => {
     const token = store.token(LOCAL_SERVER_ID);
     if (!token || !local.origin) return;
     const status = tunnel.status();
-    await patchAdminSettings(local.origin, token, {
-      publicUrl: status.state === "running" ? status.url : "",
-    }).catch(() => undefined);
+    const live = status.state === "running" ? status.url : "";
+    await patchAdminSettings(local.origin, token, { publicUrl: live }).catch(() => undefined);
+    if (live) {
+      const codes = await ownedTableCodes(local.origin, token);
+      publishedCodes = await publishTables({
+        codes,
+        url: live,
+        secretFor: (code) => store.tableSecret(code),
+      });
+      return;
+    }
+    const stale = publishedCodes;
+    publishedCodes = [];
+    if (stale.length > 0) {
+      await dropTables({ codes: stale, secretFor: (code) => store.tableSecret(code) });
+    }
   };
 
   // Local worlds always run mesh voice: no media port to open, and it is the
@@ -339,30 +357,6 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
   // Sharing the local world on the internet: reachable from the home
   // screen's hero and from the game's own lobby (the invite dialog starts
   // it, since inviting people is the moment it matters).
-  // While a world is shared, every room code its owner holds points at the
-  // address it answers at now. That is what makes one code survive a new
-  // tunnel next session, and what lets a friend type a code instead of
-  // adding a server and then finding the table.
-  let publishedCodes: string[] = [];
-  const publishRoomCodes = async (): Promise<void> => {
-    const token = store.token(LOCAL_SERVER_ID);
-    const status = tunnel.status();
-    if (!token || !local.origin || status.state !== "running" || !status.url) return;
-    const codes = await ownedTableCodes(local.origin, token);
-    publishedCodes = await publishTables({
-      codes,
-      url: status.url,
-      secretFor: (code) => store.tableSecret(code),
-    });
-  };
-  const unpublishRoomCodes = async (): Promise<void> => {
-    const codes = publishedCodes;
-    publishedCodes = [];
-    if (codes.length > 0) {
-      await dropTables({ codes, secretFor: (code) => store.tableSecret(code) });
-    }
-  };
-
   const startSharing = async (): Promise<Result<{ tunnel: TunnelStatus }>> => {
     try {
       await local.start();
@@ -384,7 +378,6 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
           () => undefined,
         );
       }
-      await publishRoomCodes();
       return { ok: true, tunnel: status };
     } catch (err) {
       return fail(err);
@@ -394,7 +387,6 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
   ipcMain.handle("share:start", () => startSharing());
 
   ipcMain.handle("share:stop", async () => {
-    await unpublishRoomCodes();
     await tunnel.stop();
     await syncPublicUrl();
     return { ok: true, tunnel: tunnel.status() };
@@ -437,7 +429,6 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
   });
   ipcMain.handle("shell:share-stop", async (event) => {
     if (!fromLocalPage(event)) return SHARE_UNSUPPORTED;
-    await unpublishRoomCodes();
     await tunnel.stop();
     await syncPublicUrl();
     return shellShareStatus();

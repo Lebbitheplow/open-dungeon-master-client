@@ -695,7 +695,15 @@ const shareTunnel = createShareTunnel({
     const origin = await localWorld.start();
     return Number(new URL(origin).port);
   },
-  publish: (url) => localWorld.publish(url),
+  // The tunnel calls this on the way up with the address, and on the way
+  // down with "". Both the app's Share button and the game's invite dialog
+  // reach it, which is why the room codes follow the address from here
+  // rather than from either button.
+  publish: async (url) => {
+    await localWorld.publish(url);
+    if (url) await publishRoomCodes(url);
+    else await unpublishRoomCodes();
+  },
   emit,
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   now: () => Date.now(),
@@ -1263,13 +1271,9 @@ const bridge: OdmBridge = {
   async shareStart() {
     const status = await shareTunnel.start();
     if (status.state !== "running") return fail(new Error(status.error || "Sharing failed."));
-    await publishRoomCodes(status.url);
     return { ok: true, tunnel: status };
   },
-  async shareStop() {
-    await unpublishRoomCodes();
-    return { ok: true, tunnel: await shareTunnel.stop() };
-  },
+  shareStop: async () => ({ ok: true, tunnel: await shareTunnel.stop() }),
   localAiScan: async () => fail(new Error("Local AI is desktop-only.")),
   localAiInstall: async () => fail(new Error("Local AI is desktop-only.")),
   localAiInstallComfy: async () => fail(new Error("Local AI is desktop-only.")),
