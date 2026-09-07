@@ -272,13 +272,25 @@ export function renderAuth(
   state.screenName = "auth";
   const name = probe.serverName || new URL(probe.origin).host;
   const form = el("form");
-  const [userLabel, userField] = input("Username", "text", presetUsername);
+  // Arriving with a room code is the whole invitation: the code says which
+  // table, and the server takes it as vouching for the account (its
+  // register route looks the code up without consuming it). So the player
+  // picks a name and is in. No password to invent for a table they were
+  // invited to, and no account invite code, which is a different thing
+  // entirely and was never what a host hands out.
+  const byRoomCode = mode === "register" && !!state.joinIntent?.code;
+  const [userLabel, userField] = input(
+    byRoomCode ? "Your name at this table" : "Username",
+    "text",
+    presetUsername,
+  );
   userField.autocomplete = "username";
   const [passLabel, passField] = input("Password", "password");
   passField.autocomplete = mode === "login" ? "current-password" : "new-password";
-  form.append(userLabel, passLabel);
+  form.append(userLabel);
+  if (!byRoomCode) form.append(passLabel);
   let inviteField: HTMLInputElement | null = null;
-  if (mode === "register" && probe.signupMode === "invite") {
+  if (!byRoomCode && mode === "register" && probe.signupMode === "invite") {
     const [inviteLabel, field] = input("Account invite code", "text");
     field.placeholder = "ODM-XXXXXXXXXX";
     inviteField = field;
@@ -286,7 +298,10 @@ export function renderAuth(
     form.append(el("p", "hint", "This server is invite-only. Ask whoever runs it for a code."));
   }
   const error = el("p", "error");
-  const submit = button("primary", mode === "login" ? "Sign in" : "Create account");
+  const submit = button(
+    "primary",
+    mode === "login" ? "Sign in" : byRoomCode ? "Join the table" : "Create account",
+  );
   submit.type = "submit";
   submit.classList.add("block");
   form.append(error, submit);
@@ -308,7 +323,13 @@ export function renderAuth(
     const call =
       mode === "login"
         ? window.odm.login(shared)
-        : window.odm.register({ ...shared, inviteCode: inviteField?.value.trim() ?? "" });
+        : window.odm.register({
+            ...shared,
+            inviteCode: inviteField?.value.trim() ?? "",
+            // The app mints the password for a room-code join and keeps it,
+            // the way the device world's own profile works.
+            generated: byRoomCode,
+          });
     void call.then(async (result) => {
       submit.disabled = false;
       if (result.ok) await landed();

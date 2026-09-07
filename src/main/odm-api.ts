@@ -84,13 +84,20 @@ export async function loginForToken(
 
 export async function registerAccount(
   origin: string,
-  input: { username: string; password: string; inviteCode: string },
+  input: { username: string; password: string; inviteCode: string; joinCode?: string },
 ): Promise<TokenGrant> {
   const payload: Record<string, string> = {
     username: input.username,
     password: input.password,
   };
   if (input.inviteCode) payload.inviteCode = input.inviteCode;
+  // Sharing a world turns its signup mode to invite, so a friend arriving
+  // with a room code needs that code to vouch for them here. The server
+  // looks it up without consuming it (src/app/api/auth/register), and the
+  // same code then joins them to the table. Without this the only way in
+  // was an account invite code from the host, which is not what an invite
+  // is for.
+  if (input.joinCode) payload.joinCode = input.joinCode;
   const res = await api(origin, "/api/auth/register", {
     method: "POST",
     headers: { "content-type": "application/json" },

@@ -262,6 +262,10 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     origin: string,
     grant: TokenGrant,
     joinCode: string,
+    // Set when the app made the password up itself (joining by room code).
+    // Kept like the device world's own profile so the session can be
+    // renewed later without asking for something nobody was ever told.
+    secret?: string,
   ): Promise<Result<{ server: ServerSummary }>> => {
     let name = "";
     let instanceId = "";
@@ -279,6 +283,7 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
       token: grant.token,
       tokenExpiresAt: grant.expiresAt,
       instanceId,
+      ...(secret ? { secret } : {}),
     });
     await attachRemote(entry, grant.token, joinCode);
     return { ok: true, server: summaryOf(entry) };
@@ -477,12 +482,29 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     try {
       const origin = normalizeOrigin(str(input?.origin, 300));
       if (!origin) return fail(new Error("Bad server address."));
+      const joinCode = joinCodeOf(input?.joinCode);
+      // Joining by room code asks for a name and nothing else, so the
+      // password is the app's business, not the player's.
+      const generated = input?.generated === true;
+      const password = generated
+        ? randomBytes(24).toString("base64url")
+        : str(input?.password, 100);
       const grant = await registerAccount(origin, {
         username: str(input?.username, 24),
-        password: str(input?.password, 100),
+        password,
         inviteCode: str(input?.inviteCode, 40).trim(),
+        joinCode,
       });
-      return await adoptGrant(origin, grant, joinCodeOf(input?.joinCode));
+      // An account the app made up a password for (joining by room code)
+      // keeps that password, the way the device world's own profile does,
+      // so the session can be renewed later without asking for something
+      // the player was never told.
+      return await adoptGrant(
+        origin,
+        grant,
+        joinCode,
+        generated ? password : undefined,
+      );
     } catch (err) {
       return fail(err);
     }

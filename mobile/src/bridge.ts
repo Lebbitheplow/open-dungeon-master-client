@@ -73,6 +73,11 @@ interface StoredServer {
   // moving tokens into a Keystore-backed store is a planned hardening step.
   token: string;
   tokenExpiresAt: string;
+  // The password for an account the app made up on the player's behalf
+  // (joining by room code), so the session can be renewed without asking
+  // for something they were never told. Absent for accounts a person
+  // chose a password for.
+  secret?: string;
   // The world's stable id from /api/auth/providers ("" or absent on servers
   // that predate it). Lets the shell recognize a device world that came back
   // at a new tunnel address and move this entry there instead of adding a
@@ -197,10 +202,14 @@ async function loginForToken(
 
 async function registerAccount(
   origin: string,
-  input: { username: string; password: string; inviteCode: string },
+  input: { username: string; password: string; inviteCode: string; joinCode?: string },
 ): Promise<TokenGrant> {
   const body: Record<string, string> = { username: input.username, password: input.password };
   if (input.inviteCode) body.inviteCode = input.inviteCode;
+  // Sharing a world turns its signup mode to invite, so the room code has
+  // to travel with the registration to vouch for it. The server looks it
+  // up without consuming it, and the same code then seats the player.
+  if (input.joinCode) body.joinCode = input.joinCode;
   const reply = await http(origin, "/api/auth/register", { method: "POST", body });
   if (reply.status !== 201) throw new Error(errorText(reply, "Could not create the account."));
   return loginForToken(origin, input.username, input.password);
@@ -915,6 +924,7 @@ async function connectById(id: string, joinCode: string, path = ""): Promise<Con
 async function rememberGrant(
   origin: string,
   grant: TokenGrant,
+  secret?: string,
 ): Promise<{ ok: true; server: ServerSummary; stored: StoredServer }> {
   let name = "";
   let instanceId = "";
@@ -940,6 +950,7 @@ async function rememberGrant(
     lastUsedAt: new Date().toISOString(),
     token: grant.token,
     tokenExpiresAt: grant.expiresAt,
+    secret: secret ?? existing?.secret,
     instanceId: instanceId || existing?.instanceId,
   };
   if (existing) servers[servers.indexOf(existing)] = server;
@@ -952,8 +963,9 @@ async function adoptGrant(
   origin: string,
   grant: TokenGrant,
   joinCode: string,
+  secret?: string,
 ): Promise<Result<{ server: ServerSummary }>> {
-  const remembered = await rememberGrant(origin, grant);
+  const remembered = await rememberGrant(origin, grant, secret);
   await openServer(remembered.stored, joinCode);
   return { ok: true, server: remembered.server };
 }
@@ -1051,12 +1063,19 @@ const bridge: OdmBridge = {
     try {
       const origin = normalizeOrigin(String(input?.origin ?? ""));
       if (!origin) return fail(new Error("Bad server address."));
+      const joinCode = cleanCode(input.joinCode);
+      // Joining by room code asks for a name and nothing else, so the
+      // password is the app's business: minted here and kept with the
+      // entry, the way the device world's own profile works.
+      const generated = input.generated === true;
+      const password = generated ? randomSecret() + randomSecret() : String(input.password);
       const grant = await registerAccount(origin, {
         username: String(input.username),
-        password: String(input.password),
+        password,
         inviteCode: String(input.inviteCode ?? "").trim(),
+        joinCode,
       });
-      return await adoptGrant(origin, grant, cleanCode(input.joinCode));
+      return await adoptGrant(origin, grant, joinCode, generated ? password : undefined);
     } catch (err) {
       return fail(err);
     }

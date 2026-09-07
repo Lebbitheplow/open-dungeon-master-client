@@ -245,6 +245,9 @@ export interface OdmBridge {
     username: string;
     password: string;
     inviteCode: string;
+    // Joining by room code: the app mints and keeps the password, so the
+    // player only picks a name.
+    generated?: boolean;
     joinCode?: string;
   }): Promise<Result<{ server: ServerSummary }>>;
   // Sign in through the server's Discord OAuth in a web view; the shell
