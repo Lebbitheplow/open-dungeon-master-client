@@ -164,6 +164,7 @@ async function probeOrigin(origin: string): Promise<ServerProbe> {
     serverName?: string;
     version?: string;
     instanceId?: string;
+    deviceWorld?: boolean;
   } | null;
   if (reply.status !== 200 || !body || typeof body.password !== "boolean") {
     throw new Error(`${origin} does not look like an Open Dungeon Master server.`);
@@ -177,6 +178,8 @@ async function probeOrigin(origin: string): Promise<ServerProbe> {
     signupMode,
     discord: Boolean(body.discord),
     instanceId: typeof body.instanceId === "string" ? body.instanceId : "",
+    // Servers older than 0.16.6 do not say, and are taken for real ones.
+    deviceWorld: body.deviceWorld === true,
   };
 }
 

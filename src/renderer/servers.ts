@@ -272,13 +272,13 @@ export function renderAuth(
   state.screenName = "auth";
   const name = probe.serverName || new URL(probe.origin).host;
   const form = el("form");
-  // Arriving with a room code is the whole invitation: the code says which
-  // table, and the server takes it as vouching for the account (its
-  // register route looks the code up without consuming it). So the player
-  // picks a name and is in. No password to invent for a table they were
-  // invited to, and no account invite code, which is a different thing
-  // entirely and was never what a host hands out.
-  const byRoomCode = mode === "register" && !!state.joinIntent?.code;
+  // A world one of the apps is hosting takes a name and nothing else. The
+  // host is a person with a phone, not an administrator: nobody should be
+  // inventing a password for someone's game night, and the room code they
+  // were given is the invitation. A real server is the other way round: its
+  // owner keeps passwords and whatever signup rule they set, open, invite
+  // only or closed, and the app follows it.
+  const byRoomCode = mode === "register" && probe.deviceWorld;
   const [userLabel, userField] = input(
     byRoomCode ? "Your name at this table" : "Username",
     "text",
@@ -295,7 +295,17 @@ export function renderAuth(
     field.placeholder = "ODM-XXXXXXXXXX";
     inviteField = field;
     form.append(inviteLabel);
-    form.append(el("p", "hint", "This server is invite-only. Ask whoever runs it for a code."));
+    // A live room code vouches for a signup on this server too, so someone
+    // who arrived with one does not need an account code as well.
+    form.append(
+      el(
+        "p",
+        "hint",
+        state.joinIntent?.code
+          ? "This server is invite-only. You arrived with a room code, which counts, so leave this blank unless you were given one."
+          : "This server is invite-only. Ask whoever runs it for a code.",
+      ),
+    );
   }
   const error = el("p", "error");
   const submit = button(

@@ -34,6 +34,7 @@ export async function probeServer(origin: string): Promise<ServerProbe> {
         serverName?: string;
         version?: string;
         instanceId?: string;
+        deviceWorld?: boolean;
       } | null)
     : null;
   if (!body || typeof body.password !== "boolean") {
@@ -48,6 +49,8 @@ export async function probeServer(origin: string): Promise<ServerProbe> {
     signupMode,
     discord: Boolean(body.discord),
     instanceId: typeof body.instanceId === "string" ? body.instanceId : "",
+    // Servers older than 0.16.6 do not say, and are taken for real ones.
+    deviceWorld: body.deviceWorld === true,
   };
 }
 

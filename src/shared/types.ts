@@ -17,6 +17,12 @@ export interface ServerProbe {
   // Device worlds get a fresh tunnel hostname every share session; this is
   // how the shell recognizes one it already has an account on.
   instanceId: string;
+  // A world one of the apps is hosting, rather than a server someone runs
+  // and administers (servers older than 0.16.6 do not say, and are taken
+  // for real servers). Joining one takes a name and nothing else: nobody
+  // should be inventing a password for a game on someone's phone. A real
+  // server keeps passwords and whatever signup rule its owner set.
+  deviceWorld: boolean;
 }
 
 // A remembered server, minus its stored credential.
