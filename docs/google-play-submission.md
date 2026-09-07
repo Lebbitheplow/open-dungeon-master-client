@@ -4,14 +4,32 @@ Audited 2026-09-04 against the client repo at `main` (f667952) and the server
 repo at `main` (ce9438c). Subject of the audit is the Android app only:
 `com.opendungeonmaster.app`.
 
-**Status update 2026-09-05.** Every code and build item below is done, in the
-client working tree and in server commit 6a6e4f2 (bundled into `vendor/server`
-via `npm run bundle-server`). What remains is off-app: publish the marketing
-site so the privacy and deletion URLs resolve, deploy the two Cloudflare
-Workers, set the broker's `RATE_LIMIT_SALT` secret, and fill in the console
-forms. Each finding carries a "Done" line saying what landed. The version
-facts now read 0.4.1 / versionCode 40001 (major*10000 + minor*100 + patch)
-and targetSdk 36.
+**Re-checked 2026-09-06** against client `main` at v0.7.3 (1eda722) and server
+`main` at 0.16.3 (33fac2d), the two versions a submission would carry today.
+Every code and build finding below is still fixed, and the permission list in
+1.1 was re-read from the released v0.7.3 APK rather than from the source
+manifest. What changed since the first pass and needed new wording here:
+
+- The version facts are 0.7.3 / versionCode **703**, not the 0.4.1 / 40001
+  this document used to claim. The formula is unchanged
+  (major*10000 + minor*100 + patch); with a major of 0 it simply yields
+  three digits, and the released 0.4.0 APK reads 400. Nothing was ever
+  stamped with a five-digit code, so the sequence still only grows.
+- Since 0.7.0 the app draws the game screens itself and sends the host only
+  data calls (portal and native modes). That changes how the app is
+  described to a reviewer, and it puts a second set of third-party
+  JavaScript libraries inside the APK (1.3).
+- Voice chat reaches Cloudflare's STUN and TURN servers, and the credentials
+  come from the same developer-run Worker as the tunnel. The Data safety
+  answers in 1.6 covered only the Share path and are now wider.
+- Sign-in with Discord, the world pack registry hosted on Google Drive, and
+  an OpenRouter default for the custom model provider are all recipients the
+  first pass did not list.
+
+The off-app work has moved too: the marketing site is live, the broker's
+hashed rate limit is deployed, and `assetlinks.json` is being served. What
+is left is the Play-managed signing certificate, the console forms and the
+closed test. Each finding carries a "Done" line saying what landed.
 
 Everything below is split into two halves. Part 1 is what Google asks you to
 declare in the Play Console, answered from the code. Part 2 is the audit
@@ -24,10 +42,10 @@ against Play policy, ordered by how hard it blocks a submission.
 | Fact | Value | Where |
 | --- | --- | --- |
 | Application ID | `com.opendungeonmaster.app` | `mobile/android/app/build.gradle` |
-| versionName / versionCode | 0.4.1 / 40001 | derived from `mobile/package.json` |
+| versionName / versionCode | 0.7.3 / 703 | derived from the repo root `package.json` by `mobile/android/app/build.gradle`; read back from the released APK with `apkanalyzer manifest version-code` |
 | minSdk / targetSdk / compileSdk | 26 / 36 / 36 | `mobile/android/variables.gradle` |
 | ABIs shipped | `arm64-v8a`, `x86_64` | `mobile/scripts/bundle-android-payload.mjs` |
-| Artifacts CI produces | signed universal **APK** (GitHub download) and signed **AAB** (Play upload), both about 135 MB before Play's per-ABI split | `.github/workflows/release.yml` |
+| Artifacts CI produces | signed universal **APK** (GitHub download, 133 MB) and signed **AAB** (Play upload, 132 MB), both before Play's per-ABI split | `.github/workflows/release.yml` |
 | Native libraries | `libnode.so` (Node 24.20.0), `libcloudflared.so` (cloudflared 2026.8.3), `libc++_shared.so` | `mobile/android/app/src/main/jniLibs/` |
 | 16 KB page alignment | Yes, all three ELF LOAD segments align at 0x4000 | verified with `readelf -lW` |
 | 64-bit support | Yes, both shipped ABIs are 64-bit | no 32-bit ABI is built |
@@ -47,11 +65,29 @@ Open Dungeon Master is a tabletop roleplaying client for Dungeons and Dragons
    run as a second child process) publishes the phone's local server so
    friends can join from anywhere. A foreground service keeps it alive.
 3. **Join someone else's server.** The user types a server address or scans a
-   QR invite, and the app loads that server in the WebView.
+   QR invite and plays on that server.
+
+Mode 3 changed in 0.7.x and a reviewer will see the newer shape. The app now
+carries the game's screens in its own assets and asks the host only for data:
+
+- **Native screens** (host at server 0.16.1 or newer): the app renders the
+  host's pages itself, in its own WebView, and calls the host's JSON API
+  across origins.
+- **Portal** (host at 0.16.0): same screens, served from the app's bundled
+  copy of the server, which forwards the data calls to the host.
+- **The host's own pages** (anything older, and any host that fails the
+  version check): the old behaviour, that server loaded in a WebView.
+
+`src/shared/portal-logic.ts` holds the version gate. The practical effect for
+this document is that the microphone, camera and Bluetooth prompts now come
+from the app's own WebView rather than from a remote page, and that the
+report and block affordances in B-3 ship inside the APK instead of arriving
+from whichever host the player joined.
 
 There is no Open Dungeon Master account, no developer-run game backend, and
 no hosted service. The one piece of developer-run infrastructure is a
-Cloudflare Worker that mints tunnel hostnames (see Data safety, below).
+Cloudflare Worker: it mints tunnel hostnames, and it hands out short-lived
+Cloudflare TURN credentials for voice chat (see Data safety, below).
 
 ---
 
@@ -59,8 +95,11 @@ Cloudflare Worker that mints tunnel hostnames (see Data safety, below).
 
 ### 1.1 Permissions
 
-Every permission in the merged release manifest, verified with
-`apkanalyzer manifest permissions` against the built release APK.
+Every permission in the merged release manifest. Re-verified 2026-09-06 with
+`apkanalyzer manifest permissions` against the **released v0.7.3 APK**: the
+sixteen entries below are exactly what ships, both location permissions carry
+`maxSdkVersion='30'`, and nothing new arrived with the bundled game screens
+(targetSdk reads 36, minSdk 26, versionCode 703 on the same build).
 
 **Declared deliberately in `mobile/android/app/src/main/AndroidManifest.xml`:**
 
@@ -70,7 +109,7 @@ Every permission in the merged release manifest, verified with
 | `ACCESS_NETWORK_STATE` | No | Knowing whether the phone is on Wi-Fi so the LAN join address can be offered. |
 | `FOREGROUND_SERVICE` | No | Keeps the phone-hosted world running while the host uses another app. |
 | `FOREGROUND_SERVICE_SPECIAL_USE` | No | Type for the above. See 1.2. |
-| `RECORD_AUDIO` | Yes | Voice chat between players at the table, and push-to-talk speech to text, both inside the game WebView. |
+| `RECORD_AUDIO` | Yes | Voice chat between players at the table, and push-to-talk speech to text. Both run in the app's own WebView now that it draws the game screens; on an older host they run in the host's page instead. |
 | `MODIFY_AUDIO_SETTINGS` | No | Routing voice chat audio. |
 | `POST_NOTIFICATIONS` | Yes (Android 13+) | The hosting notification, plus turn alerts and session reminders. |
 | `CAMERA` | Yes | Scanning a QR invite card. Paired with `<uses-feature android:required="false">` so camera-less devices can still install. |
@@ -147,11 +186,34 @@ and the plugin block is skipped).
 | cloudflared (bundled as `libcloudflared.so`) | 2026.8.3 | Apache-2.0 | Optional outbound tunnel so friends can join | Connection metadata reaches Cloudflare |
 | Bundled server dependencies | see server `package.json` | mixed OSS | The game itself: Next.js, better-sqlite3 (pruned on Android), mediasoup, pdf-lib, jszip, docx, Radix UI | No |
 
+**The game screens the app now carries (new since 0.7.0).** `mobile/www/game`
+is the host's own page components compiled against Preact, about 6.5 MB of
+JavaScript and CSS in the APK's assets. Every library in it is a build-time
+dependency of this repo, none of them phones anywhere: they render, and the
+data comes from the host the user chose.
+
+| Component | Version | License | What it does | Collects user data? |
+| --- | --- | --- | --- | --- |
+| `preact` (+ `preact/compat`) | ^10.29.8 | MIT | The runtime the host's React components are compiled onto | No |
+| Radix UI (dialog, dropdown, tooltip, alert dialog) | ^1.x / ^2.x | MIT | Dialogs, menus and tooltips in those screens | No |
+| `lucide-react` | ^1.41.0 | ISC | Icons | No |
+| `tailwindcss` / `@tailwindcss/cli` | ^4.3.3 | MIT | Builds the stylesheet at build time | No |
+| `clsx`, `tailwind-merge` | ^2.1.1 / ^3.6.0 | MIT | Class name helpers | No |
+| `zod` | ^4.5.4 | MIT | Validates what the host sends back | No |
+| `pdf-lib` | ^1.17.1 | MIT | Character sheet PDF export, on device | No |
+| `@3d-dice/dice-box-threejs` (three.js) | ^0.0.12 | MIT | The 3D dice roller; its models and textures are fetched from the host, not a CDN | No |
+| `@systemic-games/pixels-web-connect` | ^1.3.1 | MIT | Pixels dice over the app's Web Bluetooth bridge | No |
+| `mediasoup-client` | ^3.23.1 | ISC | Voice chat client when the host runs an SFU (an Android host cannot; the worker is pruned) | Audio to the host |
+| `qrcode`, `react-easy-crop` | ^1.5.4 / ^6.2.3 | MIT | Invite QR codes, avatar cropping | No |
+| `@fontsource/cinzel` | ^5.3.0 | OFL-1.1 | The display face, bundled, not fetched | No |
+
 Note for the console: cloudflared is the only component that sends anything
-to a third party by design, and only when the user taps Share. `sharp`,
-`onnxruntime-node`, `better-sqlite3-multiple-ciphers` and the mediasoup
-worker are pruned from the Android payload, so their native code is not in
-the APK.
+to a third party by design, and only when the user taps Share; voice chat is
+the other network path that leaves the table, over Cloudflare's STUN and TURN
+(1.6). `sharp`, `onnxruntime-node`, `better-sqlite3-multiple-ciphers` and the
+mediasoup worker are pruned from the Android payload, so their native code is
+not in the APK. The bundled fonts, dice assets and icons are all local files;
+the app loads no script, style or font from any CDN.
 
 ### 1.4 Ads
 
@@ -189,18 +251,29 @@ The honest headline is that the developer runs almost no infrastructure, but
 | Cloudflare (`odm-tunnel-broker.tunnel-broker.workers.dev`, developer-operated Worker) | User taps Share to publish their world | The local port number, plus the IP address Cloudflare attaches to the request. The Worker keeps a per-address rate-limit counter in KV keyed by a salted SHA-256 of the address (24 hour TTL), never the address itself, plus a session record. See finding B-6. |
 | Cloudflare (tunnel edge, `trycloudflare.com` or `play-CODE.opendungeonmaster.com`) | same | All game traffic between remote players and the phone transits the tunnel. |
 | Cloudflare DoH (`cloudflare-dns.com/dns-query`) | same | A DNS lookup for the new tunnel hostname, to confirm it resolved. |
+| The same Worker, at `/turn` | **A table starts voice chat**, not only on Share | The host asks for short-lived Cloudflare Realtime TURN credentials and caches them for 30 minutes. The request carries no game content; Cloudflare sees the asking address. An operator can set `ODM_ICE_BROKER_URL=off` to opt out, and a phone-hosted world asks for itself. |
+| Cloudflare STUN and TURN (`stun.cloudflare.com`, `turn.cloudflare.com`) | Voice chat, from each player's device | The device's public address, so peers can find each other, and the audio itself whenever a direct peer connection cannot be made and the call has to be relayed. Nothing is stored there. |
+| Google STUN (`stun.l.google.com`) | Voice chat, only when the broker is unreachable or switched off | The device's public address. Fallback path only (`src/lib/voice/mesh.ts`). |
+| Discord (`discord.com`) | Only if the server's operator configured Discord sign-in and the user picks it | The OAuth exchange, and the Discord account's id, name and avatar come back to that server. |
+| Google Drive (`drive.google.com`) | Only when an **admin** browses or installs a world pack from the default registry | The request for the registry index or a pack manifest. The registry is a static file; an operator can repoint it or set it to `off` (`src/lib/worlds/install.ts`). |
 | OpenAI (`api.openai.com`) | Only if the user chooses the OpenAI option and pastes their own key | Prompts and game text, per OpenAI's own policy. |
-| Whatever server the user joins | User joins a friend's game | Everything they type in that game. |
+| OpenRouter (`openrouter.ai`) or any other base URL | The custom provider option defaults to OpenRouter's API; nothing is sent until an operator saves a key | Prompts and game text, to whoever that endpoint belongs to. |
+| Whatever server the user joins | User joins a friend's game | Everything they type in that game, and push-to-talk clips: the recording is posted to that server, which transcribes it with a speech service on its own machine unless its operator pointed `STT_URL` elsewhere. |
 | A model provider the server operator configured | Set by the operator, not by the app | Prompts and game content. |
 
 **Recommended form answers:** declare that the app collects "App activity"
 and "Personal info: user IDs" in the sense that a user-chosen display name
 and game content travel to the server the user chose to join, that it is not
 shared with the developer, that data is encrypted in transit, and that users
-can request deletion. Then use the free-text and privacy policy to explain
+can request deletion. Also declare **"Audio: voice or sound recordings"**,
+collected but not shared: voice chat carries live audio between players (and
+through Cloudflare's TURN relay when a direct connection fails), and a
+push-to-talk clip is uploaded to the user's chosen server to be transcribed.
+Neither is stored by the developer, and the transcript, not the audio, is
+what the game keeps. Then use the free-text and privacy policy to explain
 the self-hosted model. Do **not** claim "no data collected", because the
-tunnel broker sees IP addresses and the Share path routes game traffic
-through Cloudflare.
+tunnel broker sees IP addresses, the Share path routes game traffic through
+Cloudflare, and voice chat reaches Cloudflare whenever a table talks.
 
 ### 1.7 Account creation and deletion
 
@@ -218,8 +291,8 @@ server's grace period, default 14 days, undoable until then".
 For the console's "Data deletion" URL requirement the site now has
 `https://opendungeonmaster.com/delete-account/` (site repo,
 `src/pages/delete-account.html`), which walks through both the per-server
-account and a device-hosted world. It resolves only once the site is
-published (B-7).
+account and a device-hosted world. Checked 2026-09-06: it answers 200, as do
+`/privacy/` and `/terms/` (B-7).
 
 ### 1.8 Target audience and content rating
 
@@ -260,6 +333,37 @@ Not a financial, health, medical, VPN, government, blockchain, dating, news,
 or child-directed app. No COVID or contact tracing. No device or call
 recording. No accessibility service. No SDK that collects an advertising ID.
 
+### 1.10 Release notes for the upload
+
+Play allows 500 characters per language in "What's new", and the field is
+required on every release. Both drafts below are under that; neither uses
+the Dungeons and Dragons name, since the listing should describe a 5e
+tabletop game rather than lean on someone else's trademark.
+
+**For the first upload (v0.7.3, versionCode 703), 493 characters:**
+
+```
+First test build. Open Dungeon Master runs a 5e tabletop campaign with an AI Dungeon Master, on your own phone or on a server you choose.
+
+- Host a world on your phone and share it with friends over a private link
+- Join a table by address or QR invite
+- Voice chat, 3D dice, Pixels smart dice, character sheets and maps
+- A workshop for monsters, items, spells and lore
+- Report and block tools at every table
+
+No account with us: your world stays on your device, or on the server you joined.
+```
+
+**If a version-by-version note is wanted instead (0.7.3), 438 characters:**
+
+```
+- The app now draws every host's screens itself, so a table looks and works the same wherever you play
+- Guided tours for the workshop, and a written guide behind the help button in every tool
+- Pick lists instead of typing names: monsters, roll tables, items, cast, lore, spells, conditions and skills
+- Settings, audio and dice controls open over a table instead of leaving it
+- Steadier rejoining after a shared world's address changes
+```
+
 ---
 
 ## Part 2: Policy and technical audit
@@ -291,7 +395,17 @@ the signing key. If you enroll, the keystore at
 `~/.local/share/odm/odm-release.keystore` becomes the upload key, and losing
 it stops being fatal to updates. Enrolling is the safer choice, but note the
 Play-signed APK will have a **different** certificate fingerprint than the
-GitHub-released APK, which matters for App Links (see B-7).
+GitHub-released APK, which matters for App Links (see B-7). You decided to
+enroll; the outstanding half is copying the Google-managed fingerprint into
+the `j-redirector` Worker afterwards.
+
+**Version codes, checked 2026-09-06.** The released v0.7.3 APK reads
+versionCode 703 and versionName 0.7.3; the 0.4.0 build before it reads 400.
+The formula never produced the five-digit codes an earlier draft of this
+document quoted, so the sequence Play sees will only grow. Since 1eda722 the
+version is read from the repo root `package.json` rather than
+`mobile/package.json`, which is what stopped the 0.7.3 tag from shipping an
+app stamped 0.7.2.
 
 ### BLOCKER B-2: targetSdk 35 is below the current Play requirement
 
@@ -402,12 +516,13 @@ ephemerally" exemption, and it contradicts the current privacy policy's flat
 claim of "No data is sold, shared, or transmitted to any third party,
 including the creator of Open Dungeon Master."
 
-**Done 2026-09-05, code side.** `rateLimited()` keys on
+**Done 2026-09-05, deployed.** `rateLimited()` keys on
 `sha256(RATE_LIMIT_SALT + ":" + ip)`; unsalted if the secret is missing, so
-the limit never switches off. Before deploying run
-`npx wrangler secret put RATE_LIMIT_SALT` in `workers/tunnel-broker` with a
-long random value, then `npx wrangler deploy`. The privacy policy now
-describes the broker, what it sees, and the 24 hour hashed retention.
+the limit never switches off. The secret was set with
+`npx wrangler secret put RATE_LIMIT_SALT` and the Worker redeployed. The
+privacy policy describes the broker, what it sees, and the 24 hour hashed
+retention. Re-checked 2026-09-06: the Worker answers, including `/turn`,
+which is what pulled the voice path into 1.6.
 
 **Fix, in order of preference.** Hash the IP with a server-side salt before
 using it as the KV key, which preserves the rate limit exactly and stops you
@@ -415,7 +530,7 @@ holding the address. Then update the privacy policy to say the broker exists,
 what it sees, and for how long. This is a small change that turns an
 inaccurate policy into an accurate one.
 
-### B-7: privacy policy URL is required and the site is currently down
+### B-7: privacy policy URL is required (the site was down; it is up now)
 
 Play requires a publicly reachable privacy policy URL on the store listing,
 and it must cover the app specifically. Two problems:
@@ -449,13 +564,20 @@ same story. The `j-redirector` Worker's last deploy predates its assetlinks
 route; redeploy it after adding the Play-managed fingerprint to
 `ANDROID_CERT_SHA256`.
 
-**Fix.** Bring the site back up, publish an Android-specific privacy policy
-covering the permission list in 1.1 and the recipients in 1.6, and publish a
-data deletion page. Then confirm `assetlinks.json` lists the SHA-256
-fingerprint of whichever certificate ends up signing the Play build. If you
-enroll in Play App Signing, that is the **Google-managed** fingerprint from
-the console, not your local keystore's, and both should be listed so the
-GitHub-released APK keeps working too.
+**Done 2026-09-06, except the signing fingerprint.** The site is live:
+`/`, `/privacy/`, `/terms/` and `/delete-account/` all answer 200, and
+`/.well-known/assetlinks.json` serves two fingerprints, the debug key
+`01:3E:...` and the release keystore `94:39:...`. The policy is
+app-specific and covers the permissions in 1.1, the broker, Cloudflare, the
+on-device AI key, Discord sign-in, reports and deletion. Two gaps that the
+0.7.x code opened are written up as B-11 and B-12 below.
+
+**Still to do.** Once you enroll in Play App Signing, add the
+**Google-managed** certificate fingerprint from the console to the
+`j-redirector` Worker's `ANDROID_CERT_SHA256` and redeploy, keeping the
+release keystore's fingerprint listed so the GitHub-released APK keeps
+verifying too. Until then a Play-installed build will not verify the `/j`
+App Link and QR invites will open in the browser.
 
 ### B-8: `allowBackup="true"` sends the whole game database to Google Drive
 
@@ -525,6 +647,50 @@ timeline and people routinely discover it the week they wanted to ship.
 Check the account type in the console now. If it applies, start recruiting
 the 12 testers before you finish the code fixes above.
 
+### B-11: the privacy policy does not cover the voice chat path
+
+Found on the 2026-09-06 re-check. The live policy frames every Cloudflare
+sentence as "when you share a world", and says plainly: "The developer
+receives nothing at any other time."
+
+That is no longer exactly true. `meshIceServers()` in the server's
+`src/lib/voice/mesh.ts` calls the developer's broker at `/turn` whenever a
+table starts voice chat, and hands the players Cloudflare STUN and TURN
+servers; when two players cannot connect directly, their audio is relayed
+through `turn.cloudflare.com`. On a phone-hosted world the machine making
+that broker call is the user's own phone. A reviewer comparing the Data
+safety form against the policy would find voice audio and a developer-run
+endpoint that the policy does not mention.
+
+**Fix, in the site repo** (`/home/lebbi/open-dungeon-master-site`,
+`src/pages/privacy.html`), and in the server's `/privacy` page so both tell
+the same story. Two sentences are enough, in the Cloudflare paragraph:
+
+> Voice chat also uses Cloudflare. When your table starts a call, the server
+> you are on asks the same broker for short-lived credentials to Cloudflare's
+> STUN and TURN servers, which help your devices find each other and, when a
+> direct connection is impossible, relay the call. Nothing said on the call is
+> stored, by Cloudflare or by anyone else. A server operator can switch this
+> off, in which case calls use public STUN alone.
+
+Then move the policy's effective date, and soften "The developer receives
+nothing at any other time" to name voice chat as the second case.
+
+### B-12: the world pack registry is a third party the policy does not list
+
+`src/lib/worlds/install.ts` browses and installs world packs from a registry
+that defaults to a file on Google Drive. It is admin-only, nothing installs
+by itself, and what comes back is a JSON manifest of prose, tables and
+thumbnails rather than code, so the Device and Network Abuse policy is still
+satisfied. But the request does reach Google, and neither the privacy policy
+nor the Data safety notes mention it.
+
+**Fix.** One line under Data sharing: browsing or installing an optional
+world pack fetches it from the registry the server is pointed at, which by
+default is a file hosted on Google Drive, and an operator can repoint it or
+turn it off. Worth a sentence to a reviewer too, since packs are third-party
+settings material and `UnofficialPackNotice.tsx` already says so in the UI.
+
 ### Watch items, not blockers
 
 - **`usesCleartextTraffic="true"`** is justified by the comment (LAN servers
@@ -539,16 +705,45 @@ the 12 testers before you finish the code fixes above.
   the APK and nothing executable is downloaded at runtime. `WorldRuntime`'s
   only network call is a health check against `127.0.0.1`. Keep it that way:
   the moment the app fetches code or a payload update from the network, that
-  policy stops being satisfied. Worth a sentence in the console notes to a
-  reviewer so the two large `.so` files do not look suspicious.
-- **App size.** 134 MB universal. After the AAB split this is fine, but
-  Android's install-time extraction of `useLegacyPackaging` jniLibs means the
-  on-disk footprint is roughly double the download. Users on cheap devices
-  will feel it. Not a policy matter.
+  policy stops being satisfied. World packs (B-12) are the one thing fetched
+  after install, and they are JSON manifests validated against a schema, not
+  code. Worth a sentence in the console notes to a reviewer so the two large
+  `.so` files do not look suspicious.
+- **App size.** 133 MB APK, 132 MB bundle at 0.7.3, of which the game screens
+  the app now carries are about 6.5 MB. The next build drops about 7.6 MB
+  from each user's download and 15 MB from the universal APK: the NDK's
+  `libc++_shared.so` was shipping unstripped at 8.8 MB (arm64) and 8.4 MB
+  (x86_64), and `bundle-android-payload.mjs` now runs `llvm-strip` over it
+  as it stages, leaving 1.2 MB with every dynamic symbol intact. After the
+  AAB split the rest is fine, but Android's install-time extraction of
+  `useLegacyPackaging` jniLibs means the on-disk footprint is roughly double
+  the download. Users on cheap devices will feel it. Not a policy matter.
+- **The two Play Console upload warnings** (seen on the first test upload,
+  2026-09-07) are both advisory and neither blocks a release.
+  - *No deobfuscation file.* `minifyEnabled false`, so there is no mapping
+    file and stack traces are already unobfuscated. Turning R8 on would trim
+    part of the 28 MB of dex, but Capacitor resolves its plugins
+    reflectively, so it needs keep rules and a pass over every plugin path on
+    a device. Not worth doing mid closed-test; revisit when there is time to
+    test it properly.
+  - *No native debug symbols.* Worth knowing why this one barely applies: the
+    app calls `System.loadLibrary` nowhere. `libnode.so` and
+    `libcloudflared.so` are PIE executables that `WorldRuntime` and
+    `ShareTunnel` launch as child processes, and both are already stripped,
+    so no native frame ever appears in a crash Play can see. Adding
+    `ndk { debugSymbolLevel 'SYMBOL_TABLE' }` would silence the warning and
+    little else.
 - **The WebView loads arbitrary user-entered server URLs.** This is core to
   the product and is fine, but it is the reason the IARC "unrestricted
   internet access" answer is yes, and it is worth one line in the listing
-  description so it does not read as a hidden browser.
+  description so it does not read as a hidden browser. Since 0.7.x most
+  hosts are drawn by the app's own screens instead, which makes the app read
+  less like a browser, not more, but the fallback path is still there for
+  hosts older than 0.16.1.
+- **Optional world packs are third-party settings material.** They install
+  only when an admin chooses one, carry their own licenses, and the UI says
+  so (`UnofficialPackNotice.tsx`). Keep that notice: it is the difference
+  between offering a pack and passing someone else's setting off as yours.
 - **No armeabi-v7a.** Only 64-bit ABIs are built, so 32-bit-only devices
   cannot install. Play is fine with this. It just narrows reach.
 - **`minifyEnabled false`.** Allowed. It does mean the APK is trivially
@@ -558,25 +753,31 @@ the 12 testers before you finish the code fixes above.
 
 ## Pre-submission checklist
 
+State as of the 2026-09-06 re-check, at client v0.7.3 / server 0.16.3.
+
 Code and build:
 
 - [x] B-1: publish an AAB, keep the APK for GitHub releases (CI uploads both)
-- [ ] B-1: decide on Play App Signing, record both certificate fingerprints
+- [ ] B-1: enroll in Play App Signing and record both certificate fingerprints
 - [x] B-2: move compileSdk and targetSdk to 36 (still: retest edge-to-edge and the FGS start on a real Android 16 device)
-- [x] B-3: add in-app content reporting and user blocking (server 6a6e4f2, bundled)
+- [x] B-3: add in-app content reporting and user blocking (server 6a6e4f2, bundled; since 0.7.x it also ships in the app's own screens)
 - [x] B-4: cap both location permissions at `maxSdkVersion="30"`
-- [x] B-6: hash IPs in the tunnel broker's rate limit keys (deploy pending, see below)
+- [x] B-6: hash IPs in the tunnel broker's rate limit keys
 - [x] B-8: add `dataExtractionRules` excluding `files/data/` and `files/server/`
 - [x] B-9: delete the unused NSFW prompt from `story-prompt.ts`
-- [x] Re-run `apkanalyzer manifest permissions` on the new build and diff against 1.1 (matches, with the two location caps)
-- [ ] Tag the client release that carries all of the above (0.4.0 shipped before these changes)
+- [x] Re-run `apkanalyzer manifest permissions`, this time on the released v0.7.3 APK, and diff against 1.1 (matches: sixteen permissions, both location caps, targetSdk 36, versionCode 703)
+- [x] Strip `libc++_shared.so` while staging the runtime, about 7.6 MB off each download (2026-09-07, after the first upload's size warning)
+- [x] Tag the client release that carries all of the above (v0.7.3 is the upload candidate)
 
 Off-app:
 
-- [ ] B-7: publish the site so `opendungeonmaster.com` resolves (public repo plus GitHub Pages, needs your go)
+- [x] B-7: publish the site so `opendungeonmaster.com` resolves (live; `/`, `/privacy/`, `/terms/`, `/delete-account/` all 200)
 - [x] B-7: write the Android-specific privacy policy and the data deletion page (site `/privacy/`, `/delete-account/`; server `/privacy`, `/terms`)
-- [ ] B-7: redeploy `j-redirector` so `/.well-known/assetlinks.json` is served, with the Play-managed fingerprint added
-- [ ] B-6: `wrangler secret put RATE_LIMIT_SALT` in `workers/tunnel-broker`, then `wrangler deploy`
+- [x] B-7: redeploy `j-redirector` so `/.well-known/assetlinks.json` is served (serving the debug and release-keystore fingerprints)
+- [ ] B-7: add the Play-managed fingerprint to `ANDROID_CERT_SHA256` and redeploy, after enrolling in Play App Signing
+- [x] B-6: `wrangler secret put RATE_LIMIT_SALT` in `workers/tunnel-broker`, then `wrangler deploy`
+- [ ] B-11: add the voice chat paragraph to the site's and the server's privacy policy, and move the effective date
+- [ ] B-12: list the world pack registry under Data sharing in both policies
 - [ ] B-10: confirm developer account type and start the 12-tester closed test if required
 
 Console forms, answered from Part 1:
@@ -589,3 +790,4 @@ Console forms, answered from Part 1:
 - [ ] Government apps, financial features, health: all no (1.9)
 - [ ] Account deletion URL (1.7)
 - [ ] Store listing: screenshots, feature graphic, short and full description
+- [ ] What's new text for the first upload (0.7.3)

@@ -18,6 +18,7 @@
 // after unpacking the shared payload artifact and fetching the runtime.
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { pruneServerPayload } from "../../scripts/prune-server-payload.mjs";
@@ -79,6 +80,58 @@ try {
   fs.rmSync(staging, { recursive: true, force: true });
 }
 
+// The NDK ships libc++_shared.so with its debug info and full symbol table,
+// nine megabytes of it per ABI. Nothing on the phone reads any of that: the
+// app never loads the library itself (node and cloudflared are child
+// processes with this directory on their LD_LIBRARY_PATH), so the symbols
+// only ever cost the user their download. Stripping keeps every dynamic
+// symbol the loader resolves against and takes the file to about 1.2 MB.
+function findLlvmStrip() {
+  const roots = [
+    process.env.ANDROID_NDK_HOME,
+    process.env.ANDROID_NDK_LATEST_HOME,
+    process.env.ANDROID_NDK_ROOT,
+  ].filter(Boolean);
+  for (const sdk of [
+    process.env.ANDROID_HOME,
+    process.env.ANDROID_SDK_ROOT,
+    path.join(os.homedir(), "Android", "Sdk"),
+  ]) {
+    const ndks = sdk && path.join(sdk, "ndk");
+    if (!ndks || !fs.existsSync(ndks)) continue;
+    // Newest NDK first, so a stale one beside it is not what gets picked.
+    for (const version of fs.readdirSync(ndks).sort().reverse()) {
+      roots.push(path.join(ndks, version));
+    }
+  }
+  for (const root of roots) {
+    const prebuilt = path.join(root, "toolchains", "llvm", "prebuilt");
+    if (!fs.existsSync(prebuilt)) continue;
+    for (const host of fs.readdirSync(prebuilt)) {
+      const tool = path.join(prebuilt, host, "bin", "llvm-strip");
+      if (fs.existsSync(tool)) return tool;
+    }
+  }
+  return null;
+}
+
+const llvmStrip = findLlvmStrip();
+if (!llvmStrip) {
+  console.warn(
+    "No llvm-strip found (set ANDROID_NDK_HOME or install an NDK under the SDK); " +
+      "libc++_shared.so ships unstripped and the download is about 8 MB larger per ABI.",
+  );
+}
+
+function stripDebugSymbols(file) {
+  if (!llvmStrip) return;
+  const before = fs.statSync(file).size;
+  execFileSync(llvmStrip, ["--strip-debug", "--strip-unneeded", file], { stdio: "inherit" });
+  const after = fs.statSync(file).size;
+  const mb = (bytes) => (bytes / 1024 / 1024).toFixed(1);
+  console.log(`Stripped ${path.basename(file)}: ${mb(before)} MB -> ${mb(after)} MB`);
+}
+
 // The runtime is the stripped node executable plus the NDK's libc++_shared
 // it links against; both sit in the app's native library directory, which
 // is also the child process's LD_LIBRARY_PATH.
@@ -93,7 +146,9 @@ for (const abi of ABIS) {
   const dir = path.join(jniLibs, abi);
   fs.mkdirSync(dir, { recursive: true });
   for (const [index, name] of RUNTIME_FILES.entries()) {
-    fs.copyFileSync(sources[index], path.join(dir, name));
+    const target = path.join(dir, name);
+    fs.copyFileSync(sources[index], target);
+    if (name === "libc++_shared.so") stripDebugSymbols(target);
   }
   shipped += 1;
   console.log(`Node runtime staged for ${abi}`);
