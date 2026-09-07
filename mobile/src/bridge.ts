@@ -497,6 +497,17 @@ async function openThroughPortal(server: StoredServer, pathname: string): Promis
   }
   await CapacitorCookies.setCookie({ url: origin, key: PORTAL_ORIGIN_COOKIE, value: server.origin });
   await CapacitorCookies.setCookie({ url: origin, key: PORTAL_TOKEN_COOKIE, value: server.token });
+  // The world on this phone only forwards to the host while both cookies
+  // are really in the jar; without them it answers the host's campaign
+  // paths out of its own database ("Campaign not found."). A jar that did
+  // not take them means the host opens its own pages instead.
+  const jar = await CapacitorCookies.getCookies({ url: origin }).catch(
+    () => ({}) as Record<string, string>,
+  );
+  if (jar[PORTAL_ORIGIN_COOKIE] !== server.origin || !jar[PORTAL_TOKEN_COOKIE]) {
+    await clearPortalCookies(origin);
+    return false;
+  }
   worldPageOpen = false;
   await openGameWebView(`${origin}${pathname}`, server.name);
   return true;

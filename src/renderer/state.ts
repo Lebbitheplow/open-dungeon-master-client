@@ -58,6 +58,12 @@ export const state = {
 // calls them on every tunnel-status event.
 export const tunnelWatchers = new Set<() => void>();
 
+// The version each host last answered with, by server id. A probe that
+// times out (a tunnel waking up, a phone changing networks) must not change
+// which screens that host gets: what it said earlier in this run still
+// stands. Empty for a host this run has never reached.
+export const hostVersions = new Map<string, string>();
+
 export async function refresh(): Promise<void> {
   const data = await window.odm.listServers();
   state.servers = data.servers;

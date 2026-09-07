@@ -7,7 +7,7 @@ import { backLink, formCard, intro, joinBanner, show } from "./chrome.js";
 import { button, el, input } from "./dom.js";
 import { tryOpenNative } from "./game-screen.js";
 import { renderHome } from "./home.js";
-import { connectAt, refresh, state } from "./state.js";
+import { connectAt, hostVersions, refresh, state } from "./state.js";
 import type { ServerProbe, ServerSummary } from "../shared/types";
 
 export function renderError(message: string): void {
@@ -117,12 +117,22 @@ export async function connectServer(
   btn.disabled = true;
   // The app's own screens first: they need the host's version (for the
   // gate) and a live session; either missing, the web view opens instead.
+  //
+  // A probe that fails falls back to the version this host answered with
+  // earlier in the run. Without that, one slow answer sends a host the app
+  // was just drawing natively into the web view instead, where a device
+  // world serving it through the portal would answer the host's campaign
+  // paths out of its own database. tryOpenNative still refuses on its own
+  // when the session is gone, so a host that is really unreachable ends up
+  // exactly where it did before.
   const probed = await window.odm.probeServer(server.origin).catch(() => null);
-  if (probed?.ok) {
+  if (probed?.ok) hostVersions.set(server.id, probed.probe.version);
+  const version = probed?.ok ? probed.probe.version : (hostVersions.get(server.id) ?? "");
+  if (version) {
     const native = await tryOpenNative(
       server.id,
       landingPath(state.joinIntent?.code ?? "", path),
-      probed.probe.version,
+      version,
     ).catch(() => false);
     if (native) {
       btn.disabled = false;
