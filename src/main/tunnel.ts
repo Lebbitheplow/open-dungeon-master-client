@@ -19,6 +19,9 @@ import type { TunnelStatus } from "../shared/types";
 
 const URL_WAIT_MS = 45_000;
 const REACHABLE_WAIT_MS = 90_000;
+// A named tunnel's warm-up is a courtesy, not a verdict, so it waits a
+// fraction of that before the host is handed their address.
+const WARMUP_WAIT_MS = 20_000;
 const DOWNLOAD_TIMEOUT_MS = 10 * 60_000;
 
 // ELF on Linux, MZ on Windows: enough to reject an HTML error page that
@@ -208,8 +211,12 @@ export class QuickTunnel {
   // systemd-resolved then negative-caches, wedging every retry. So the name
   // is confirmed over DNS-over-HTTPS first, which never touches the local
   // resolver cache.
-  private async waitDns(host: string, child: ChildProcess): Promise<void> {
-    const deadline = Date.now() + REACHABLE_WAIT_MS;
+  private async waitDns(
+    host: string,
+    child: ChildProcess,
+    budgetMs = REACHABLE_WAIT_MS,
+  ): Promise<void> {
+    const deadline = Date.now() + budgetMs;
     while (Date.now() < deadline) {
       if (child.exitCode !== null) throw new Error("The tunnel closed while warming up.");
       try {
@@ -229,8 +236,12 @@ export class QuickTunnel {
 
   // The edge needs a moment to route a fresh quick tunnel; a URL that has
   // been printed is not yet a URL that works.
-  private async waitReachable(url: string, child: ChildProcess): Promise<void> {
-    const deadline = Date.now() + REACHABLE_WAIT_MS;
+  private async waitReachable(
+    url: string,
+    child: ChildProcess,
+    budgetMs = REACHABLE_WAIT_MS,
+  ): Promise<void> {
+    const deadline = Date.now() + budgetMs;
     while (Date.now() < deadline) {
       if (child.exitCode !== null) throw new Error("The tunnel closed while warming up.");
       try {
@@ -275,6 +286,27 @@ export class QuickTunnel {
         this.setState("error", "The share tunnel closed unexpectedly.");
       }
     });
+    if (session) {
+      // A named tunnel is up the moment cloudflared connects with its
+      // token: the hostname, its DNS record and the ingress rule were all
+      // made by the broker before this ran. The two checks below routinely
+      // fail for the host alone while working for everyone else, because a
+      // fresh CNAME takes time to reach this machine's resolver and a host
+      // behind NAT often cannot reach its own public hostname. Falling back
+      // to an anonymous trycloudflare address on either was the bug: the
+      // host was handed a worse address than the one already minted. Give
+      // the edge a short moment, then hand over the name regardless.
+      await this.waitDns(new URL(this.url).hostname, child, WARMUP_WAIT_MS).catch(
+        () => undefined,
+      );
+      await this.waitReachable(`${this.url}/api/health`, child, WARMUP_WAIT_MS).catch(
+        () => undefined,
+      );
+      if (child.exitCode !== null) {
+        throw new Error("The tunnel helper stopped as it started.");
+      }
+      return;
+    }
     await this.waitDns(new URL(this.url).hostname, child);
     await this.waitReachable(`${this.url}/api/health`, child);
   }

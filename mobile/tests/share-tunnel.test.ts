@@ -17,6 +17,9 @@ function harness(overrides: {
   namedDns?: boolean;
   quickDns?: boolean;
   reachable?: boolean;
+  // cloudflared exits as it starts: the one named failure worth falling
+  // back for.
+  namedProcessDies?: boolean;
 } = {}) {
   const broker = overrides.broker ?? "ok";
   const namedDns = overrides.namedDns ?? true;
@@ -32,7 +35,7 @@ function harness(overrides: {
       shareStatus: async () => ({ ...plugin }),
       shareStart: async (options) => {
         calls.push(options.token ? `named:${options.token}:${options.port}` : `quick:${options.port}`);
-        plugin.running = true;
+        plugin.running = !(options.token && (overrides.namedProcessDies ?? false));
         plugin.url = options.token ? options.url ?? "" : "https://rare-fox.trycloudflare.com";
         return { url: plugin.url };
       },
@@ -101,19 +104,38 @@ test("a broker hostname off the official shape is refused, quick tunnel instead"
   assert.equal(status.mode, "quick");
 });
 
-test("a named tunnel that never resolves is released and replaced by a quick one", async () => {
+test("a named tunnel the host cannot see itself is kept, not swapped for a quick one", async () => {
+  // The address, its DNS record and the ingress rule were all made by the
+  // broker before cloudflared ran. A host whose own resolver has not caught
+  // up yet, or who cannot reach their own public hostname through NAT, is
+  // not a broken tunnel: everyone else can already join. Handing that host
+  // an anonymous trycloudflare address instead was strictly worse.
   const h = harness({ namedDns: false });
   const status = await h.tunnel.start();
   assert.equal(status.state, "running");
-  assert.equal(status.mode, "quick");
-  const stopIndex = h.calls.indexOf("stop");
-  const releaseIndex = h.calls.findIndex((call) => call.startsWith("DELETE ") && call.includes("/session/ABCD1234"));
-  const quickIndex = h.calls.indexOf("quick:3210");
-  assert.ok(stopIndex >= 0 && releaseIndex > stopIndex && quickIndex > releaseIndex);
+  assert.equal(status.mode, "named");
+  assert.equal(status.url, "https://play-abcd1234.opendungeonmaster.com");
+  assert.ok(!h.calls.includes("quick:3210"));
+  assert.ok(!h.calls.some((call) => call.startsWith("DELETE ") && call.includes("/session/")));
+  assert.deepEqual(h.published, ["https://play-abcd1234.opendungeonmaster.com"]);
 });
 
-test("nothing reachable at all ends in an error with everything torn down", async () => {
-  const h = harness({ namedDns: false, quickDns: false });
+test("a named tunnel whose helper dies falls back to a quick one", async () => {
+  // The one failure that is real: no process, no tunnel. Then the quick
+  // tunnel is better than nothing, and the session goes back to the broker.
+  const h = harness({ namedProcessDies: true });
+  const status = await h.tunnel.start();
+  assert.equal(status.state, "running");
+  assert.equal(status.mode, "quick");
+  const releaseIndex = h.calls.findIndex(
+    (call) => call.startsWith("DELETE ") && call.includes("/session/ABCD1234"),
+  );
+  const quickIndex = h.calls.indexOf("quick:3210");
+  assert.ok(releaseIndex >= 0 && quickIndex > releaseIndex);
+});
+
+test("a quick tunnel that never resolves ends in an error with everything torn down", async () => {
+  const h = harness({ broker: "down", quickDns: false });
   const status = await h.tunnel.start();
   assert.equal(status.state, "error");
   assert.match(status.error, /DNS/);

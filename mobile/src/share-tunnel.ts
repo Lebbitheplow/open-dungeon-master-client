@@ -14,6 +14,9 @@ import type { ShellEvent, TunnelStatus } from "../../src/shared/types";
 // the address to resolve and answer, and keeps the server's publicUrl true.
 
 const REACHABLE_WAIT_MS = 90_000;
+// The named warm-up is best effort, so it waits a fraction of that before
+// handing the host their address.
+const WARMUP_WAIT_MS = 20_000;
 const POLL_MS = 1500;
 
 export interface SharePluginStatus {
@@ -122,8 +125,8 @@ export function createShareTunnel(deps: ShareTunnelDeps) {
 
   // A fresh hostname takes a few seconds to appear in DNS. Confirmed over
   // DNS-over-HTTPS first so the device's own resolver never caches a miss.
-  async function waitDns(host: string): Promise<void> {
-    const deadline = deps.now() + REACHABLE_WAIT_MS;
+  async function waitDns(host: string, budgetMs = REACHABLE_WAIT_MS): Promise<void> {
+    const deadline = deps.now() + budgetMs;
     while (deps.now() < deadline) {
       if (stopRequested) throw new Error("stopped");
       if (!(await stillUp())) throw new Error("The tunnel closed while warming up.");
@@ -144,8 +147,8 @@ export function createShareTunnel(deps: ShareTunnelDeps) {
 
   // The edge needs a moment to route a fresh tunnel; an address that exists
   // is not yet an address that works.
-  async function waitReachable(base: string): Promise<void> {
-    const deadline = deps.now() + REACHABLE_WAIT_MS;
+  async function waitReachable(base: string, budgetMs = REACHABLE_WAIT_MS): Promise<void> {
+    const deadline = deps.now() + budgetMs;
     while (deps.now() < deadline) {
       if (stopRequested) throw new Error("stopped");
       if (!(await stillUp())) throw new Error("The tunnel closed while warming up.");
@@ -160,18 +163,44 @@ export function createShareTunnel(deps: ShareTunnelDeps) {
     throw new Error("The tunnel came up but never became reachable.");
   }
 
+  // A named tunnel is up the moment cloudflared connects with its token:
+  // the hostname, the DNS record and the ingress rule were all made by the
+  // broker before this ran. The warm-up below is a courtesy, not a verdict,
+  // because the two things it checks routinely fail for the host alone
+  // while working for everyone else: a fresh CNAME takes time to reach this
+  // device's resolver, and a phone usually cannot reach its own public
+  // hostname at all through carrier NAT. Throwing the named tunnel away for
+  // an anonymous trycloudflare one on either of those was the bug: the host
+  // ended up with a worse address than the one they had already been given.
+  async function warmUp(): Promise<void> {
+    try {
+      await waitDns(new URL(url).hostname, WARMUP_WAIT_MS);
+      await waitReachable(url, WARMUP_WAIT_MS);
+    } catch {
+      // Slow edge or a host that cannot see itself. The tunnel stands.
+    }
+  }
+
   async function launch(port: number, named: BrokerSession | null): Promise<void> {
     if (named) {
       await deps.plugin.shareStart({ token: named.tunnelToken, url: named.url, port });
       url = named.url;
       mode = "named";
-    } else {
-      const started = await deps.plugin.shareStart({ port });
-      if (!started?.url) throw new Error("The tunnel never reported its address.");
-      url = started.url;
-      mode = "quick";
+      session = named;
+      // Only the process dying is fatal; that is a real failure and the
+      // quick tunnel below is the right answer to it.
+      await deps.sleep(POLL_MS);
+      if (!(await stillUp())) {
+        throw new Error("The tunnel helper stopped as it started.");
+      }
+      await warmUp();
+      return;
     }
-    session = named;
+    const started = await deps.plugin.shareStart({ port });
+    if (!started?.url) throw new Error("The tunnel never reported its address.");
+    url = started.url;
+    mode = "quick";
+    session = null;
     await waitDns(new URL(url).hostname);
     await waitReachable(url);
   }
