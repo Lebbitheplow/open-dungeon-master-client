@@ -7,6 +7,7 @@ import {
   originCandidates,
   parseAnyLink,
   parseJoinLink,
+  codeCandidates,
   parseLinkOrAddress,
   parseRoomCode,
   parseServerAddress,
@@ -209,4 +210,23 @@ test("roomCode joins the halves, and round-trips through the parser", () => {
     origin: "https://play-abcd2345.opendungeonmaster.com",
     code: "EFGH6789",
   });
+});
+
+test("a bare code offers the registry lookup first, the host shape second", () => {
+  // The two alphabets differ by one letter, so all but a thirty-first of
+  // table codes also read as a host code. Choosing by shape sent real table
+  // codes to a play-CODE address nobody answers at, which is why a code
+  // never connected while the tunnel itself was fine.
+  assert.deepEqual(codeCandidates("EFGH6789"), {
+    table: "EFGH6789",
+    hostOrigin: "https://play-efgh6789.opendungeonmaster.com",
+  });
+  // An L can only be a table code: the broker's alphabet leaves it out.
+  assert.deepEqual(codeCandidates("klmn2345"), {
+    table: "KLMN2345",
+    hostOrigin: "",
+  });
+  // Neither: an address, a link, or junk.
+  assert.deepEqual(codeCandidates("play.example.com"), { table: "", hostOrigin: "" });
+  assert.deepEqual(codeCandidates(""), { table: "", hostOrigin: "" });
 });

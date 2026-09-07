@@ -16,6 +16,7 @@ import {
   normalizeOrigin,
   originCandidates,
   parseLinkOrAddress,
+  codeCandidates,
   parseRoomCode,
   type JoinLink,
 } from "../shared/deep-link";
@@ -323,12 +324,27 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     // registry is asked where that table is right now. This is the whole
     // point of one code: the answer changes with every share session, the
     // code does not.
-    const typed = text.trim().toUpperCase();
-    if (CODE_SHAPE.test(typed) && !parseRoomCode(text)) {
-      const origin = await resolveTable(typed);
-      if (!origin) return false;
-      await handleJoinLink({ origin, code: typed });
-      return true;
+    const bare = codeCandidates(text);
+    if (bare.table || bare.hostOrigin) {
+      // The registry first: a table's code is the one a host reads out, and
+      // it is the only one that survives a new tunnel. The host shape is
+      // the fallback, since the two overlap and shape alone cannot tell
+      // them apart.
+      const found = bare.table ? await resolveTable(bare.table) : "";
+      if (found) {
+        await handleJoinLink({ origin: found, code: bare.table });
+        return true;
+      }
+      if (bare.hostOrigin) {
+        try {
+          await probeServer(bare.hostOrigin);
+        } catch {
+          return false;
+        }
+        await handleJoinLink({ origin: bare.hostOrigin, code: "" });
+        return true;
+      }
+      return false;
     }
     const link = parseLinkOrAddress(text);
     if (!link) return false;

@@ -28,6 +28,7 @@ import {
   originCandidates,
   parseAnyLink,
   parseLinkOrAddress,
+  codeCandidates,
   parseRoomCode,
   type JoinLink,
 } from "../../src/shared/deep-link";
@@ -1081,12 +1082,25 @@ const bridge: OdmBridge = {
     // A room code is a campaign's own code and names no address: the
     // registry says where that table is right now, which is what lets one
     // code outlive the tunnel it was shared on.
-    const typed = text.trim().toUpperCase();
-    if (CODE_SHAPE.test(typed) && !parseRoomCode(text)) {
-      const origin = await resolveRoomCode(typed);
-      if (!origin) return false;
-      await handleJoinLink({ origin, code: typed });
-      return true;
+    const bare = codeCandidates(text);
+    if (bare.table || bare.hostOrigin) {
+      // Registry first, host shape second: the two code shapes overlap, so
+      // shape alone cannot say which one was typed.
+      const found = bare.table ? await resolveRoomCode(bare.table) : "";
+      if (found) {
+        await handleJoinLink({ origin: found, code: bare.table });
+        return true;
+      }
+      if (bare.hostOrigin) {
+        try {
+          await probeOrigin(bare.hostOrigin);
+        } catch {
+          return false;
+        }
+        await handleJoinLink({ origin: bare.hostOrigin, code: "" });
+        return true;
+      }
+      return false;
     }
     const link = parseLinkOrAddress(text);
     if (!link) return false;

@@ -37,6 +37,30 @@ export function hostCodeFromOrigin(origin: string): string {
   return HOST_CODE_SHAPE.test(code) ? code : "";
 }
 
+// What a bare typed code might be, in the order the shells must try it.
+//
+// The two code shapes overlap almost completely: the broker's alphabet is
+// the campaign one minus L, so all but a thirty-first of table codes also
+// read as a host code. Deciding by shape therefore cannot work, and trying
+// the host shape first turned a real table code into a play-CODE address
+// nobody answers at. The registry is asked first because a table's code is
+// what a host actually reads out; the host shape is the fallback for the
+// code the share screen shows.
+export interface CodeCandidates {
+  // The registry lookup: a campaign's own code.
+  table: string;
+  // The address a host code names, or "" when it cannot be one.
+  hostOrigin: string;
+}
+
+export function codeCandidates(raw: string): CodeCandidates {
+  const typed = (typeof raw === "string" ? raw : "").trim().toUpperCase();
+  return {
+    table: CODE_SHAPE.test(typed) ? typed : "",
+    hostOrigin: parseRoomCode(raw)?.origin ?? "",
+  };
+}
+
 // A typed or pasted room code, in every shape a person might produce:
 // "ABCD2345-EFGH6789", the two halves run together, lower case, spaced,
 // with the dash a phone keyboard turned into an en dash, or with the
