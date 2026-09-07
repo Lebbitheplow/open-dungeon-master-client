@@ -76,7 +76,17 @@ window.odm.onEvent((event) => {
     }
     rerenderLive();
   } else if (event.kind === "join-request") {
-    state.joinIntent = { origin: event.origin, code: event.code, knownServerId: event.knownServerId };
+    // A second pass at the same server (the address alone, once the code
+    // has already brought us here) must not wipe the code: it is the whole
+    // invitation, and losing it is what made a joiner meet "this server
+    // needs an invite code" straight after typing one.
+    const carried =
+      !event.code && state.joinIntent?.origin === event.origin ? state.joinIntent.code : event.code;
+    state.joinIntent = {
+      origin: event.origin,
+      code: carried,
+      knownServerId: event.knownServerId,
+    };
     void refresh().then(() => {
       if (event.knownServerId) {
         const known = state.servers.find((server) => server.id === event.knownServerId);
@@ -88,17 +98,18 @@ window.odm.onEvent((event) => {
           return;
         }
       }
-      // A scanned server address (no room code) skips the address form: the
-      // address is already known, so go straight to that server's sign-in,
-      // and fall back to the form only when the server does not answer.
-      if (!event.code) {
-        void window.odm.probeServer(event.origin).then((probed) => {
-          if (probed.ok) renderAuth(probed.probe, "login", "");
-          else renderAdd(event.origin);
-        });
-        return;
-      }
-      renderAdd(event.origin);
+      // The address is known either way, so nobody is sent back to the
+      // form to type it again. A world an app is hosting opens on joining,
+      // since there is no account to sign in to yet and no password to
+      // have; a server someone runs opens on sign-in, where a returning
+      // player belongs, with Create account one tap away.
+      void window.odm.probeServer(event.origin).then((probed) => {
+        if (!probed.ok) {
+          renderAdd(event.origin);
+          return;
+        }
+        renderAuth(probed.probe, probed.probe.deviceWorld ? "register" : "login", "");
+      });
     });
   }
 });

@@ -253,6 +253,10 @@ function authTabs(
   username: string,
 ): HTMLElement | null {
   if (probe.signupMode === "closed") return null;
+  // An app-hosted world has no password anyone could type: the app made it
+  // up and keeps it. Offering "Sign in" there is a dead end, so joining is
+  // the only door.
+  if (probe.deviceWorld) return null;
   const tabs = el("div", "tabs");
   const loginTab = el("button", active === "login" ? "active" : "", "Sign in");
   loginTab.type = "button";
@@ -308,6 +312,18 @@ export function renderAuth(
     );
   }
   const error = el("p", "error");
+  if (byRoomCode && !state.joinIntent?.code) {
+    // Without the room code the host's world has nothing to vouch for this
+    // signup, and the server would refuse. Say that here rather than after
+    // the player has typed a name.
+    form.append(
+      el(
+        "p",
+        "hint",
+        "Open this world with its room code and you will be seated at that table.",
+      ),
+    );
+  }
   const submit = button(
     "primary",
     mode === "login" ? "Sign in" : byRoomCode ? "Join the table" : "Create account",
