@@ -709,15 +709,15 @@ settings material and `UnofficialPackNotice.tsx` already says so in the UI.
   after install, and they are JSON manifests validated against a schema, not
   code. Worth a sentence in the console notes to a reviewer so the two large
   `.so` files do not look suspicious.
-- **App size.** 133 MB APK, 132 MB bundle at 0.7.3, of which the game screens
-  the app now carries are about 6.5 MB. The next build drops about 7.6 MB
-  from each user's download and 15 MB from the universal APK: the NDK's
-  `libc++_shared.so` was shipping unstripped at 8.8 MB (arm64) and 8.4 MB
-  (x86_64), and `bundle-android-payload.mjs` now runs `llvm-strip` over it
-  as it stages, leaving 1.2 MB with every dynamic symbol intact. After the
-  AAB split the rest is fine, but Android's install-time extraction of
-  `useLegacyPackaging` jniLibs means the on-disk footprint is roughly double
-  the download. Users on cheap devices will feel it. Not a policy matter.
+- **App size.** 130 MB APK, 128 MB bundle at 0.7.4, of which the game screens
+  the app now carries are about 6.5 MB. Measured against the 0.7.3 artifacts,
+  stripping `libc++_shared.so` (B-13) took the universal APK and the bundle
+  down by 3.6 MB each. Per ABI, which is what a user actually downloads from
+  Play, the library went from 2.30 MB to 0.40 MB compressed, so about 1.8 MB
+  off an install; on disk it is the full 7.6 MB, since Android extracts
+  `useLegacyPackaging` jniLibs at install time and the footprint is roughly
+  double the download either way. Users on cheap devices will feel the rest
+  of it. Not a policy matter.
 - **The two Play Console upload warnings** (seen on the first test upload,
   2026-09-07) are both advisory and neither blocks a release.
   - *No deobfuscation file.* `minifyEnabled false`, so there is no mapping
@@ -726,6 +726,12 @@ settings material and `UnofficialPackNotice.tsx` already says so in the UI.
     reflectively, so it needs keep rules and a pass over every plugin path on
     a device. Not worth doing mid closed-test; revisit when there is time to
     test it properly.
+  - *No deobfuscation file, the size half (B-13).* The one real find behind
+    that warning had nothing to do with R8: the NDK's `libc++_shared.so` was
+    shipping with its debug info and full symbol table, 8.8 MB on arm64 and
+    8.4 MB on x86_64. Nothing on the phone reads it, so
+    `bundle-android-payload.mjs` now runs `llvm-strip` over it as it stages,
+    leaving 1.2 MB with every dynamic symbol intact. Shipped in 0.7.4.
   - *No native debug symbols.* Worth knowing why this one barely applies: the
     app calls `System.loadLibrary` nowhere. `libnode.so` and
     `libcloudflared.so` are PIE executables that `WorldRuntime` and
@@ -766,7 +772,7 @@ Code and build:
 - [x] B-8: add `dataExtractionRules` excluding `files/data/` and `files/server/`
 - [x] B-9: delete the unused NSFW prompt from `story-prompt.ts`
 - [x] Re-run `apkanalyzer manifest permissions`, this time on the released v0.7.3 APK, and diff against 1.1 (matches: sixteen permissions, both location caps, targetSdk 36, versionCode 703)
-- [x] Strip `libc++_shared.so` while staging the runtime, about 7.6 MB off each download (2026-09-07, after the first upload's size warning)
+- [x] B-13: strip `libc++_shared.so` while staging the runtime (0.7.4; 1.8 MB off a per-ABI download, 7.6 MB off disk)
 - [x] Tag the client release that carries all of the above (v0.7.3 is the upload candidate)
 
 Off-app:
