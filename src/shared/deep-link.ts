@@ -5,6 +5,76 @@
 // (no 0/O/1/I), 4 to 12 characters.
 export const CODE_SHAPE = /^[A-HJ-NP-Z2-9]{4,12}$/;
 
+// The broker mints host codes from the same alphabet minus L, eight long
+// (workers/tunnel-broker in the server repo), and the address it hands out
+// is play-CODE.opendungeonmaster.com. Host code and hostname are the same
+// string, which is what lets a spoken code find a host with nothing to look
+// up: no broker call, no directory, just the name.
+export const HOST_CODE_SHAPE = /^[A-HJKMNP-Z2-9]{8}$/;
+const BROKER_ZONE = "opendungeonmaster.com";
+
+// The room code a host reads out loud: the host's code and the table's,
+// joined by a dash (ABCD2345-EFGH6789). Either half alone leaves a
+// stranger stuck. The host half says which machine, the table half which
+// campaign on it, so the pair is the smallest thing that gets someone all
+// the way to a seat. A host code on its own is still accepted, and lands
+// on that host's door with no campaign chosen.
+export function roomCode(hostCode: string, inviteCode: string): string {
+  const host = hostCode.trim().toUpperCase();
+  const table = inviteCode.trim().toUpperCase();
+  if (!HOST_CODE_SHAPE.test(host)) return "";
+  return CODE_SHAPE.test(table) ? `${host}-${table}` : host;
+}
+
+// The host code inside a broker address, or "" for any other origin (a
+// quick tunnel, a LAN address, someone's own domain). What the share
+// screen shows, and how a server reads its own code out of its publicUrl.
+export function hostCodeFromOrigin(origin: string): string {
+  const host = /^https:\/\/play-([a-z0-9]+)\.opendungeonmaster\.com\/?$/.exec(
+    (origin || "").trim().toLowerCase(),
+  )?.[1];
+  const code = (host ?? "").toUpperCase();
+  return HOST_CODE_SHAPE.test(code) ? code : "";
+}
+
+// A typed or pasted room code, in every shape a person might produce:
+// "ABCD2345-EFGH6789", the two halves run together, lower case, spaced,
+// with the dash a phone keyboard turned into an en dash, or with the
+// "play-" the address carries in front. The host half alone is a join with
+// no campaign.
+export function parseRoomCode(raw: string): JoinLink | null {
+  if (typeof raw !== "string" || raw.length > 60) return null;
+  const cleaned = raw
+    .trim()
+    .toUpperCase()
+    .replace(/[\u2010-\u2015\u2212]/g, "-")
+    .replace(/\s+/g, "");
+  if (!cleaned) return null;
+  const parts = cleaned.split("-").filter((part) => part.length > 0);
+  // "PLAY-ABCD2345" is how the address reads; four letters can never be a
+  // host code, so dropping it here cannot swallow a real one.
+  if (parts[0] === "PLAY") parts.shift();
+  let host = "";
+  let table = "";
+  if (parts.length === 1) {
+    const only = parts[0] ?? "";
+    if (only.length === 16) {
+      host = only.slice(0, 8);
+      table = only.slice(8);
+    } else {
+      host = only;
+    }
+  } else if (parts.length === 2) {
+    host = parts[0] ?? "";
+    table = parts[1] ?? "";
+  } else {
+    return null;
+  }
+  if (!HOST_CODE_SHAPE.test(host)) return null;
+  if (table && !CODE_SHAPE.test(table)) return null;
+  return { origin: `https://play-${host.toLowerCase()}.${BROKER_ZONE}`, code: table };
+}
+
 // Turns pasted input into a clean http(s) origin, or null. Re-serializing
 // through URL strips userinfo tricks like https://good.com@evil.com.
 export function normalizeOrigin(raw: string): string | null {
@@ -124,6 +194,8 @@ export function parseServerAddress(raw: string): string | null {
 export function parseLinkOrAddress(raw: string): JoinLink | null {
   const link = parseAnyLink(raw);
   if (link) return link;
+  const room = parseRoomCode(raw);
+  if (room) return room;
   const origin = parseServerAddress(raw);
   return origin ? { origin, code: "" } : null;
 }

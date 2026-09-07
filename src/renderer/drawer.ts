@@ -195,7 +195,7 @@ export function renderDrawer(): void {
   nav.append(
     window.odm.scanInvite
       ? navItem("qr", "Scan / paste invite", (btn) => void scanInvite(btn), "invite")
-      : navItem("link", "Paste invite link", () => renderAdd(state.joinIntent?.origin ?? ""), "invite"),
+      : navItem("link", "Paste invite or code", () => renderAdd(state.joinIntent?.origin ?? ""), "invite"),
   );
   // Story AI is chosen on the world's first run; the door only makes sense
   // once that world exists.

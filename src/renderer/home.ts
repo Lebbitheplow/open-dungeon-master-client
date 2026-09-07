@@ -224,8 +224,8 @@ function welcomeHero(): HTMLElement {
       "p",
       "who",
       window.odm.scanInvite
-        ? "Connect to a self-hosted Open Dungeon Master, or scan an invite a friend sent you."
-        : "Connect to a self-hosted Open Dungeon Master, or paste an invite link a friend sent you.",
+        ? "Connect to a self-hosted Open Dungeon Master, or scan or type an invite a friend sent you."
+        : "Connect to a self-hosted Open Dungeon Master, or paste the room code or invite link a friend sent you.",
     ),
   );
   const actions = el("div", "hero-actions");

@@ -8,7 +8,10 @@ import {
   parseAnyLink,
   parseJoinLink,
   parseLinkOrAddress,
+  parseRoomCode,
   parseServerAddress,
+  hostCodeFromOrigin,
+  roomCode,
 } from "../dist/shared/deep-link.js";
 
 test("normalizeOrigin keeps clean http(s) origins", () => {
@@ -137,4 +140,73 @@ test("parseLinkOrAddress reads invites first, then a bare address as a codeless 
   assert.equal(parseLinkOrAddress("https://play.example.com/join/ab"), null);
   assert.equal(parseLinkOrAddress("play.example.com"), null);
   assert.equal(parseLinkOrAddress(""), null);
+});
+
+test("parseRoomCode expands a room code into the host it names", () => {
+  assert.deepEqual(parseRoomCode("ABCD2345-EFGH6789"), {
+    origin: "https://play-abcd2345.opendungeonmaster.com",
+    code: "EFGH6789",
+  });
+  // The host half alone is a join with no table chosen.
+  assert.deepEqual(parseRoomCode("ABCD2345"), {
+    origin: "https://play-abcd2345.opendungeonmaster.com",
+    code: "",
+  });
+});
+
+test("parseRoomCode forgives how people actually type a code", () => {
+  const expected = {
+    origin: "https://play-abcd2345.opendungeonmaster.com",
+    code: "EFGH6789",
+  };
+  assert.deepEqual(parseRoomCode("abcd2345-efgh6789"), expected);
+  assert.deepEqual(parseRoomCode("  ABCD2345 - EFGH6789  "), expected);
+  assert.deepEqual(parseRoomCode("ABCD2345EFGH6789"), expected);
+  // A phone keyboard's en dash, and the play- the address wears in front.
+  assert.deepEqual(parseRoomCode("ABCD2345\u2013EFGH6789"), expected);
+  assert.deepEqual(parseRoomCode("play-ABCD2345-EFGH6789"), expected);
+});
+
+test("parseRoomCode rejects what cannot be a host code", () => {
+  // L is in the campaign alphabet but not the broker's, so a table code
+  // holding one can never be read as a host.
+  assert.equal(parseRoomCode("ABCL2345"), null);
+  assert.equal(parseRoomCode("ABCD234"), null);
+  assert.equal(parseRoomCode("ABCD2345-EF"), null);
+  assert.equal(parseRoomCode("ABCD2345-EFGH6789-IJKL"), null);
+  assert.equal(parseRoomCode("ABCD2345-EFGH678O"), null);
+  assert.equal(parseRoomCode("play.example.com"), null);
+  assert.equal(parseRoomCode(""), null);
+});
+
+test("parseLinkOrAddress takes a room code alongside links and addresses", () => {
+  assert.deepEqual(parseLinkOrAddress("ABCD2345-EFGH6789"), {
+    origin: "https://play-abcd2345.opendungeonmaster.com",
+    code: "EFGH6789",
+  });
+  // An invite link still wins: it names its own server, code and all.
+  assert.deepEqual(parseLinkOrAddress("https://play.example.com/join/WXYZ2345"), {
+    origin: "https://play.example.com",
+    code: "WXYZ2345",
+  });
+});
+
+test("hostCodeFromOrigin reads a code back out of a broker address", () => {
+  assert.equal(hostCodeFromOrigin("https://play-abcd2345.opendungeonmaster.com"), "ABCD2345");
+  assert.equal(hostCodeFromOrigin("https://play-abcd2345.opendungeonmaster.com/"), "ABCD2345");
+  // Quick tunnels, LAN addresses and other domains have no code to show.
+  assert.equal(hostCodeFromOrigin("https://abc.trycloudflare.com"), "");
+  assert.equal(hostCodeFromOrigin("http://192.168.1.50:3005"), "");
+  assert.equal(hostCodeFromOrigin(""), "");
+});
+
+test("roomCode joins the halves, and round-trips through the parser", () => {
+  assert.equal(roomCode("ABCD2345", "EFGH6789"), "ABCD2345-EFGH6789");
+  // No table half yet, or a solo campaign: the host half stands alone.
+  assert.equal(roomCode("ABCD2345", ""), "ABCD2345");
+  assert.equal(roomCode("", "EFGH6789"), "");
+  assert.deepEqual(parseRoomCode(roomCode("ABCD2345", "EFGH6789")), {
+    origin: "https://play-abcd2345.opendungeonmaster.com",
+    code: "EFGH6789",
+  });
 });

@@ -2,6 +2,7 @@
 // forgetting, plus the error screen every flow falls back to. The
 // behaviour here is unchanged from the single-file shell; only the frame
 // around it moved.
+import { CODE_SHAPE, parseRoomCode } from "../shared/deep-link.js";
 import { landingPath } from "../shared/open-path.js";
 import { backLink, formCard, intro, joinBanner, show } from "./chrome.js";
 import { button, el, input } from "./dom.js";
@@ -176,8 +177,12 @@ export async function scanInvite(btn: HTMLButtonElement, detail?: HTMLElement): 
 export function renderAdd(prefill: string): void {
   state.screenName = "add";
   const form = el("form");
-  const [originLabel, originField] = input("Server address or invite link", "text", prefill);
-  originField.placeholder = "play.example.com or http://192.168.1.50:3005";
+  const [originLabel, originField] = input(
+    "Room code, server address or invite link",
+    "text",
+    prefill,
+  );
+  originField.placeholder = "ABCD2345-EFGH6789 or play.example.com";
   originField.inputMode = "url";
   const error = el("p", "error");
   const submit = button("primary", "Continue");
@@ -196,6 +201,24 @@ export function renderAdd(prefill: string): void {
       // so the address that answered is the one the path sees; only a
       // server that never answers stays here with the error.
       if (await window.odm.openInviteLink(originField.value)) return;
+      // A room code is an address in disguise, so there is nothing left to
+      // probe: the shell already expanded it and found no world there.
+      // Saying that beats "not a server address" for a code that was read
+      // out over a table and mistyped, or that expired when its host
+      // stopped sharing.
+      const typed = originField.value.trim();
+      if (parseRoomCode(typed)) {
+        submit.disabled = false;
+        error.textContent =
+          "No world answered that room code. A code lasts only while its host keeps sharing, so ask for a fresh one.";
+        return;
+      }
+      if (typed.length === 8 && CODE_SHAPE.test(typed.toUpperCase())) {
+        submit.disabled = false;
+        error.textContent =
+          "That is only the table's half of a room code. The whole code names the host too, like ABCD2345-EFGH6789.";
+        return;
+      }
       const result = await window.odm.probeServer(originField.value);
       if (result.ok && (await window.odm.openInviteLink(result.probe.origin))) return;
       submit.disabled = false;
@@ -206,7 +229,11 @@ export function renderAdd(prefill: string): void {
       }
     })();
   });
-  const hint = el("p", "hint center", "An invite link or QR link pasted here works too.");
+  const hint = el(
+    "p",
+    "hint center",
+    "A room code from a friend, an invite link, or a QR link all work here.",
+  );
   const card = formCard(form, hint);
   // Where there is a camera: the server's own corner QR button shows its
   // address as a code, and an invite QR carries a room code as well. Both

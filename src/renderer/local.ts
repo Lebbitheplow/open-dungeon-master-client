@@ -1,6 +1,7 @@
 // The device world: entering it (which starts it), the first-run name and
 // the account screens, and the share row that shows the world's public
 // address and the switch for it.
+import { hostCodeFromOrigin } from "../shared/deep-link.js";
 import { encodeQr, qrSvg } from "../shared/qr.js";
 import { backLink, formCard, intro, show } from "./chrome.js";
 import { badge, button, copyText, el, input, spinner } from "./dom.js";
@@ -88,6 +89,14 @@ export function shareRow(): HTMLElement {
   if (tunnel.state === "running") {
     row.append(badge("Shared online", true));
     row.append(el("span", "status-line", tunnel.url));
+    // The address and the host code are the same string, so a friend with
+    // no way to click a link can type the code instead. A campaign's own
+    // room code carries this half in front of it, which is what takes
+    // someone all the way to the table rather than to the door.
+    const code = hostCodeFromOrigin(tunnel.url);
+    if (code) {
+      row.append(el("span", "status-line", `Host code ${code}. Friends can type it to reach your world.`));
+    }
     const copy = button("secondary", "Copy link", () => {
       void copyText(tunnel.url).then((worked) => {
         copy.lastChild!.textContent = worked ? "Copied" : "Copy failed";

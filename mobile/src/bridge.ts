@@ -28,6 +28,7 @@ import {
   originCandidates,
   parseAnyLink,
   parseLinkOrAddress,
+  parseRoomCode,
   type JoinLink,
 } from "../../src/shared/deep-link";
 import { coverRequestUrl, imageDataUrl, LOCAL_HOST_ID } from "../../src/shared/home-feed-logic";
@@ -991,10 +992,26 @@ const bridge: OdmBridge = {
   // users expect from a root screen (the launcher, not a dead tap).
   leaveApp: () => App.exitApp(),
 
-  // A pasted invite or bare server address takes the same path as a scan.
+  // A pasted invite, room code or bare server address takes the same path
+  // as a scan.
   async openInviteLink(raw) {
-    const link = parseLinkOrAddress(String(raw ?? ""));
+    const text = String(raw ?? "");
+    const link = parseLinkOrAddress(text);
     if (!link) return false;
+    // A room code names the broker hostname it expands to and nothing
+    // else, so a stale or mistyped one points at a world that is not
+    // there. Probe before sending the player on: false puts the reason in
+    // the add screen's field instead of at a sign-in for nothing.
+    if (parseRoomCode(text)) {
+      const servers = await loadServers();
+      if (!servers.some((entry) => entry.origin === link.origin)) {
+        try {
+          await probeOrigin(link.origin);
+        } catch {
+          return false;
+        }
+      }
+    }
     await handleJoinLink(link);
     return true;
   },

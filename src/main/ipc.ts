@@ -16,6 +16,7 @@ import {
   normalizeOrigin,
   originCandidates,
   parseLinkOrAddress,
+  parseRoomCode,
   type JoinLink,
 } from "../shared/deep-link";
 import { coverRequestUrl } from "../shared/home-feed-logic";
@@ -298,8 +299,21 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
   // shell already has opens with its saved session rather than being added
   // a second time.
   ipcMain.handle("servers:open-invite", async (_event, raw: unknown) => {
-    const link = parseLinkOrAddress(str(raw, 700));
+    const text = str(raw, 700);
+    const link = parseLinkOrAddress(text);
     if (!link) return false;
+    // A room code carries no address of its own: it names the broker
+    // hostname it expands to. A code that is stale or mistyped therefore
+    // points at a world that is not there, so it is probed before the
+    // player is sent anywhere; false sends them back to the add screen,
+    // which says so in the field rather than at a sign-in for nothing.
+    if (parseRoomCode(text) && !store.findByOrigin(link.origin)) {
+      try {
+        await probeServer(link.origin);
+      } catch {
+        return false;
+      }
+    }
     await handleJoinLink(link);
     return true;
   });
