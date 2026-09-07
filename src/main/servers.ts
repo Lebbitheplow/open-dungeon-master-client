@@ -247,6 +247,19 @@ export class ServerStore {
     return secret;
   }
 
+  // Room codes seen on this host, newest campaign first. These are the keys
+  // the broker's table registry answers "where is that world now" for, which
+  // is how a saved entry finds a world that came back at a new address
+  // (src/shared/relocate.ts).
+  tableCodesFor(id: string): string[] {
+    const codes: string[] = [];
+    for (const campaign of this.homeCache()[id]?.campaigns ?? []) {
+      const code = (campaign.inviteCode ?? "").trim().toUpperCase();
+      if (code && !codes.includes(code)) codes.push(code);
+    }
+    return codes;
+  }
+
   homeCache(): HomeCache {
     const cache = this.load().homeCache;
     return cache && typeof cache === "object" && !Array.isArray(cache) ? cache : {};

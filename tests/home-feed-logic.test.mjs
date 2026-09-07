@@ -245,6 +245,7 @@ function harness(overrides = {}) {
     },
     emit: (event) => events.push(event),
     now: () => "2026-09-04T10:00:00.000Z",
+    ...(overrides.relocate ? { relocate: overrides.relocate } : {}),
   });
   return { feed, events, asked, cache: () => cache, local };
 }
@@ -355,4 +356,55 @@ test("only image bodies become data URLs", () => {
   assert.equal(imageDataUrl("text/html", "AAAA"), null);
   assert.equal(imageDataUrl("", "AAAA"), null);
   assert.equal(imageDataUrl("image/png", ""), null);
+});
+
+// A world one of the apps hosts answers at a new address every time its host
+// shares it again. A host drawn offline is not tappable, so the feed has to
+// find it rather than leave the player with nothing to press.
+test("a host that has gone quiet is looked for at its new address", async () => {
+  const moved = "https://play-newcode.example";
+  const asked_ = [];
+  const h = harness({
+    hosts: [host({ id: "srv", origin: "https://play-oldcode.example" })],
+    replies: {
+      [moved]: { kind: "reply", status: 200, body: { campaigns: [rawCampaign] } },
+    },
+    relocate: async (input) => {
+      asked_.push(input.id);
+      return moved;
+    },
+  });
+  const feed = await h.feed.refresh();
+  const srv = feed.hosts.find((entry) => entry.id === "srv");
+  assert.equal(srv.status, "online", "the world is reachable again");
+  assert.equal(srv.origin, moved, "and the tile points at where it actually is");
+  assert.equal(srv.campaigns.length, 1);
+  assert.deepEqual(asked_, ["srv"]);
+  // The dead address was tried first, then the one it moved to.
+  assert.deepEqual(h.asked, [
+    "https://play-oldcode.example|tok",
+    `${moved}|tok`,
+  ]);
+});
+
+test("a host that answers is never looked for, and one that cannot be found stays offline", async () => {
+  const calls = [];
+  const answering = harness({
+    hosts: [host({ id: "srv" })],
+    replies: { [origin]: { kind: "reply", status: 200, body: { campaigns: [] } } },
+    relocate: async () => {
+      calls.push("asked");
+      return "https://somewhere.example";
+    },
+  });
+  await answering.feed.refresh();
+  assert.deepEqual(calls, [], "no registry traffic for a host that is simply up");
+
+  const lost = harness({
+    hosts: [host({ id: "srv" })],
+    relocate: async () => "",
+  });
+  const feed = await lost.feed.refresh();
+  assert.equal(feed.hosts[0].status, "offline");
+  assert.equal(feed.hosts[0].origin, origin, "the address on file is kept");
 });

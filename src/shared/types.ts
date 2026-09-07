@@ -187,6 +187,11 @@ export interface HomeCampaign {
   updatedAt: string;
   role: "owner" | "player";
   dmMode: "ai" | "assisted" | "human";
+  // The campaign's room code. Kept because it is the one handle on a world
+  // that never changes: when a host shares again at a new address, the
+  // broker's table registry turns this back into "where that world is now"
+  // (src/shared/relocate.ts). Absent on entries cached before this existed.
+  inviteCode?: string;
 }
 
 // A place the player has campaigns: the device world ("local"), a saved

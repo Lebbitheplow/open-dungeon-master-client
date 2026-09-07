@@ -20,7 +20,7 @@ import {
   parseRoomCode,
   type JoinLink,
 } from "../shared/deep-link";
-import { coverRequestUrl } from "../shared/home-feed-logic";
+import { coverRequestUrl, type HostInput } from "../shared/home-feed-logic";
 import { landingPath, safeInnerPath } from "../shared/open-path";
 import { createDesktopHomeFeed, fetchCoverImage } from "./home-feed";
 import type { LocalAiManager } from "./local-ai/manager";
@@ -39,6 +39,7 @@ import {
 import { LOCAL_SERVER_ID, type ServerStore, type StoredServer } from "./servers";
 import { dropTables, ownedTableCodes, publishTables, resolveTable } from "./table-registry";
 import { portalEligible } from "../shared/portal-logic";
+import { relocateWorld } from "../shared/relocate";
 import {
   applyPortalCookies,
   applySessionCookie,
@@ -104,10 +105,42 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
   // The home screen's campaigns across every host. A world coming up or a
   // tunnel changing state is a reason to look again; the feed itself
   // announces the result as a home-feed event.
+  // A world one of the apps hosts answers at a new address every time its
+  // host shares it again. Asks the broker's table registry where this world's
+  // room codes point now and moves the entry there, but only to an address
+  // whose world proves it is the same one (src/shared/relocate.ts).
+  const relocate = async (entry: StoredServer): Promise<StoredServer> => {
+    const result = await relocateWorld(
+      {
+        origin: entry.origin,
+        instanceId: entry.instanceId ?? "",
+        codes: store.tableCodesFor(entry.id),
+      },
+      {
+        probe: (origin) => probeServer(origin).catch(() => null),
+        resolveTable,
+      },
+    );
+    if (!result.found || !result.moved) return entry;
+    return store.rebindOrigin(entry.id, result.origin) ?? entry;
+  };
+
+  // The home screen's half of the same idea. A host that has gone quiet is
+  // looked for before it is drawn as offline, because an offline tile is not
+  // tappable: without this the player never reaches the connect path above.
+  const relocateHost = async (input: HostInput): Promise<string> => {
+    if (input.kind === "local" || input.id === LOCAL_SERVER_ID) return "";
+    const entry = store.get(input.id);
+    if (!entry) return "";
+    const moved = await relocate(entry);
+    return moved.origin === input.origin ? "" : moved.origin;
+  };
+
   const homeFeed = createDesktopHomeFeed({
     store,
     localStatus,
     emit: (event) => win.sendEvent(event),
+    relocate: relocateHost,
   });
   const refreshHomeFeed = (): void => {
     homeFeed.refresh().catch(() => undefined);
@@ -244,12 +277,28 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     joinCode: string,
     path = "",
   ): Promise<ConnectResult> => {
-    const entry = store.get(id);
-    if (!entry || entry.id === LOCAL_SERVER_ID) {
+    const saved = store.get(id);
+    if (!saved || saved.id === LOCAL_SERVER_ID) {
       return { ok: false, needsLogin: false, error: "Unknown server." };
     }
+    let entry = saved;
     let token = store.token(id);
-    if (!token || !(await tokenIsValid(entry.origin, token))) {
+    const alive = async (): Promise<boolean> => {
+      const current = token;
+      if (!current) return false;
+      return tokenIsValid(entry.origin, current);
+    };
+
+    if (!(await alive())) {
+      // Before calling this a lapsed session, consider that the session may
+      // be perfectly good and only the address stale. Without this a player
+      // returning to a world that has been shared again is told to sign in,
+      // and on a device world the only door that screen offers is a new
+      // account, so they end up with a second character and no way back to
+      // the first.
+      entry = await relocate(entry);
+    }
+    if (!(await alive())) {
       // An account the app made up a password for (joined by room code)
       // must never be asked for it: nobody was ever told what it is. Renew
       // the session with the stored one instead, and only fall back to the
@@ -272,9 +321,9 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
           // The password no longer works (changed, or the account is gone).
         }
       }
-      if (!token) {
-        return { ok: false, needsLogin: true, error: "Your session expired. Sign in again." };
-      }
+    }
+    if (!token) {
+      return { ok: false, needsLogin: true, error: "Your session expired. Sign in again." };
     }
     await attachRemote(entry, token, joinCode, path);
     return { ok: true };

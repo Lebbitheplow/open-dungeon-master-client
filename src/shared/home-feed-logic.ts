@@ -186,6 +186,7 @@ export function parseCampaigns(body: unknown, origin: string): HomeCampaign[] | 
       | null
       | undefined;
     const cover = entry.cover as { url?: unknown } | null | undefined;
+    const code = str(entry.inviteCode).trim().toUpperCase();
     campaigns.push({
       id,
       title: str(entry.title) || "Untitled campaign",
@@ -198,6 +199,9 @@ export function parseCampaigns(body: unknown, origin: string): HomeCampaign[] | 
       updatedAt: str(entry.updatedAt),
       role: pick(entry.role, ["owner", "player"] as const, "player"),
       dmMode: pick(settings?.dmMode, ["ai", "assisted", "human"] as const, "ai"),
+      // Only when the host actually sent one, so a campaign without a code
+      // keeps the shape it has always had in the cache.
+      ...(code ? { inviteCode: code } : {}),
     });
   }
   return campaigns;
@@ -301,6 +305,12 @@ export interface HomeFeedDeps {
   saveCache(cache: HomeCache): Promise<void>;
   emit(event: ShellEvent): void;
   now(): string;
+  // Where this host is now, when the address on file has gone quiet, or ""
+  // when it cannot be found. A world one of the apps hosts answers at a new
+  // address every time its host shares it again, and a host shown offline is
+  // not even tappable, so without this the player has no way back in at all.
+  // Optional so a shell that has no registry to move can leave it out.
+  relocate?(input: HostInput): Promise<string>;
 }
 
 export interface HomeFeedController {
@@ -334,9 +344,21 @@ export function createHomeFeed(deps: HomeFeedDeps): HomeFeedController {
       deps.loadCache(),
     ]);
     const hosts = await Promise.all(
-      orderHosts(inputs).map(async (input) =>
-        resolveHost(input, await outcomeFor(input, local), cache[input.id] ?? null, now),
-      ),
+      orderHosts(inputs).map(async (input) => {
+        let current = input;
+        let outcome = await outcomeFor(current, local);
+        // No answer at the address on file. Before writing the host off as
+        // offline, find out whether it simply moved; a tile that says offline
+        // offers the player nothing to tap.
+        if (outcome.kind === "failed" && deps.relocate) {
+          const moved = await deps.relocate(current).catch(() => "");
+          if (moved && moved !== current.origin) {
+            current = { ...current, origin: moved };
+            outcome = await outcomeFor(current, local);
+          }
+        }
+        return resolveHost(current, outcome, cache[current.id] ?? null, now);
+      }),
     );
     // Rewriting the whole record also drops hosts the player has removed.
     const next: HomeCache = {};

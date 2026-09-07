@@ -53,6 +53,9 @@ export interface DesktopHomeFeedDeps {
   emit(event: ShellEvent): void;
   fetchCampaigns?(origin: string, token: string): Promise<FetchOutcome>;
   now?(): string;
+  // Supplied by the shell (it owns the probe and the broker calls): where a
+  // quiet host is now, or "". The registry entry is moved as a side effect.
+  relocate?(input: HostInput): Promise<string>;
 }
 
 export function createDesktopHomeFeed(deps: DesktopHomeFeedDeps): HomeFeedController {
@@ -95,5 +98,6 @@ export function createDesktopHomeFeed(deps: DesktopHomeFeedDeps): HomeFeedContro
     saveCache: async (cache) => store.saveHomeCache(cache),
     emit: deps.emit,
     now: deps.now ?? (() => new Date().toISOString()),
+    ...(deps.relocate ? { relocate: deps.relocate } : {}),
   });
 }

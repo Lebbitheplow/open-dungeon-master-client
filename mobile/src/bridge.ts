@@ -14,7 +14,7 @@ import { createWebBluetooth } from "./ble-polyfill-core";
 import { createBleRelay } from "./ble-relay";
 import { createDownloadRelay } from "./download-relay";
 import { createDownloadShim, noticeText } from "./download-shim-core";
-import { createAndroidHomeFeed } from "./home-feed";
+import { createAndroidHomeFeed, HOME_CACHE_KEY } from "./home-feed";
 import {
   createLocalWorld,
   LocalWorld,
@@ -37,7 +37,13 @@ import {
   parseTableReply,
   tableEndpoint,
 } from "../../src/shared/broker";
-import { coverRequestUrl, imageDataUrl, LOCAL_HOST_ID } from "../../src/shared/home-feed-logic";
+import {
+  coverRequestUrl,
+  imageDataUrl,
+  LOCAL_HOST_ID,
+  type HomeCache,
+} from "../../src/shared/home-feed-logic";
+import { relocateWorld } from "../../src/shared/relocate";
 import {
   PORTAL_ORIGIN_COOKIE,
   PORTAL_TOKEN_COOKIE,
@@ -693,11 +699,53 @@ async function unpublishRoomCodes(): Promise<void> {
   }
 }
 
+// Room codes seen on a host, newest campaign first. These are the keys the
+// broker's table registry answers "where is that world now" for, which is how
+// a saved entry finds a world that came back at a new address.
+async function tableCodesFor(id: string): Promise<string[]> {
+  const raw = (await Preferences.get({ key: HOME_CACHE_KEY })).value;
+  if (!raw) return [];
+  let cache: HomeCache;
+  try {
+    cache = JSON.parse(raw) as HomeCache;
+  } catch {
+    return [];
+  }
+  const codes: string[] = [];
+  for (const campaign of cache?.[id]?.campaigns ?? []) {
+    const code = (campaign.inviteCode ?? "").trim().toUpperCase();
+    if (code && !codes.includes(code)) codes.push(code);
+  }
+  return codes;
+}
+
 // Where a table is right now, or "" when nobody has it online.
 async function resolveRoomCode(code: string): Promise<string> {
   const reply = await fetchJson(tableEndpoint(DEFAULT_BROKER_URL, code)).catch(() => null);
   if (!reply || reply.status !== 200) return "";
   return parseTableReply(reply.data);
+}
+
+// Where a saved world is now, moving the entry as a side effect, or "" when
+// it is not to be found. Shared by the home feed (a host drawn offline is not
+// even tappable) and the connect path.
+async function relocateSaved(id: string, origin: string): Promise<string> {
+  const servers = await loadServers();
+  const server = servers.find((entry) => entry.id === id);
+  if (!server) return "";
+  const located = await relocateWorld(
+    {
+      origin: server.origin,
+      instanceId: server.instanceId ?? "",
+      codes: await tableCodesFor(server.id),
+    },
+    { probe: (target) => probeOrigin(target).catch(() => null), resolveTable: resolveRoomCode },
+  );
+  if (!located.found || !located.moved) return "";
+  server.origin = located.origin;
+  server.lastUsedAt = new Date().toISOString();
+  await saveServers(servers);
+  return located.origin === origin ? "" : located.origin;
 }
 
 const shareTunnel = createShareTunnel({
@@ -774,6 +822,10 @@ const homeFeed = createAndroidHomeFeed({
   getPref: async (key) => (await Preferences.get({ key })).value,
   setPref: async (key, value) => Preferences.set({ key, value }),
   emit,
+  relocate: async (input) =>
+    input.kind === "local" || input.id === LOCAL_HOST_ID
+      ? ""
+      : relocateSaved(input.id, input.origin),
 });
 
 // The world coming up or the tunnel changing are reasons to look again; the
@@ -898,7 +950,19 @@ async function connectById(id: string, joinCode: string, path = ""): Promise<Con
   const servers = await loadServers();
   const server = servers.find((entry) => entry.id === id);
   if (!server) return { ok: false, needsLogin: false, error: "Unknown server." };
-  if (!tokenAlive(server) || !(await tokenIsValid(server.origin, server.token))) {
+  const alive = async (): Promise<boolean> =>
+    tokenAlive(server) && (await tokenIsValid(server.origin, server.token));
+  if (!(await alive())) {
+    // Before calling this a lapsed session, consider that the session may be
+    // perfectly good and only the address stale: a world one of the apps
+    // hosts answers somewhere new every time its host shares it again.
+    // Without this a returning player is told to sign in, and on a device
+    // world the only door that screen offers is a new account, so they end
+    // up with a second character and no way back to the first.
+    const moved = await relocateSaved(server.id, server.origin).catch(() => "");
+    if (moved) server.origin = moved;
+  }
+  if (!(await alive())) {
     // An account the app made up a password for (joined by room code) must
     // never be asked for it: nobody was ever told what it is. Renew with
     // the stored one, and keep the sign-in form for accounts whose

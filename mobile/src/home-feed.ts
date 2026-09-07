@@ -42,6 +42,9 @@ export interface AndroidHomeFeedDeps {
   setPref(key: string, value: string): Promise<void>;
   emit(event: ShellEvent): void;
   now?(): string;
+  // Supplied by the bridge (it owns the probe and the broker calls): where a
+  // quiet host is now, or "". The saved entry is moved as a side effect.
+  relocate?(input: HostInput): Promise<string>;
 }
 
 export function createAndroidHomeFeed(deps: AndroidHomeFeedDeps): HomeFeedController {
@@ -108,5 +111,6 @@ export function createAndroidHomeFeed(deps: AndroidHomeFeedDeps): HomeFeedContro
     saveCache: (cache) => deps.setPref(HOME_CACHE_KEY, JSON.stringify(cache)),
     emit: deps.emit,
     now: deps.now ?? (() => new Date().toISOString()),
+    ...(deps.relocate ? { relocate: deps.relocate } : {}),
   });
 }
