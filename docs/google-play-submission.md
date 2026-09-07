@@ -153,14 +153,52 @@ a video or description showing the user-visible feature.
   world is shared" with a "Stop hosting" action. It starts only when the user
   shares the world, never during solo play, and stops on swipe-away.
 
-Suggested wording for the console declaration:
+Google asks for three things per type, and the use case here is **Other**,
+since none of the preset ones describes a game server.
 
-> The user's phone hosts the tabletop game session that other players are
-> connected to. If the process is killed while the user checks another app,
-> every connected player is disconnected mid-session. The service runs only
-> while the user has explicitly chosen to share, shows a persistent
-> notification with a one-tap stop action, and ends when sharing ends or the
-> app is swiped away.
+**Functionality**
+
+> The user's phone hosts the tabletop game session other players are
+> connected to. Open Dungeon Master runs a small game server on the device;
+> when the user taps "Share online", an outbound tunnel publishes that server
+> so invited friends can join from their own devices. The foreground service
+> keeps that server and tunnel alive while the user switches to another app
+> during play. It starts only when the user chooses to share, never during
+> solo play, and it stops when the user taps "Stop hosting" or swipes the app
+> away.
+
+**User impact if the task is deferred or interrupted**
+
+> Every connected player is disconnected mid-session. The host's device is
+> the only copy of the game, so there is no server elsewhere to fall back to:
+> play stops for everyone at the table until the host reopens the app and
+> shares again. If the task is deferred at start, the address the host just
+> handed out does not resolve and nobody can join.
+
+**The demonstration video.** Two devices, about ninety seconds, filmed side
+by side or with the joiner's screen cut in. The strings below are the ones
+`WorldService.java` and the share screen actually produce, so the video and
+this declaration agree.
+
+| Time | Shot | Must be visible |
+| --- | --- | --- |
+| 0:00 | Open the app, enter the world hosted on this phone | The game running on the host device |
+| 0:10 | Back out to Settings, "Share online" section, tap **Share online** | The button being tapped |
+| 0:15 | Sharing starts | "Opening a public address...", then the **Shared online** badge with the address, and the notification appearing |
+| 0:25 | Pull the shade down | "Your world is shared", "Friends can join at ... while this stays on.", and the **Stop hosting** action |
+| 0:35 | Second device opens that address and joins | The joiner's screen in the game |
+| 0:50 | Host presses Home and uses another app for 15 to 20 seconds | The host app clearly backgrounded, the ongoing notification still there |
+| 1:05 | On the second device, take a turn or send a message | The session still live while the host is elsewhere |
+| 1:15 | Host returns, pulls the shade, taps **Stop hosting** | The notification going away |
+| 1:25 | Second device reloads and cannot reach the world | Sharing genuinely ended |
+
+The 0:50 to 1:05 stretch is the argument: without the service Android kills
+the server process there and the player at 1:05 is dropped. Keep that even if
+everything else is trimmed. The help page asks only for a link and does not
+name a platform; use an unlisted YouTube video, which reviewers can open
+without signing in, rather than a Drive link that prompts for access. The
+address on screen is a tunnel address that dies with the session, so showing
+it costs nothing.
 
 See finding B-5 for the risk that Google pushes back on `specialUse`.
 
