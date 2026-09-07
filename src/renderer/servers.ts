@@ -3,6 +3,7 @@
 // behaviour here is unchanged from the single-file shell; only the frame
 // around it moved.
 import { CODE_SHAPE, parseRoomCode } from "../shared/deep-link.js";
+import { joinFormShape } from "../shared/join-form.js";
 import { landingPath } from "../shared/open-path.js";
 import { backLink, formCard, intro, joinBanner, show } from "./chrome.js";
 import { button, el, input } from "./dom.js";
@@ -252,11 +253,9 @@ function authTabs(
   active: "login" | "register",
   username: string,
 ): HTMLElement | null {
-  if (probe.signupMode === "closed") return null;
-  // An app-hosted world has no password anyone could type: the app made it
-  // up and keeps it. Offering "Sign in" there is a dead end, so joining is
-  // the only door.
-  if (probe.deviceWorld) return null;
+  if (!joinFormShape({ deviceWorld: probe.deviceWorld, signupMode: probe.signupMode, mode: active, hasRoomCode: false }).tabs) {
+    return null;
+  }
   const tabs = el("div", "tabs");
   const loginTab = el("button", active === "login" ? "active" : "", "Sign in");
   loginTab.type = "button";
@@ -282,7 +281,13 @@ export function renderAuth(
   // were given is the invitation. A real server is the other way round: its
   // owner keeps passwords and whatever signup rule they set, open, invite
   // only or closed, and the app follows it.
-  const byRoomCode = mode === "register" && probe.deviceWorld;
+  const shape = joinFormShape({
+    deviceWorld: probe.deviceWorld,
+    signupMode: probe.signupMode,
+    mode,
+    hasRoomCode: !!state.joinIntent?.code,
+  });
+  const byRoomCode = mode === "register" && !shape.password;
   const [userLabel, userField] = input(
     byRoomCode ? "Your name at this table" : "Username",
     "text",
@@ -294,7 +299,7 @@ export function renderAuth(
   form.append(userLabel);
   if (!byRoomCode) form.append(passLabel);
   let inviteField: HTMLInputElement | null = null;
-  if (!byRoomCode && mode === "register" && probe.signupMode === "invite") {
+  if (shape.accountInvite) {
     const [inviteLabel, field] = input("Account invite code", "text");
     field.placeholder = "ODM-XXXXXXXXXX";
     inviteField = field;
@@ -324,10 +329,7 @@ export function renderAuth(
       ),
     );
   }
-  const submit = button(
-    "primary",
-    mode === "login" ? "Sign in" : byRoomCode ? "Join the table" : "Create account",
-  );
+  const submit = button("primary", shape.submit);
   submit.type = "submit";
   submit.classList.add("block");
   form.append(error, submit);

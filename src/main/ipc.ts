@@ -414,15 +414,12 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
       // Older local worlds predate mesh voice; sharing is the moment it
       // matters, so heal the setting here too.
       await ensureLocalVoice();
-      // Going public must not mean open registration on a personal machine.
-      // Invite mode still lets invited friends sign up: a live campaign room
-      // code vouches for them. Best effort; the admin panel can loosen it.
-      const token = store.token(LOCAL_SERVER_ID);
-      if (token && local.origin) {
-        await patchAdminSettings(local.origin, token, { signupMode: "invite" }).catch(
-          () => undefined,
-        );
-      }
+      // Sharing does not change who may sign up. A world this app hosts is
+      // never gated (server 0.16.7 resolves its signup mode as open): the
+      // room code the host reads out and an address that dies with the
+      // session are the door. Flipping it to invite-only here is what met
+      // invited players with "this server needs an invite code" moments
+      // after they had typed one.
       return { ok: true, tunnel: status };
     } catch (err) {
       return fail(err);

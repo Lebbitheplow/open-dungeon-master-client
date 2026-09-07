@@ -230,3 +230,31 @@ test("a bare code offers the registry lookup first, the host shape second", () =
   assert.deepEqual(codeCandidates("play.example.com"), { table: "", hostOrigin: "" });
   assert.deepEqual(codeCandidates(""), { table: "", hostOrigin: "" });
 });
+
+test("the join screen offers a password only where one can exist", async () => {
+  const { joinFormShape } = await import("../dist/shared/join-form.js");
+  // A world an app is hosting: a name and nothing else, and no dead-end
+  // sign-in tab, because the password is one the app made up and kept.
+  for (const signupMode of ["open", "invite", "closed"]) {
+    for (const mode of ["login", "register"]) {
+      assert.deepEqual(
+        joinFormShape({ deviceWorld: true, signupMode, mode, hasRoomCode: false }),
+        { password: false, accountInvite: false, tabs: false, submit: "Join the table" },
+        `${signupMode}/${mode}`,
+      );
+    }
+  }
+  // A server someone runs keeps passwords and its own signup rule.
+  assert.deepEqual(joinFormShape({ deviceWorld: false, signupMode: "open", mode: "register", hasRoomCode: false }), {
+    password: true, accountInvite: false, tabs: true, submit: "Create account",
+  });
+  assert.deepEqual(joinFormShape({ deviceWorld: false, signupMode: "invite", mode: "register", hasRoomCode: false }), {
+    password: true, accountInvite: true, tabs: true, submit: "Create account",
+  });
+  // Arriving with a room code vouches, so no account code is asked for.
+  assert.deepEqual(joinFormShape({ deviceWorld: false, signupMode: "invite", mode: "register", hasRoomCode: true }), {
+    password: true, accountInvite: false, tabs: true, submit: "Create account",
+  });
+  // Closed: no way to make an account at all.
+  assert.equal(joinFormShape({ deviceWorld: false, signupMode: "closed", mode: "login", hasRoomCode: false }).tabs, false);
+});
