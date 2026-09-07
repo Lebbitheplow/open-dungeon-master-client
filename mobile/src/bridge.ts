@@ -896,7 +896,26 @@ async function connectById(id: string, joinCode: string, path = ""): Promise<Con
   const server = servers.find((entry) => entry.id === id);
   if (!server) return { ok: false, needsLogin: false, error: "Unknown server." };
   if (!tokenAlive(server) || !(await tokenIsValid(server.origin, server.token))) {
-    return { ok: false, needsLogin: true, error: "Your session expired. Sign in again." };
+    // An account the app made up a password for (joined by room code) must
+    // never be asked for it: nobody was ever told what it is. Renew with
+    // the stored one, and keep the sign-in form for accounts whose
+    // password a person actually chose.
+    let renewed = false;
+    if (server.secret) {
+      try {
+        const grant = await loginForToken(server.origin, server.username, server.secret);
+        server.token = grant.token;
+        server.tokenExpiresAt = grant.expiresAt;
+        server.username = grant.username;
+        renewed = true;
+      } catch {
+        // The password no longer works (changed, or the account is gone).
+      }
+    }
+    if (!renewed) {
+      return { ok: false, needsLogin: true, error: "Your session expired. Sign in again." };
+    }
+    await saveServers(servers);
   }
   server.lastUsedAt = new Date().toISOString();
   await saveServers(servers);

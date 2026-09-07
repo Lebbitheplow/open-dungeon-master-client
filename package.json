@@ -1,6 +1,6 @@
 {
   "name": "open-dungeon-master-client",
-  "version": "0.7.10",
+  "version": "0.7.11",
   "private": true,
   "description": "Desktop client for Open Dungeon Master: connect to any server, or play fully offline",
   "license": "MIT",

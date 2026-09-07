@@ -248,9 +248,33 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     if (!entry || entry.id === LOCAL_SERVER_ID) {
       return { ok: false, needsLogin: false, error: "Unknown server." };
     }
-    const token = store.token(id);
+    let token = store.token(id);
     if (!token || !(await tokenIsValid(entry.origin, token))) {
-      return { ok: false, needsLogin: true, error: "Your session expired. Sign in again." };
+      // An account the app made up a password for (joined by room code)
+      // must never be asked for it: nobody was ever told what it is. Renew
+      // the session with the stored one instead, and only fall back to the
+      // sign-in form for accounts a person chose a password for.
+      const secret = store.secret(id);
+      token = "";
+      if (secret) {
+        try {
+          const grant = await loginForToken(entry.origin, entry.username, secret);
+          store.upsert({
+            id: entry.id,
+            origin: entry.origin,
+            name: entry.name,
+            username: grant.username,
+            token: grant.token,
+            tokenExpiresAt: grant.expiresAt,
+          });
+          token = grant.token;
+        } catch {
+          // The password no longer works (changed, or the account is gone).
+        }
+      }
+      if (!token) {
+        return { ok: false, needsLogin: true, error: "Your session expired. Sign in again." };
+      }
     }
     await attachRemote(entry, token, joinCode, path);
     return { ok: true };
