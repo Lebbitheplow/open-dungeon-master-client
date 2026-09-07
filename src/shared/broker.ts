@@ -17,6 +17,29 @@ const HOSTNAME_SHAPE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z
 // What a quick tunnel prints once the edge has assigned it an address.
 export const QUICK_URL_SHAPE = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/;
 
+// The table registry. A campaign's invite code never changes; the address
+// its host answers at changes with every share session. The broker holds
+// the join between them, so one short code a host reads out keeps working
+// next week at a new address, and a player's server list does not fill up
+// with dead ones.
+export function tableEndpoint(base: string, code: string): string {
+  return `${base.replace(/\/+$/, "")}/table/${encodeURIComponent(code.trim().toUpperCase())}`;
+}
+
+// What the registry answered: the origin a table is reachable at, or "".
+export function parseTableReply(body: unknown): string {
+  const url = (body as { url?: unknown } | null)?.url;
+  if (typeof url !== "string" || url.length > 300) return "";
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return "";
+    if (parsed.username || parsed.password) return "";
+    return parsed.origin;
+  } catch {
+    return "";
+  }
+}
+
 export interface BrokerSession {
   code: string;
   url: string;

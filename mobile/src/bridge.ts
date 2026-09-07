@@ -31,6 +31,11 @@ import {
   parseRoomCode,
   type JoinLink,
 } from "../../src/shared/deep-link";
+import {
+  DEFAULT_BROKER_URL,
+  parseTableReply,
+  tableEndpoint,
+} from "../../src/shared/broker";
 import { coverRequestUrl, imageDataUrl, LOCAL_HOST_ID } from "../../src/shared/home-feed-logic";
 import {
   PORTAL_ORIGIN_COOKIE,
@@ -613,6 +618,75 @@ async function fetchJson(
   return { status: response.status, data };
 }
 
+// The room code registry. A campaign's code never changes; the address
+// this phone answers at changes with every share session, so while the
+// world is shared each code its owner holds is pointed at the address of
+// the moment. One code, typed by a friend, then lands on this table
+// however the tunnel moved. Best effort throughout: a phone that cannot
+// reach the broker still shares by link and QR.
+const TABLE_SECRET_PREFIX = "odm-table-secret:";
+let publishedCodes: string[] = [];
+
+async function tableSecretFor(code: string): Promise<string> {
+  const key = `${TABLE_SECRET_PREFIX}${code}`;
+  const existing = (await Preferences.get({ key })).value;
+  if (existing && existing.length >= 16) return existing;
+  const secret = randomSecret() + randomSecret();
+  await Preferences.set({ key, value: secret });
+  return secret;
+}
+
+async function ownedRoomCodes(origin: string, token: string): Promise<string[]> {
+  const reply = await fetchJson(`${origin}/api/campaigns`, {
+    headers: { authorization: `Bearer ${token}` },
+  }).catch(() => null);
+  const list = (reply?.data as { campaigns?: unknown } | null)?.campaigns;
+  if (reply?.status !== 200 || !Array.isArray(list)) return [];
+  const codes: string[] = [];
+  for (const raw of list) {
+    const entry = raw as { inviteCode?: unknown; role?: unknown } | null;
+    if (!entry || entry.role !== "owner") continue;
+    const code = String(entry.inviteCode ?? "").trim().toUpperCase();
+    if (CODE_SHAPE.test(code) && !codes.includes(code)) codes.push(code);
+  }
+  return codes;
+}
+
+async function publishRoomCodes(url: string): Promise<void> {
+  const profile = await loadLocalProfile();
+  const status = await localWorld.status();
+  if (!profile?.token || !status.origin || !url) return;
+  const codes = await ownedRoomCodes(status.origin, profile.token);
+  const published: string[] = [];
+  for (const code of codes) {
+    const reply = await fetchJson(tableEndpoint(DEFAULT_BROKER_URL, code), {
+      method: "PUT",
+      headers: { "x-table-secret": await tableSecretFor(code) },
+      body: { url },
+    }).catch(() => null);
+    if (reply && reply.status >= 200 && reply.status < 300) published.push(code);
+  }
+  publishedCodes = published;
+}
+
+async function unpublishRoomCodes(): Promise<void> {
+  const codes = publishedCodes;
+  publishedCodes = [];
+  for (const code of codes) {
+    await fetchJson(tableEndpoint(DEFAULT_BROKER_URL, code), {
+      method: "DELETE",
+      headers: { "x-table-secret": await tableSecretFor(code) },
+    }).catch(() => undefined);
+  }
+}
+
+// Where a table is right now, or "" when nobody has it online.
+async function resolveRoomCode(code: string): Promise<string> {
+  const reply = await fetchJson(tableEndpoint(DEFAULT_BROKER_URL, code)).catch(() => null);
+  if (!reply || reply.status !== 200) return "";
+  return parseTableReply(reply.data);
+}
+
 const shareTunnel = createShareTunnel({
   plugin: LocalWorld as unknown as SharePlugin,
   fetchJson,
@@ -996,6 +1070,16 @@ const bridge: OdmBridge = {
   // as a scan.
   async openInviteLink(raw) {
     const text = String(raw ?? "");
+    // A room code is a campaign's own code and names no address: the
+    // registry says where that table is right now, which is what lets one
+    // code outlive the tunnel it was shared on.
+    const typed = text.trim().toUpperCase();
+    if (CODE_SHAPE.test(typed) && !parseRoomCode(text)) {
+      const origin = await resolveRoomCode(typed);
+      if (!origin) return false;
+      await handleJoinLink({ origin, code: typed });
+      return true;
+    }
     const link = parseLinkOrAddress(text);
     if (!link) return false;
     // A room code names the broker hostname it expands to and nothing
@@ -1179,9 +1263,13 @@ const bridge: OdmBridge = {
   async shareStart() {
     const status = await shareTunnel.start();
     if (status.state !== "running") return fail(new Error(status.error || "Sharing failed."));
+    await publishRoomCodes(status.url);
     return { ok: true, tunnel: status };
   },
-  shareStop: async () => ({ ok: true, tunnel: await shareTunnel.stop() }),
+  async shareStop() {
+    await unpublishRoomCodes();
+    return { ok: true, tunnel: await shareTunnel.stop() };
+  },
   localAiScan: async () => fail(new Error("Local AI is desktop-only.")),
   localAiInstall: async () => fail(new Error("Local AI is desktop-only.")),
   localAiInstallComfy: async () => fail(new Error("Local AI is desktop-only.")),

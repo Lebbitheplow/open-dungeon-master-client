@@ -36,6 +36,7 @@ import {
   whoAmI,
 } from "./odm-api";
 import { LOCAL_SERVER_ID, type ServerStore, type StoredServer } from "./servers";
+import { dropTables, ownedTableCodes, publishTables, resolveTable } from "./table-registry";
 import { portalEligible } from "../shared/portal-logic";
 import {
   applyPortalCookies,
@@ -300,6 +301,17 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
   // a second time.
   ipcMain.handle("servers:open-invite", async (_event, raw: unknown) => {
     const text = str(raw, 700);
+    // A room code is a campaign's own code and names no address, so the
+    // registry is asked where that table is right now. This is the whole
+    // point of one code: the answer changes with every share session, the
+    // code does not.
+    const typed = text.trim().toUpperCase();
+    if (CODE_SHAPE.test(typed) && !parseRoomCode(text)) {
+      const origin = await resolveTable(typed);
+      if (!origin) return false;
+      await handleJoinLink({ origin, code: typed });
+      return true;
+    }
     const link = parseLinkOrAddress(text);
     if (!link) return false;
     // A room code carries no address of its own: it names the broker
@@ -327,6 +339,30 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
   // Sharing the local world on the internet: reachable from the home
   // screen's hero and from the game's own lobby (the invite dialog starts
   // it, since inviting people is the moment it matters).
+  // While a world is shared, every room code its owner holds points at the
+  // address it answers at now. That is what makes one code survive a new
+  // tunnel next session, and what lets a friend type a code instead of
+  // adding a server and then finding the table.
+  let publishedCodes: string[] = [];
+  const publishRoomCodes = async (): Promise<void> => {
+    const token = store.token(LOCAL_SERVER_ID);
+    const status = tunnel.status();
+    if (!token || !local.origin || status.state !== "running" || !status.url) return;
+    const codes = await ownedTableCodes(local.origin, token);
+    publishedCodes = await publishTables({
+      codes,
+      url: status.url,
+      secretFor: (code) => store.tableSecret(code),
+    });
+  };
+  const unpublishRoomCodes = async (): Promise<void> => {
+    const codes = publishedCodes;
+    publishedCodes = [];
+    if (codes.length > 0) {
+      await dropTables({ codes, secretFor: (code) => store.tableSecret(code) });
+    }
+  };
+
   const startSharing = async (): Promise<Result<{ tunnel: TunnelStatus }>> => {
     try {
       await local.start();
@@ -348,6 +384,7 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
           () => undefined,
         );
       }
+      await publishRoomCodes();
       return { ok: true, tunnel: status };
     } catch (err) {
       return fail(err);
@@ -357,6 +394,7 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
   ipcMain.handle("share:start", () => startSharing());
 
   ipcMain.handle("share:stop", async () => {
+    await unpublishRoomCodes();
     await tunnel.stop();
     await syncPublicUrl();
     return { ok: true, tunnel: tunnel.status() };
@@ -399,6 +437,7 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
   });
   ipcMain.handle("shell:share-stop", async (event) => {
     if (!fromLocalPage(event)) return SHARE_UNSUPPORTED;
+    await unpublishRoomCodes();
     await tunnel.stop();
     await syncPublicUrl();
     return shellShareStatus();

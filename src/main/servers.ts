@@ -43,6 +43,10 @@ interface RegistryFile {
   homeCache?: HomeCache;
   // Portal mode off by choice; absent means on.
   portalOff?: boolean;
+  // Per room code, the secret that claims it in the broker's table
+  // registry. Kept so the same code can be pointed at next session's
+  // address; nobody else can move a table this shell claimed.
+  tableSecrets?: Record<string, string>;
 }
 
 export class ServerStore {
@@ -227,6 +231,20 @@ export class ServerStore {
     if (on) delete registry.portalOff;
     else registry.portalOff = true;
     this.save(registry);
+  }
+
+  // The secret that claims a room code in the broker's table registry,
+  // minted once per code and kept, so the same code can be pointed at the
+  // address this world answers at today and again at tomorrow's.
+  tableSecret(code: string): string {
+    const key = code.trim().toUpperCase();
+    const registry = this.load();
+    const existing = registry.tableSecrets?.[key];
+    if (typeof existing === "string" && existing.length >= 16) return existing;
+    const secret = randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "").slice(0, 8);
+    registry.tableSecrets = { ...(registry.tableSecrets ?? {}), [key]: secret };
+    this.save(registry);
+    return secret;
   }
 
   homeCache(): HomeCache {

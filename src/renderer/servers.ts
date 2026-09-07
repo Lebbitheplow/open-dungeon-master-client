@@ -182,7 +182,7 @@ export function renderAdd(prefill: string): void {
     "text",
     prefill,
   );
-  originField.placeholder = "ABCD2345-EFGH6789 or play.example.com";
+  originField.placeholder = "ABCD2345 or play.example.com";
   originField.inputMode = "url";
   const error = el("p", "error");
   const submit = button("primary", "Continue");
@@ -207,16 +207,10 @@ export function renderAdd(prefill: string): void {
       // out over a table and mistyped, or that expired when its host
       // stopped sharing.
       const typed = originField.value.trim();
-      if (parseRoomCode(typed)) {
+      if (CODE_SHAPE.test(typed.toUpperCase()) || parseRoomCode(typed)) {
         submit.disabled = false;
         error.textContent =
-          "No world answered that room code. A code lasts only while its host keeps sharing, so ask for a fresh one.";
-        return;
-      }
-      if (typed.length === 8 && CODE_SHAPE.test(typed.toUpperCase())) {
-        submit.disabled = false;
-        error.textContent =
-          "That is only the table's half of a room code. The whole code names the host too, like ABCD2345-EFGH6789.";
+          "No table is online with that code. A code only leads anywhere while its host is sharing, so ask them to open it and try again.";
         return;
       }
       const result = await window.odm.probeServer(originField.value);
