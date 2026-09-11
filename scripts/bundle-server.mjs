@@ -71,6 +71,27 @@ try {
   });
   fs.cpSync(path.join(buildDir, "public"), path.join(vendorDir, "public"), { recursive: true });
 
+  // The content pack: spells, items, monsters and feats, which every picker
+  // in the character builder and the workshop searches. It is a build
+  // artifact in the server repo (data/ is ignored), so it is taken from the
+  // checkout when it has one and built in the worktree otherwise, the same
+  // way the Docker image bakes it. Staged outside data/ so a data volume
+  // or a preserved directory can never hide it, and the shells point
+  // CONTENT_DB_PATH at it.
+  const packRel = path.join("data", "content", "open5e.sqlite");
+  let pack = path.join(serverDir, packRel);
+  if (!fs.existsSync(pack)) {
+    console.log("No content pack in the server checkout; importing one for the payload");
+    run(process.execPath, ["scripts/import-open5e.mjs"], { cwd: buildDir });
+    pack = path.join(buildDir, packRel);
+  }
+  if (!fs.existsSync(pack)) {
+    console.error(`The content pack was not produced at ${pack}.`);
+    process.exit(1);
+  }
+  fs.mkdirSync(path.join(vendorDir, "content"), { recursive: true });
+  fs.copyFileSync(pack, path.join(vendorDir, "content", "open5e.sqlite"));
+
   fs.writeFileSync(
     path.join(vendorDir, "odm-payload.json"),
     JSON.stringify(

@@ -1,6 +1,6 @@
 {
   "name": "open-dungeon-master-client",
-  "version": "0.7.16",
+  "version": "0.8.0",
   "private": true,
   "description": "Desktop client for Open Dungeon Master: connect to any server, or play fully offline",
   "license": "MIT",
@@ -24,6 +24,7 @@
     "lint": "eslint src scripts mobile/src mobile/scripts",
     "bundle-server": "node scripts/bundle-server.mjs",
     "smoke-local": "node scripts/smoke-local-server.mjs",
+    "smoke-relocate": "node scripts/smoke-relocate.mjs",
     "dist:linux": "npm run build && electron-builder --linux",
     "dist:win": "npm run build && electron-builder --win",
     "dist:mac": "npm run build && electron-builder --mac"

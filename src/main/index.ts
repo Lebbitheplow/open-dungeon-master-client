@@ -103,17 +103,32 @@ function main(): void {
     ipc = registerIpc({ store, window: win, local, tunnel, localAi, updater });
     updater.checkOnStartup();
 
-    app.on("before-quit", () => {
-      void tunnel.stop();
-      void localAi.stop();
-      void local.stop();
+    // Leaving takes the share down properly: the tunnel, then the room
+    // codes in the registry and the world's publicUrl (capped, so a broker
+    // that does not answer cannot hold the app open), then the rest. Quit
+    // is deferred once for that and then allowed through.
+    let leaving = false;
+    const shutdown = async (): Promise<void> => {
+      if (leaving) return;
+      leaving = true;
+      const cap = new Promise<void>((resolve) => setTimeout(resolve, 3000));
+      await Promise.race([ipc?.shutdownShare() ?? Promise.resolve(), cap]);
+      await Promise.race([
+        localAi
+          .stop()
+          .catch(() => undefined)
+          .then(() => local.stop())
+          .catch(() => undefined),
+        cap,
+      ]);
+    };
+    app.on("before-quit", (event) => {
+      if (leaving) return;
+      event.preventDefault();
+      void shutdown().finally(() => app.quit());
     });
     app.on("window-all-closed", () => {
-      void tunnel
-        .stop()
-        .then(() => localAi.stop())
-        .then(() => local.stop())
-        .finally(() => app.quit());
+      void shutdown().finally(() => app.quit());
     });
 
     await win.whenPageReady();

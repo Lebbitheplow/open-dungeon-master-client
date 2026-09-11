@@ -10,9 +10,9 @@ export const LOCAL_SERVER_ID = "local";
 
 // One remembered server. The session token is stored encrypted (OS keychain
 // via safeStorage where available); everything else is plain JSON.
-// secretCipher holds the auto-provisioned local profile's password so the
-// shell can sign back in when the session token expires; remote servers
-// never store passwords.
+// secretCipher holds a password the app made up itself (the local profile's,
+// or the one minted for a room-code join) so the shell can sign back in
+// when the session token expires; passwords a person chose are never kept.
 export interface StoredServer {
   id: string;
   origin: string;
@@ -27,6 +27,11 @@ export interface StoredServer {
   // at a new tunnel address and move this entry there instead of adding a
   // duplicate.
   instanceId?: string;
+  // Room codes this entry was joined through, newest first. Kept on the
+  // entry itself (not only in the home cache, which exists only once the
+  // home screen has drawn this host while it was up) so a world that moved
+  // can be found again by the code the player arrived with.
+  joinCodes?: string[];
 }
 
 // Injected so tests can run without Electron's safeStorage.
@@ -47,6 +52,10 @@ interface RegistryFile {
   // registry. Kept so the same code can be pointed at next session's
   // address; nobody else can move a table this shell claimed.
   tableSecrets?: Record<string, string>;
+  // Room codes this shell last pointed at a public address. Persisted so a
+  // crash or a plain quit can still take them offline on the next start,
+  // rather than leaving a friend's code pointing at a dead address.
+  publishedCodes?: string[];
 }
 
 export class ServerStore {
@@ -134,6 +143,10 @@ export class ServerStore {
         : registry.servers.find(
             (server) => server.id !== LOCAL_SERVER_ID && server.instanceId === input.instanceId,
           ));
+    // A stored password belongs to one account. Signing in to the same
+    // host as somebody else must not keep the old one, or the next renewal
+    // tries user B with A's password and burns B's login throttle.
+    const sameAccount = !existing || existing.username === input.username;
     const entry: StoredServer = {
       id: existing?.id ?? input.id ?? randomUUID(),
       origin: input.origin,
@@ -144,8 +157,13 @@ export class ServerStore {
       tokenExpiresAt: input.tokenExpiresAt,
       // A token refresh must not drop the stored local password.
       secretCipher:
-        input.secret !== undefined ? this.crypt.encrypt(input.secret) : existing?.secretCipher,
+        input.secret !== undefined
+          ? this.crypt.encrypt(input.secret)
+          : sameAccount
+            ? existing?.secretCipher
+            : undefined,
       instanceId: input.instanceId || existing?.instanceId,
+      joinCodes: existing?.joinCodes,
     };
     if (existing) {
       registry.servers[registry.servers.indexOf(existing)] = entry;
@@ -247,17 +265,44 @@ export class ServerStore {
     return secret;
   }
 
-  // Room codes seen on this host, newest campaign first. These are the keys
+  // The room code an entry was just joined through, kept newest first.
+  rememberJoinCode(id: string, code: string): void {
+    const clean = (code || "").trim().toUpperCase();
+    if (!clean) return;
+    const registry = this.load();
+    const server = registry.servers.find((entry) => entry.id === id);
+    if (!server) return;
+    const rest = (server.joinCodes ?? []).filter((entry) => entry !== clean);
+    server.joinCodes = [clean, ...rest].slice(0, 8);
+    this.save(registry);
+  }
+
+  // Room codes seen on this host: the ones the player joined through, then
+  // every campaign the home screen last listed there. These are the keys
   // the broker's table registry answers "where is that world now" for, which
   // is how a saved entry finds a world that came back at a new address
   // (src/shared/relocate.ts).
   tableCodesFor(id: string): string[] {
     const codes: string[] = [];
+    for (const code of this.get(id)?.joinCodes ?? []) {
+      if (code && !codes.includes(code)) codes.push(code);
+    }
     for (const campaign of this.homeCache()[id]?.campaigns ?? []) {
       const code = (campaign.inviteCode ?? "").trim().toUpperCase();
       if (code && !codes.includes(code)) codes.push(code);
     }
     return codes;
+  }
+
+  publishedCodes(): string[] {
+    const codes = this.load().publishedCodes;
+    return Array.isArray(codes) ? codes.filter((code) => typeof code === "string") : [];
+  }
+
+  setPublishedCodes(codes: readonly string[]): void {
+    const registry = this.load();
+    registry.publishedCodes = [...codes];
+    this.save(registry);
   }
 
   homeCache(): HomeCache {

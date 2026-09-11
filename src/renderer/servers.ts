@@ -269,7 +269,7 @@ function authTabs(
 
 export function renderAuth(
   probe: ServerProbe,
-  mode: "login" | "register",
+  requested: "login" | "register",
   presetUsername: string,
 ): void {
   state.screenName = "auth";
@@ -281,6 +281,14 @@ export function renderAuth(
   // were given is the invitation. A real server is the other way round: its
   // owner keeps passwords and whatever signup rule they set, open, invite
   // only or closed, and the app follows it.
+  //
+  // There is no sign-in form for a device world at all, whatever was asked
+  // for: the password there is one the app made up and kept, so a form
+  // asking for it (which a lapsed session used to reach) was a dead end.
+  // Joining again is the only door, and the copy says what became of the
+  // old seat.
+  const mode: "login" | "register" = probe.deviceWorld ? "register" : requested;
+  const reseat = probe.deviceWorld && requested === "login";
   const shape = joinFormShape({
     deviceWorld: probe.deviceWorld,
     signupMode: probe.signupMode,
@@ -291,41 +299,40 @@ export function renderAuth(
   const [userLabel, userField] = input(
     byRoomCode ? "Your name at this table" : "Username",
     "text",
-    presetUsername,
+    reseat ? "" : presetUsername,
   );
   userField.autocomplete = "username";
   const [passLabel, passField] = input("Password", "password");
   passField.autocomplete = mode === "login" ? "current-password" : "new-password";
   form.append(userLabel);
-  if (!byRoomCode) form.append(passLabel);
+  if (shape.password) form.append(passLabel);
   let inviteField: HTMLInputElement | null = null;
   if (shape.accountInvite) {
     const [inviteLabel, field] = input("Account invite code", "text");
     field.placeholder = "ODM-XXXXXXXXXX";
     inviteField = field;
     form.append(inviteLabel);
-    // A live room code vouches for a signup on this server too, so someone
-    // who arrived with one does not need an account code as well.
-    form.append(
+    form.append(el("p", "hint", "This server is invite-only. Ask whoever runs it for a code."));
+  }
+  const error = el("p", "error");
+  if (reseat) {
+    form.prepend(
       el(
         "p",
         "hint",
-        state.joinIntent?.code
-          ? "This server is invite-only. You arrived with a room code, which counts, so leave this blank unless you were given one."
-          : "This server is invite-only. Ask whoever runs it for a code.",
+        `Your seat at ${name} could not be reopened (the host may have removed it, or the app lost the key it kept). Join again with a name; your old character stays with the host, who can hand it back or clear it.`,
       ),
     );
   }
-  const error = el("p", "error");
   if (byRoomCode && !state.joinIntent?.code) {
-    // Without the room code the host's world has nothing to vouch for this
-    // signup, and the server would refuse. Say that here rather than after
+    // Without the room code the host's world has nothing to seat this
+    // player at, and the server refuses. Say that here rather than after
     // the player has typed a name.
     form.append(
       el(
         "p",
         "hint",
-        "Open this world with its room code and you will be seated at that table.",
+        "This world only admits people with a room code. Open it with the code its host read out and you will be seated at that table.",
       ),
     );
   }

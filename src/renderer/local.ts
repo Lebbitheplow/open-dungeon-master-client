@@ -79,9 +79,9 @@ function qrPanel(url: string): HTMLElement {
 }
 
 // Sharing only means anything while the world runs, and it is a property
-// of that world rather than a peer of it. Inviting players from a campaign
-// lobby starts it too, so this row is the overview and the off switch more
-// than the usual way in. While shared, the address can be copied, sent
+// of that world rather than a peer of it. The campaign lobby's invite dialog
+// can start it too, so this row is the overview and the off switch as much
+// as the way in. While shared, the address can be copied, sent
 // through the system share sheet where there is one, or shown as a QR.
 export function shareRow(): HTMLElement {
   const row = el("div", "hero-actions stacked share-row");
@@ -89,13 +89,18 @@ export function shareRow(): HTMLElement {
   if (tunnel.state === "running") {
     row.append(badge("Shared online", true));
     row.append(el("span", "status-line", tunnel.url));
-    // The address and the host code are the same string, so a friend with
-    // no way to click a link can type the code instead. A campaign's own
-    // room code carries this half in front of it, which is what takes
-    // someone all the way to the table rather than to the door.
+    // What friends type is a campaign's room code, shown in its lobby; while
+    // shared, every code this world's campaigns have points here. The host
+    // code below is the address itself, for someone with no code to hand.
     const code = hostCodeFromOrigin(tunnel.url);
     if (code) {
-      row.append(el("span", "status-line", `Host code ${code}. Friends can type it to reach your world.`));
+      row.append(
+        el(
+          "span",
+          "status-line",
+          `Friends join with a campaign's room code from its lobby. Host code ${code} reaches this world's door without one.`,
+        ),
+      );
     }
     const copy = button("secondary", "Copy link", () => {
       void copyText(tunnel.url).then((worked) => {
@@ -135,8 +140,8 @@ export function shareRow(): HTMLElement {
     return row;
   }
   const idle = state.local.lanOrigin
-    ? `On your Wi-Fi at ${state.local.lanOrigin}. Share online, or invite players from a campaign lobby, and friends anywhere can join.`
-    : "Friends can join from anywhere while the app runs. Inviting players from a campaign lobby shares it for you.";
+    ? `On your Wi-Fi at ${state.local.lanOrigin}. Share online and friends anywhere can join with a campaign's room code.`
+    : "Share online while the app runs and friends anywhere can join with a campaign's room code.";
   const line = el("span", "status-line", tunnel.state === "error" ? tunnel.error : idle);
   const start = button(
     "secondary",

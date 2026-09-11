@@ -11,6 +11,21 @@ import { isShellCookieWrite } from "./session-cookies";
 // in that server's partition, with no preload and no bridge. Ctrl+M (or the
 // View menu) drops back to the shell.
 
+// The server's own words for the errors its Discord callback can end on
+// (src/app/AuthForm.tsx keeps the same map), so a refused sign-up says why.
+function discordErrorText(code: string): string {
+  switch (code) {
+    case "signups_disabled":
+      return "Signups are disabled on this server.";
+    case "invite_required":
+      return "This server needs an invite code or a live room code to create an account.";
+    case "invite_invalid":
+      return "That invite code is not valid (or has been used up).";
+    default:
+      return "Discord sign-in failed. Try again.";
+  }
+}
+
 function sameOrigin(url: string, origin: string): boolean {
   try {
     return new URL(url).origin === origin;
@@ -265,9 +280,12 @@ export class ShellWindow {
           reject(new Error("This server has not set up Discord sign-in."));
           return;
         }
-        if (!parsed.searchParams.get("error")) return;
+        const error = parsed.searchParams.get("error");
+        if (!error) return;
         cleanup();
-        reject(new Error("Discord sign-in failed. Try again."));
+        // The same words the server's own login form uses for these codes
+        // (src/app/AuthForm.tsx), so a refusal says what to do about it.
+        reject(new Error(discordErrorText(error)));
       };
       this.loginCancel = (reason) => {
         cleanup();

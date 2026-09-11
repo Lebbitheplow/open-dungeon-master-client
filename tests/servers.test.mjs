@@ -226,3 +226,61 @@ test("remove forgets the server", () => {
   assert.equal(store.get(entry.id), null);
   assert.equal(store.list().length, 0);
 });
+
+test("the room code a player joined through is kept on the entry, newest first", () => {
+  const { store } = freshStore();
+  const entry = store.upsert({
+    origin: "https://play-old.example",
+    name: "Phone",
+    username: "wren",
+    token: "tok1",
+    tokenExpiresAt: future,
+    instanceId: "world-1",
+  });
+  // Nothing cached from the home screen yet: this is the case 0.7.16
+  // missed, a player who joined and never came back to the home screen.
+  store.rememberJoinCode(entry.id, "abcd2345");
+  store.rememberJoinCode(entry.id, "EFGH6789");
+  store.rememberJoinCode(entry.id, "ABCD2345");
+  assert.deepEqual(store.tableCodesFor(entry.id), ["ABCD2345", "EFGH6789"]);
+  // A token refresh keeps them.
+  store.upsert({
+    id: entry.id,
+    origin: "https://play-old.example",
+    name: "Phone",
+    username: "wren",
+    token: "tok2",
+    tokenExpiresAt: future,
+  });
+  assert.deepEqual(store.tableCodesFor(entry.id), ["ABCD2345", "EFGH6789"]);
+});
+
+test("a stored password does not follow a different account onto the same host", () => {
+  const { store } = freshStore();
+  const first = store.upsert({
+    origin: "https://a.example",
+    name: "A",
+    username: "wren",
+    token: "tok1",
+    tokenExpiresAt: future,
+    secret: "minted-for-wren",
+  });
+  assert.equal(store.secret(first.id), "minted-for-wren");
+  store.upsert({
+    origin: "https://a.example",
+    name: "A",
+    username: "kaleb",
+    token: "tok2",
+    tokenExpiresAt: future,
+  });
+  assert.equal(store.secret(first.id), null);
+});
+
+test("published room codes survive a restart so they can be taken offline", () => {
+  const { store } = freshStore();
+  assert.deepEqual(store.publishedCodes(), []);
+  store.setPublishedCodes(["ABCD2345", "EFGH6789"]);
+  assert.deepEqual(store.publishedCodes(), ["ABCD2345", "EFGH6789"]);
+  store.setPublishedCodes([]);
+  assert.deepEqual(store.publishedCodes(), []);
+});

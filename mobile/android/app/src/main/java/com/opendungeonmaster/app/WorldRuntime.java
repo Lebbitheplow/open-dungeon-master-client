@@ -321,6 +321,10 @@ public final class WorldRuntime {
             env.put("SQLITE_DB_PATH", dbFile().getAbsolutePath());
             env.put("DB_ENCRYPTION_KEY", dbEncryptionKey());
             env.put("ODM_SQLITE_DRIVER", "node");
+            // The spells, items, monsters and feats catalogue shipped inside
+            // the payload (content/open5e.sqlite); without it every picker in
+            // the character builder searches an empty pack.
+            env.put("CONTENT_DB_PATH", new File(serverDir(), "content/open5e.sqlite").getAbsolutePath());
             // Tells the server it is the shell's own world, so its admin panel
             // hides what the shell manages (address, sign-ups, voice, Discord).
             env.put("ODM_DEVICE_WORLD", "1");

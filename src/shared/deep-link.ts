@@ -54,11 +54,31 @@ export interface CodeCandidates {
 }
 
 export function codeCandidates(raw: string): CodeCandidates {
-  const typed = (typeof raw === "string" ? raw : "").trim().toUpperCase();
+  // "ABCD 2345", "abcd-2345" and a code with a phone keyboard's dash are
+  // all the one code; the registry would have accepted the cleaned form,
+  // so it is cleaned here rather than sent down the host-shape path alone.
+  const typed = (typeof raw === "string" ? raw : "")
+    .trim()
+    .toUpperCase()
+    .replace(/[\s‐-―−-]/g, "");
   return {
     table: CODE_SHAPE.test(typed) ? typed : "",
     hostOrigin: parseRoomCode(raw)?.origin ?? "",
   };
+}
+
+// Whether a link's origin is one the shell may move a saved entry to on the
+// strength of the world's instanceId alone. That id is public (anyone who
+// ever probed the world has it), so a crafted odm://join?s=https://evil
+// link could otherwise rebind a saved seat to a stranger's server and hand
+// it the saved session. Tunnel hostnames are minted at random by Cloudflare
+// or the broker, which nobody can pick; a link that names one is taken as
+// the host's own share link. Anything else must be confirmed by the
+// registry (the code resolves there) before the saved session follows it.
+export function trustedTunnelOrigin(origin: string): boolean {
+  return /^https:\/\/(play-[a-z0-9]+\.opendungeonmaster\.com|[a-z0-9-]+\.trycloudflare\.com)$/.test(
+    (origin || "").trim().toLowerCase(),
+  );
 }
 
 // A typed or pasted room code, in every shape a person might produce:

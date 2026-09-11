@@ -94,12 +94,10 @@ export async function registerAccount(
     password: input.password,
   };
   if (input.inviteCode) payload.inviteCode = input.inviteCode;
-  // Sharing a world turns its signup mode to invite, so a friend arriving
-  // with a room code needs that code to vouch for them here. The server
-  // looks it up without consuming it (src/app/api/auth/register), and the
-  // same code then joins them to the table. Without this the only way in
-  // was an account invite code from the host, which is not what an invite
-  // is for.
+  // The room code travels with the registration: on a world an app hosts
+  // it is the only door, and on an invite-only server it vouches for the
+  // signup. The server looks it up without consuming it
+  // (src/app/api/auth/register), and the same code then seats the player.
   if (input.joinCode) payload.joinCode = input.joinCode;
   const res = await api(origin, "/api/auth/register", {
     method: "POST",
@@ -131,19 +129,30 @@ export async function whoAmI(
   return { username: body.user.username, isAdmin: Boolean(body.user.isAdmin) };
 }
 
-// /api/auth/me answers 200 with a null user for a dead session, so the
-// body decides, not the status.
-export async function tokenIsValid(origin: string, token: string): Promise<boolean> {
+// Whether a saved session still opens a world: "ok", "rejected" (the host
+// answered and does not know this session) or "unreachable" (nothing
+// answered). The two failures are different news: a rejected session wants
+// a sign-in, an unreachable host wants the player told it is not online,
+// which "Your session expired" used to say for both.
+export type SessionState = "ok" | "rejected" | "unreachable";
+
+export async function sessionState(origin: string, token: string): Promise<SessionState> {
   try {
     const res = await api(origin, "/api/auth/me", {
       headers: { authorization: `Bearer ${token}` },
     });
-    if (!res.ok) return false;
+    // /api/auth/me answers 200 with a null user for a dead session, so the
+    // body decides, not the status.
+    if (!res.ok) return "rejected";
     const body = (await res.json().catch(() => null)) as { user?: unknown } | null;
-    return !!body?.user;
+    return body?.user ? "ok" : "rejected";
   } catch {
-    return false;
+    return "unreachable";
   }
+}
+
+export async function tokenIsValid(origin: string, token: string): Promise<boolean> {
+  return (await sessionState(origin, token)) === "ok";
 }
 
 export async function patchAdminSettings(

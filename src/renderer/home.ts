@@ -241,6 +241,27 @@ function welcomeHero(): HTMLElement {
   return hero;
 }
 
+// Joining a friend's table is the most common thing a guest does, so the
+// door is on the home screen itself rather than behind the menu: type the
+// room code (or paste a link), and on a phone scan the QR the host shows.
+function inviteRow(): HTMLElement {
+  const row = el("div", "panel invite-row");
+  row.dataset.tour = "home-invite";
+  row.append(
+    chip("link"),
+    el("span", "invite-line", "Have an invite from a friend?"),
+  );
+  const actions = el("div", "invite-actions");
+  actions.append(
+    button("primary", "Enter room code", () => renderAdd(state.joinIntent?.origin ?? ""), "link"),
+  );
+  if (window.odm.scanInvite) {
+    actions.append(button("secondary", "Scan invite QR", (btn) => void scanInvite(btn), "qr"));
+  }
+  row.append(actions);
+  return row;
+}
+
 function hero(pick: ContinuePick | null): HTMLElement[] {
   if (pick) return [el("h2", "eyebrow", "Continue"), continueHero(pick)];
   if (state.local.state === "unavailable") {
@@ -438,6 +459,7 @@ export function renderHome(): void {
     "wide",
     joinBanner(),
     ...hero(pick),
+    inviteRow(),
     quickTiles(primary),
     ...campaigns(feed),
     ...deviceBlock(localIsHero),

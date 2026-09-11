@@ -18,6 +18,9 @@ export const KEEP = new Set([
   "node_modules",
   "public",
   "models",
+  // The Open5e content pack (content/open5e.sqlite), staged by
+  // scripts/bundle-server.mjs; the shells point CONTENT_DB_PATH at it.
+  "content",
   "server.js",
   "package.json",
   "odm-payload.json",

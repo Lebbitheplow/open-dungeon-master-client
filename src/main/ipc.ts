@@ -18,6 +18,7 @@ import {
   parseLinkOrAddress,
   codeCandidates,
   parseRoomCode,
+  trustedTunnelOrigin,
   type JoinLink,
 } from "../shared/deep-link";
 import { coverRequestUrl, type HostInput } from "../shared/home-feed-logic";
@@ -32,6 +33,7 @@ import {
   patchAdminSettings,
   probeServer,
   registerAccount,
+  sessionState,
   tokenIsValid,
   type TokenGrant,
   whoAmI,
@@ -64,6 +66,9 @@ export interface ShellContext {
 
 export interface ShellIpc {
   handleJoinLink(link: JoinLink): Promise<void>;
+  // Stops the share tunnel and takes the room codes and publicUrl down
+  // with it; awaited on the way out of the app.
+  shutdownShare(): Promise<void>;
 }
 
 // Everything arriving over IPC is untrusted renderer input: coerce and cap.
@@ -172,9 +177,14 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     refreshHomeFeed();
   });
   tunnel.onStatus(() => {
-    win.sendEvent({ kind: "tunnel-status", status: tunnel.status() });
+    const status = tunnel.status();
+    win.sendEvent({ kind: "tunnel-status", status });
     if (localPageShowing()) win.sendToGame("odm:share-status", shellShareStatus());
     refreshHomeFeed();
+    // A tunnel that died on its own (cloudflared exited, the broker's day
+    // ran out) must take the codes and the publicUrl down with it, or a
+    // friend keeps being sent to an address nothing answers at.
+    if (status.state === "error" || status.state === "stopped") void syncPublicUrl();
   });
   localAi.onStatus(() => win.sendEvent({ kind: "local-ai-progress", status: localAi.status() }));
   updater.onStatus(() => win.sendEvent({ kind: "update-progress", progress: updater.progress() }));
@@ -187,7 +197,8 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
   // codes point. Both the app's own Share button and the game's invite
   // dialog land here, which is why the registry is driven from this one
   // place rather than from either button.
-  let publishedCodes: string[] = [];
+  // The codes last published are kept in the store, not in memory, so a
+  // crash or a quit can still take them offline on the next start.
   const syncPublicUrl = async (): Promise<void> => {
     const token = store.token(LOCAL_SERVER_ID);
     if (!token || !local.origin) return;
@@ -196,18 +207,36 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     await patchAdminSettings(local.origin, token, { publicUrl: live }).catch(() => undefined);
     if (live) {
       const codes = await ownedTableCodes(local.origin, token);
-      publishedCodes = await publishTables({
+      const published = await publishTables({
         codes,
         url: live,
         secretFor: (code) => store.tableSecret(code),
       });
+      // A code refused by the registry (claimed from another device) stays
+      // in the list so it is at least dropped with the rest later.
+      const before = store.publishedCodes();
+      store.setPublishedCodes([...new Set([...published, ...before])]);
       return;
     }
-    const stale = publishedCodes;
-    publishedCodes = [];
+    const stale = store.publishedCodes();
+    store.setPublishedCodes([]);
     if (stale.length > 0) {
       await dropTables({ codes: stale, secretFor: (code) => store.tableSecret(code) });
     }
+  };
+  // Sharing is not a moment but a span: a campaign opened while shared gets
+  // its code published too, and the registry's claim is refreshed, by
+  // running the publish half again every so often for as long as the
+  // tunnel is up.
+  const REPUBLISH_MS = 60_000;
+  setInterval(() => {
+    if (tunnel.status().state === "running") void syncPublicUrl();
+  }, REPUBLISH_MS).unref();
+  // Stopping the share on the way out: the tunnel first, then the codes
+  // and the server's publicUrl. index.ts awaits this before quitting.
+  const shutdownShare = async (): Promise<void> => {
+    await tunnel.stop().catch(() => undefined);
+    await syncPublicUrl().catch(() => undefined);
   };
 
   // Local worlds always run mesh voice: no media port to open, and it is the
@@ -254,12 +283,14 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     token: string,
     joinCode: string,
     path = "",
+    known: ServerProbe | null = null,
   ): Promise<void> => {
     store.touch(entry.id);
+    if (joinCode) store.rememberJoinCode(entry.id, joinCode);
     // The probe learns the world's stable id (so entries saved before the
     // server exposed one still match a device world back at a new tunnel
     // address) and the version portal mode needs. Best effort either way.
-    const probe = await probeServer(entry.origin).catch(() => null);
+    const probe = known ?? (await probeServer(entry.origin).catch(() => null));
     if (probe) store.setInstanceId(entry.id, probe.instanceId);
     const pathname = landingPath(joinCode, path);
     if (await attachThroughPortal(entry, token, probe, pathname)) return;
@@ -282,29 +313,41 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
       return { ok: false, needsLogin: false, error: "Unknown server." };
     }
     let entry = saved;
-    let token = store.token(id);
-    const alive = async (): Promise<boolean> => {
-      const current = token;
-      if (!current) return false;
-      return tokenIsValid(entry.origin, current);
-    };
-
-    if (!(await alive())) {
-      // Before calling this a lapsed session, consider that the session may
-      // be perfectly good and only the address stale. Without this a player
-      // returning to a world that has been shared again is told to sign in,
-      // and on a device world the only door that screen offers is a new
-      // account, so they end up with a second character and no way back to
-      // the first.
-      entry = await relocate(entry);
+    const notOnline = (): ConnectResult => ({
+      ok: false,
+      needsLogin: false,
+      error: `${entry.name} is not online right now. Ask the host to share their world, then try again.`,
+    });
+    // Who answers at the address on file, before anything secret is sent
+    // there. A tunnel hostname is handed out per session and can later
+    // belong to somebody else's world, and a world one of the apps hosts
+    // answers at a new address every time it is shared again. Only a world
+    // that proves it is the one this entry belongs to gets the session.
+    let probe = await probeServer(entry.origin).catch(() => null);
+    const strangerOnFile =
+      probe !== null && !!entry.instanceId && probe.instanceId !== entry.instanceId;
+    if (!probe || strangerOnFile) {
+      // Nothing there, or the wrong world: ask the registry where this
+      // world's room codes point today (src/shared/relocate.ts). Without
+      // this a player returning to a world that had been shared again was
+      // told to sign in, and on a device world the only door that screen
+      // offered was a new account: a second character and no way back.
+      const moved = await relocate(entry);
+      if (moved.origin === entry.origin) return notOnline();
+      entry = moved;
+      probe = await probeServer(entry.origin).catch(() => null);
+      if (!probe) return notOnline();
     }
-    if (!(await alive())) {
+    let token = store.token(id);
+    let session = token ? await sessionState(entry.origin, token) : "rejected";
+    if (session === "unreachable") return notOnline();
+    if (session === "rejected") {
       // An account the app made up a password for (joined by room code)
       // must never be asked for it: nobody was ever told what it is. Renew
       // the session with the stored one instead, and only fall back to the
       // sign-in form for accounts a person chose a password for.
       const secret = store.secret(id);
-      token = "";
+      token = null;
       if (secret) {
         try {
           const grant = await loginForToken(entry.origin, entry.username, secret);
@@ -317,15 +360,22 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
             tokenExpiresAt: grant.expiresAt,
           });
           token = grant.token;
+          session = "ok";
         } catch {
           // The password no longer works (changed, or the account is gone).
         }
       }
     }
     if (!token) {
-      return { ok: false, needsLogin: true, error: "Your session expired. Sign in again." };
+      return {
+        ok: false,
+        needsLogin: true,
+        error: probe.deviceWorld
+          ? "Your seat at this world could not be reopened. Join again with a name, and ask the host to remove the old one."
+          : "Your session expired. Sign in again.",
+      };
     }
-    await attachRemote(entry, token, joinCode, path);
+    await attachRemote(entry, token, joinCode, path, probe);
     return { ok: true };
   };
 
@@ -370,10 +420,19 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
       // the server at the new address identifies as a world this shell
       // already has an account on, move that entry to the new address and
       // walk in with the stored token instead of asking for a second login.
+      // The world's id is public, so the address itself has to be one a
+      // stranger could not have chosen (a tunnel hostname), or one the
+      // registry confirms the code points at; a crafted link naming any
+      // other origin gets the add screen, never the saved session.
       try {
         const probe = await probeServer(link.origin);
         const match = store.findByInstanceId(probe.instanceId);
-        if (match) known = store.rebindOrigin(match.id, link.origin);
+        if (match) {
+          const trusted =
+            trustedTunnelOrigin(link.origin) ||
+            (!!link.code && (await resolveTable(link.code)) === link.origin);
+          if (trusted) known = store.rebindOrigin(match.id, link.origin);
+        }
       } catch {
         // Unreachable or not an ODM server; the add screen will say so.
       }
@@ -408,8 +467,12 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
       // it is the only one that survives a new tunnel. The host shape is
       // the fallback, since the two overlap and shape alone cannot tell
       // them apart.
+      // The registry is cleared best effort when a host stops sharing, so an
+      // answer is a lead, not a promise: the address is probed before the
+      // player is sent there, and a dead one reads as "not online" rather
+      // than as a sign-in that fails with the hostname blamed.
       const found = bare.table ? await resolveTable(bare.table) : "";
-      if (found) {
+      if (found && (await probeServer(found).catch(() => null))) {
         await handleJoinLink({ origin: found, code: bare.table });
         return true;
       }
@@ -588,7 +651,15 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
       const origin = normalizeOrigin(str(input?.origin, 300));
       if (!origin) return fail(new Error("Bad server address."));
       const joinCode = joinCodeOf(input?.joinCode);
-      const minted = await win.browserLogin(origin, partition, "/api/auth/discord/start?next=%2F");
+      // The room code rides in the return path: on an invite-only server it
+      // is what vouches for a brand-new Discord account, and the callback
+      // reads it from there (src/app/api/auth/discord/callback).
+      const next = encodeURIComponent(joinCode ? `/join/${joinCode}` : "/");
+      const minted = await win.browserLogin(
+        origin,
+        partition,
+        `/api/auth/discord/start?next=${next}`,
+      );
       const me = await whoAmI(origin, minted.token);
       return await adoptGrant(origin, { ...minted, ...me }, joinCode);
     } catch (err) {
@@ -881,5 +952,5 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     }
   });
 
-  return { handleJoinLink };
+  return { handleJoinLink, shutdownShare };
 }

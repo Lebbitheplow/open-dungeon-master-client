@@ -34,9 +34,9 @@ export const APP_TOUR_STEPS: TourStep[] = [
   },
   {
     id: "add-server",
-    title: "Add a server or join by invite",
-    body: "Connect to a self-hosted server here, or open an invite a friend sent you: paste the link or room code, or scan its QR code where the app has a camera.",
-    anchors: ["add-server", "invite"],
+    title: "Join a friend's table, or add a server",
+    body: "Have an invite? Type the room code the host read out, paste the link, or scan its QR code where the app has a camera. The menu also connects to a self-hosted server by address.",
+    anchors: ["home-invite", "add-server", "invite"],
   },
   {
     id: "hosts",

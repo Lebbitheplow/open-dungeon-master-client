@@ -347,10 +347,19 @@ export function createHomeFeed(deps: HomeFeedDeps): HomeFeedController {
       orderHosts(inputs).map(async (input) => {
         let current = input;
         let outcome = await outcomeFor(current, local);
-        // No answer at the address on file. Before writing the host off as
-        // offline, find out whether it simply moved; a tile that says offline
-        // offers the player nothing to tap.
-        if (outcome.kind === "failed" && deps.relocate) {
+        // No answer at the address on file, or an answer that is not this
+        // world's (a dead tunnel hostname still answers with an edge error
+        // page for a while). Before writing the host off as offline, find
+        // out whether it simply moved; a tile that says offline offers the
+        // player nothing to tap. A 401 or 403 is the host itself speaking
+        // and stays a sign-in matter.
+        const gone =
+          outcome.kind === "failed" ||
+          (outcome.kind === "reply" &&
+            outcome.status !== 401 &&
+            outcome.status !== 403 &&
+            (outcome.status < 200 || outcome.status >= 300));
+        if (gone && deps.relocate) {
           const moved = await deps.relocate(current).catch(() => "");
           if (moved && moved !== current.origin) {
             current = { ...current, origin: moved };

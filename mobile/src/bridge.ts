@@ -30,6 +30,7 @@ import {
   parseLinkOrAddress,
   codeCandidates,
   parseRoomCode,
+  trustedTunnelOrigin,
   type JoinLink,
 } from "../../src/shared/deep-link";
 import {
@@ -84,6 +85,10 @@ interface StoredServer {
   // for something they were never told. Absent for accounts a person
   // chose a password for.
   secret?: string;
+  // Room codes this entry was joined through, newest first, so a world that
+  // moved can be found again by the code the player arrived with even when
+  // the home screen never listed this host while it was up.
+  joinCodes?: string[];
   // The world's stable id from /api/auth/providers ("" or absent on servers
   // that predate it). Lets the shell recognize a device world that came back
   // at a new tunnel address and move this entry there instead of adding a
@@ -215,9 +220,10 @@ async function registerAccount(
 ): Promise<TokenGrant> {
   const body: Record<string, string> = { username: input.username, password: input.password };
   if (input.inviteCode) body.inviteCode = input.inviteCode;
-  // Sharing a world turns its signup mode to invite, so the room code has
-  // to travel with the registration to vouch for it. The server looks it
-  // up without consuming it, and the same code then seats the player.
+  // The room code travels with the registration: on a world an app hosts
+  // it is the only door, and on an invite-only server it vouches for the
+  // signup. The server looks it up without consuming it, and the same code
+  // then seats the player.
   if (input.joinCode) body.joinCode = input.joinCode;
   const reply = await http(origin, "/api/auth/register", { method: "POST", body });
   if (reply.status !== 201) throw new Error(errorText(reply, "Could not create the account."));
@@ -671,6 +677,25 @@ async function ownedRoomCodes(origin: string, token: string): Promise<string[]> 
   return codes;
 }
 
+// The codes last published live in Preferences, not only in memory, so a
+// process the OS killed while sharing can still take them offline on the
+// next start rather than leave a friend's code pointing at a dead address.
+const PUBLISHED_CODES_KEY = "odm-published-codes";
+
+async function loadPublishedCodes(): Promise<string[]> {
+  try {
+    const raw = (await Preferences.get({ key: PUBLISHED_CODES_KEY })).value;
+    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+    return Array.isArray(parsed) ? parsed.filter((code) => typeof code === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+async function savePublishedCodes(codes: readonly string[]): Promise<void> {
+  await Preferences.set({ key: PUBLISHED_CODES_KEY, value: JSON.stringify(codes) });
+}
+
 async function publishRoomCodes(url: string): Promise<void> {
   const profile = await loadLocalProfile();
   const status = await localWorld.status();
@@ -685,12 +710,17 @@ async function publishRoomCodes(url: string): Promise<void> {
     }).catch(() => null);
     if (reply && reply.status >= 200 && reply.status < 300) published.push(code);
   }
-  publishedCodes = published;
+  // A code the registry refused (claimed from another device) stays listed
+  // so it is at least dropped with the rest later.
+  const before = await loadPublishedCodes();
+  publishedCodes = [...new Set([...published, ...before])];
+  await savePublishedCodes(publishedCodes);
 }
 
 async function unpublishRoomCodes(): Promise<void> {
-  const codes = publishedCodes;
+  const codes = [...new Set([...publishedCodes, ...(await loadPublishedCodes())])];
   publishedCodes = [];
+  await savePublishedCodes([]);
   for (const code of codes) {
     await fetchJson(tableEndpoint(DEFAULT_BROKER_URL, code), {
       method: "DELETE",
@@ -699,24 +729,61 @@ async function unpublishRoomCodes(): Promise<void> {
   }
 }
 
+// Sharing is a span, not a moment: a campaign opened while shared gets its
+// code published too, and the registry's claim is refreshed, by running the
+// publish again every so often for as long as the address is up.
+const REPUBLISH_MS = 60_000;
+let republishTimer: ReturnType<typeof setInterval> | null = null;
+let sharedUrl = "";
+
+function keepRoomCodesPublished(url: string): void {
+  sharedUrl = url;
+  if (republishTimer) {
+    clearInterval(republishTimer);
+    republishTimer = null;
+  }
+  if (!url) return;
+  republishTimer = setInterval(() => {
+    if (sharedUrl) void publishRoomCodes(sharedUrl);
+  }, REPUBLISH_MS);
+}
+
 // Room codes seen on a host, newest campaign first. These are the keys the
 // broker's table registry answers "where is that world now" for, which is how
 // a saved entry finds a world that came back at a new address.
 async function tableCodesFor(id: string): Promise<string[]> {
   const raw = (await Preferences.get({ key: HOME_CACHE_KEY })).value;
-  if (!raw) return [];
-  let cache: HomeCache;
+  let cache: HomeCache | null = null;
   try {
-    cache = JSON.parse(raw) as HomeCache;
+    cache = raw ? (JSON.parse(raw) as HomeCache) : null;
   } catch {
-    return [];
+    cache = null;
   }
   const codes: string[] = [];
+  // The codes the player joined through come first: they exist even when
+  // the home screen never drew this host while it was up.
+  const servers = await loadServers();
+  for (const code of servers.find((entry) => entry.id === id)?.joinCodes ?? []) {
+    if (code && !codes.includes(code)) codes.push(code);
+  }
   for (const campaign of cache?.[id]?.campaigns ?? []) {
     const code = (campaign.inviteCode ?? "").trim().toUpperCase();
     if (code && !codes.includes(code)) codes.push(code);
   }
   return codes;
+}
+
+// The room code an entry was just joined through, kept newest first on the
+// entry itself, so a world that moved can be found again by it.
+async function rememberJoinCode(id: string, code: string): Promise<void> {
+  const clean = (code || "").trim().toUpperCase();
+  if (!clean) return;
+  const servers = await loadServers();
+  const server = servers.find((entry) => entry.id === id);
+  if (!server) return;
+  const rest = (server.joinCodes ?? []).filter((entry) => entry !== clean);
+  server.joinCodes = [clean, ...rest].slice(0, 8);
+  await saveServers(servers);
 }
 
 // Where a table is right now, or "" when nobody has it online.
@@ -762,6 +829,7 @@ const shareTunnel = createShareTunnel({
   // rather than from either button.
   publish: async (url) => {
     await localWorld.publish(url);
+    keepRoomCodesPublished(url);
     if (url) await publishRoomCodes(url);
     else await unpublishRoomCodes();
   },
@@ -911,15 +979,26 @@ async function onWebviewUrl(url: string): Promise<void> {
   const pending = pendingDiscord;
   if (!pending || !url.startsWith(`${pending.origin}/`) && url !== pending.origin) return;
   if (url.includes("/api/auth/discord/")) return;
-  let failed = false;
+  let failed = "";
   try {
-    failed = new URL(url).searchParams.get("error") === "discord";
+    failed = new URL(url).searchParams.get("error") ?? "";
   } catch {
     return;
   }
   if (failed) {
+    // Every error the callback can end on settles the sign-in; the server's
+    // own words for it (src/app/AuthForm.tsx), so a refused signup says why
+    // rather than hanging the promise forever.
     await InAppBrowser.close().catch(() => undefined);
-    settleDiscord(fail(new Error("Discord sign-in failed. Try again.")));
+    const text =
+      failed === "signups_disabled"
+        ? "Signups are disabled on this server."
+        : failed === "invite_required"
+          ? "This server needs an invite code or a live room code to create an account."
+          : failed === "invite_invalid"
+            ? "That invite code is not valid (or has been used up)."
+            : "Discord sign-in failed. Try again.";
+    settleDiscord(fail(new Error(text)));
     return;
   }
   const cookies = await InAppBrowser.getCookies({ url: pending.origin, includeHttpOnly: true }).catch(
@@ -946,61 +1025,86 @@ async function onWebviewUrl(url: string): Promise<void> {
   }
 }
 
+// Whether a saved session still opens a world: "ok", "rejected" (the host
+// answered and does not know it) or "unreachable" (nothing answered). The
+// two failures are different news: a rejected session wants a sign-in, an
+// unreachable host wants the player told it is not online.
+async function sessionStateAt(
+  origin: string,
+  token: string,
+): Promise<"ok" | "rejected" | "unreachable"> {
+  try {
+    const reply = await http(origin, "/api/auth/me", { token });
+    if (reply.status !== 200) return "rejected";
+    const body = reply.data as { user?: unknown } | null;
+    return body?.user ? "ok" : "rejected";
+  } catch {
+    return "unreachable";
+  }
+}
+
 async function connectById(id: string, joinCode: string, path = ""): Promise<ConnectResult> {
   const servers = await loadServers();
   const server = servers.find((entry) => entry.id === id);
   if (!server) return { ok: false, needsLogin: false, error: "Unknown server." };
-  const alive = async (): Promise<boolean> =>
-    tokenAlive(server) && (await tokenIsValid(server.origin, server.token));
-  if (!(await alive())) {
-    // Before calling this a lapsed session, consider that the session may be
-    // perfectly good and only the address stale: a world one of the apps
-    // hosts answers somewhere new every time its host shares it again.
-    // Without this a returning player is told to sign in, and on a device
-    // world the only door that screen offers is a new account, so they end
-    // up with a second character and no way back to the first.
+  const notOnline = (): ConnectResult => ({
+    ok: false,
+    needsLogin: false,
+    error: `${server.name} is not online right now. Ask the host to share their world, then try again.`,
+  });
+  // Who answers at the address on file, before anything secret is sent
+  // there: a tunnel hostname is handed out per session and can later belong
+  // to somebody else's world, and a world one of the apps hosts answers at
+  // a new address every time it is shared again.
+  let probe = await probeOrigin(server.origin).catch(() => null);
+  const strangerOnFile =
+    probe !== null && !!server.instanceId && probe.instanceId !== server.instanceId;
+  if (!probe || strangerOnFile) {
+    // Nothing there, or the wrong world: ask the registry where this
+    // world's room codes point today. Without this a returning player was
+    // told to sign in, and on a device world the only door that screen
+    // offered was a new account: a second character and no way back.
     const moved = await relocateSaved(server.id, server.origin).catch(() => "");
-    if (moved) server.origin = moved;
+    if (!moved) return notOnline();
+    server.origin = moved;
+    probe = await probeOrigin(server.origin).catch(() => null);
+    if (!probe) return notOnline();
   }
-  if (!(await alive())) {
+  if (probe.instanceId && server.instanceId !== probe.instanceId) {
+    server.instanceId = probe.instanceId;
+  }
+  let session = tokenAlive(server) ? await sessionStateAt(server.origin, server.token) : "rejected";
+  if (session === "unreachable") return notOnline();
+  if (session === "rejected") {
     // An account the app made up a password for (joined by room code) must
     // never be asked for it: nobody was ever told what it is. Renew with
     // the stored one, and keep the sign-in form for accounts whose
     // password a person actually chose.
-    let renewed = false;
     if (server.secret) {
       try {
         const grant = await loginForToken(server.origin, server.username, server.secret);
         server.token = grant.token;
         server.tokenExpiresAt = grant.expiresAt;
         server.username = grant.username;
-        renewed = true;
+        session = "ok";
       } catch {
         // The password no longer works (changed, or the account is gone).
       }
     }
-    if (!renewed) {
-      return { ok: false, needsLogin: true, error: "Your session expired. Sign in again." };
+    if (session !== "ok") {
+      await saveServers(servers);
+      return {
+        ok: false,
+        needsLogin: true,
+        error: probe.deviceWorld
+          ? "Your seat at this world could not be reopened. Join again with a name, and ask the host to remove the old one."
+          : "Your session expired. Sign in again.",
+      };
     }
-    await saveServers(servers);
   }
   server.lastUsedAt = new Date().toISOString();
   await saveServers(servers);
-  // Best effort: learn the world's stable id, so entries saved before the
-  // server exposed one can still be matched when a device world comes back
-  // at a new tunnel address.
-  if (!server.instanceId) {
-    void probeOrigin(server.origin)
-      .then(async (probe) => {
-        if (!probe.instanceId) return;
-        const latest = await loadServers();
-        const entry = latest.find((item) => item.id === server.id);
-        if (!entry || entry.instanceId === probe.instanceId) return;
-        entry.instanceId = probe.instanceId;
-        await saveServers(latest);
-      })
-      .catch(() => undefined);
-  }
+  if (joinCode) await rememberJoinCode(server.id, joinCode);
   await openServer(server, joinCode, path);
   return { ok: true };
 }
@@ -1028,6 +1132,9 @@ async function rememberGrant(
   const existing =
     servers.find((entry) => entry.origin === origin) ??
     (instanceId ? servers.find((entry) => entry.instanceId === instanceId) : undefined);
+  // A stored password belongs to one account: signing in to the same host
+  // as somebody else must not keep the old one.
+  const sameAccount = !existing || existing.username === grant.username;
   const server: StoredServer = {
     id: existing?.id ?? crypto.randomUUID(),
     origin,
@@ -1036,8 +1143,9 @@ async function rememberGrant(
     lastUsedAt: new Date().toISOString(),
     token: grant.token,
     tokenExpiresAt: grant.expiresAt,
-    secret: secret ?? existing?.secret,
+    secret: secret ?? (sameAccount ? existing?.secret : undefined),
     instanceId: instanceId || existing?.instanceId,
+    joinCodes: existing?.joinCodes,
   };
   if (existing) servers[servers.indexOf(existing)] = server;
   else servers.push(server);
@@ -1052,6 +1160,7 @@ async function adoptGrant(
   secret?: string,
 ): Promise<Result<{ server: ServerSummary }>> {
   const remembered = await rememberGrant(origin, grant, secret);
+  if (joinCode) await rememberJoinCode(remembered.stored.id, joinCode);
   await openServer(remembered.stored, joinCode);
   return { ok: true, server: remembered.server };
 }
@@ -1075,12 +1184,20 @@ async function handleJoinLink(link: JoinLink): Promise<void> {
     // the server at the new address identifies as a world this app already
     // has an account on, move that entry to the new address and walk in
     // with the stored token instead of asking for a second login.
+    // The world's id is public, so the address itself has to be one a
+    // stranger could not have chosen (a tunnel hostname), or one the
+    // registry confirms the code points at; a crafted link naming any other
+    // origin gets the add screen, never the saved session.
     try {
       const probe = await probeOrigin(link.origin);
       const match = probe.instanceId
         ? servers.find((entry) => entry.instanceId === probe.instanceId)
         : undefined;
-      if (match) {
+      const trusted =
+        !!match &&
+        (trustedTunnelOrigin(link.origin) ||
+          (!!link.code && (await resolveRoomCode(link.code)) === link.origin));
+      if (match && trusted) {
         match.origin = link.origin;
         match.lastUsedAt = new Date().toISOString();
         await saveServers(servers);
@@ -1191,8 +1308,11 @@ const bridge: OdmBridge = {
     if (bare.table || bare.hostOrigin) {
       // Registry first, host shape second: the two code shapes overlap, so
       // shape alone cannot say which one was typed.
+      // The registry is cleared best effort when a host stops sharing, so
+      // an answer is a lead, not a promise: the address is probed before
+      // the player is sent there, and a dead one reads as "not online".
       const found = bare.table ? await resolveRoomCode(bare.table) : "";
-      if (found) {
+      if (found && (await probeOrigin(found).catch(() => null))) {
         await handleJoinLink({ origin: found, code: bare.table });
         return true;
       }

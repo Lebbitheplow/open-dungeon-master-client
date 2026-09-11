@@ -207,6 +207,11 @@ export class LocalServer {
           HOSTNAME: "127.0.0.1",
           SQLITE_DB_PATH: this.dbPath,
           DB_ENCRYPTION_KEY: this.dbEncryptionKey(),
+          // The spells, items, monsters and feats catalogue, staged by
+          // bundle-server.mjs beside the server the way the Docker image
+          // lays it out. Without it every picker in the character builder
+          // and the workshop searches an empty pack.
+          CONTENT_DB_PATH: path.join(this.runDir, "content", "open5e.sqlite"),
           // Tells the server it is the shell's own world, so its admin panel
           // hides what the shell manages (address, sign-ups, voice, Discord).
           ODM_DEVICE_WORLD: "1",

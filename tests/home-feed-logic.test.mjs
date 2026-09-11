@@ -408,3 +408,37 @@ test("a host that answers is never looked for, and one that cannot be found stay
   assert.equal(feed.hosts[0].status, "offline");
   assert.equal(feed.hosts[0].origin, origin, "the address on file is kept");
 });
+
+// A dead tunnel hostname keeps answering for a while, with the edge's own
+// error page rather than a refused connection. That is not this world
+// speaking, so the feed must go looking exactly as it does for no answer.
+test("a host answering with an edge error is looked for too", async () => {
+  const moved = "https://play-newcode.example";
+  const h = harness({
+    hosts: [host({ id: "srv", origin: "https://play-oldcode.example" })],
+    replies: {
+      "https://play-oldcode.example": { kind: "reply", status: 530, body: "<html>error</html>" },
+      [moved]: { kind: "reply", status: 200, body: { campaigns: [rawCampaign] } },
+    },
+    relocate: async () => moved,
+  });
+  const feed = await h.feed.refresh();
+  const srv = feed.hosts.find((entry) => entry.id === "srv");
+  assert.equal(srv.status, "online");
+  assert.equal(srv.origin, moved);
+});
+
+test("a host that refuses the session is a sign-in matter, not a move", async () => {
+  const calls = [];
+  const h = harness({
+    hosts: [host({ id: "srv" })],
+    replies: { [origin]: { kind: "reply", status: 401, body: {} } },
+    relocate: async () => {
+      calls.push("asked");
+      return "https://somewhere.example";
+    },
+  });
+  const feed = await h.feed.refresh();
+  assert.equal(feed.hosts[0].status, "needsLogin");
+  assert.deepEqual(calls, []);
+});

@@ -13,6 +13,7 @@ import {
   parseServerAddress,
   hostCodeFromOrigin,
   roomCode,
+  trustedTunnelOrigin,
 } from "../dist/shared/deep-link.js";
 
 test("normalizeOrigin keeps clean http(s) origins", () => {
@@ -257,4 +258,21 @@ test("the join screen offers a password only where one can exist", async () => {
   });
   // Closed: no way to make an account at all.
   assert.equal(joinFormShape({ deviceWorld: false, signupMode: "closed", mode: "login", hasRoomCode: false }).tabs, false);
+});
+
+test("a typed code is cleaned before the registry is asked", () => {
+  // A space or a dash inside a code used to fail the shape test and skip
+  // the registry, so only the host-shape guess ran and a real table code
+  // read as "not online".
+  assert.equal(codeCandidates("ABCD 2345").table, "ABCD2345");
+  assert.equal(codeCandidates("abcd-2345").table, "ABCD2345");
+  assert.equal(codeCandidates("abcd–2345").table, "ABCD2345");
+});
+
+test("a saved seat follows only a tunnel hostname or a registry-confirmed address", () => {
+  assert.equal(trustedTunnelOrigin("https://play-abcd2345.opendungeonmaster.com"), true);
+  assert.equal(trustedTunnelOrigin("https://quiet-river-1234.trycloudflare.com"), true);
+  assert.equal(trustedTunnelOrigin("https://evil.example"), false);
+  assert.equal(trustedTunnelOrigin("http://play-abcd2345.opendungeonmaster.com"), false);
+  assert.equal(trustedTunnelOrigin("https://play-abcd2345.opendungeonmaster.com.evil.example"), false);
 });

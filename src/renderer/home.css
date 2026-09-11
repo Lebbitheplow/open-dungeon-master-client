@@ -642,3 +642,25 @@
   padding: 0.25rem 0;
 }
 .device-settings.game-root > .spinner { margin: 0.5rem auto; }
+
+/* ---------- the invite row ---------- */
+
+/* The door to a friend's table, on the home screen itself. */
+.invite-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 0.8rem;
+  padding: 0.7rem 0.9rem;
+  margin-bottom: 1.2rem;
+}
+.invite-row .invite-line {
+  flex: 1 1 12rem;
+  font-size: 0.92rem;
+  color: var(--ink-soft, #c9c2b6);
+}
+.invite-row .invite-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
