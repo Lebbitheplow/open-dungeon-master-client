@@ -13,6 +13,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { gunzipSync } from "node:zlib";
 import { pruneServerPayload } from "./prune-server-payload.mjs";
 
 const repo = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -23,6 +24,26 @@ const vendorDir = path.join(repo, "vendor", "server");
 
 function run(cmd, args, opts = {}) {
   execFileSync(cmd, args, { stdio: "inherit", ...opts });
+}
+
+// The content pack from a server release, gunzipped into place. False when
+// that release has no such asset (an unreleased version) or the download
+// fails, in which case the caller builds the pack instead.
+async function fetchPack(url, dest) {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const response = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(120_000) });
+      if (response.status === 404) return false;
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const bytes = gunzipSync(Buffer.from(await response.arrayBuffer()));
+      fs.writeFileSync(dest, bytes);
+      console.log(`Content pack taken from ${url} (${(bytes.byteLength / 1024 / 1024).toFixed(1)} MB)`);
+      return true;
+    } catch (error) {
+      console.log(`Content pack download failed (${error instanceof Error ? error.message : error}), attempt ${attempt} of 3`);
+    }
+  }
+  return false;
 }
 
 if (!fs.existsSync(path.join(serverDir, "package.json"))) {
@@ -81,9 +102,18 @@ try {
   const packRel = path.join("data", "content", "open5e.sqlite");
   let pack = path.join(serverDir, packRel);
   if (!fs.existsSync(pack)) {
-    console.log("No content pack in the server checkout; importing one for the payload");
-    run(process.execPath, ["scripts/import-open5e.mjs"], { cwd: buildDir });
+    // Every server release carries the pack as an asset (open5e.sqlite.gz),
+    // which is far more dependable than rebuilding it from api.open5e.com
+    // on a CI runner; the import stays as the fallback for an unreleased
+    // server version.
     pack = path.join(buildDir, packRel);
+    fs.mkdirSync(path.dirname(pack), { recursive: true });
+    const asset = `https://github.com/Lebbitheplow/open-dungeon-master/releases/download/v${serverPkg.version}/open5e.sqlite.gz`;
+    const fetched = await fetchPack(asset, pack);
+    if (!fetched) {
+      console.log("No content pack in the server checkout or its release; importing one for the payload");
+      run(process.execPath, ["scripts/import-open5e.mjs"], { cwd: buildDir });
+    }
   }
   if (!fs.existsSync(pack)) {
     console.error(`The content pack was not produced at ${pack}.`);
