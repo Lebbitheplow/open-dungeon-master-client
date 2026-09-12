@@ -24,6 +24,8 @@ interface GameMount {
 
 interface GameModule {
   mountDeviceSettings(root: HTMLElement): () => void;
+  // Fetches the page module for a host path ahead of its first render.
+  prefetch?(path: string): void;
   mountGame(
     root: HTMLElement,
     options: {
@@ -82,6 +84,16 @@ function loadBundle(): Promise<GameModule> {
 
 export function isGameShowing(): boolean {
   return mount !== null;
+}
+
+// Warms the way into a world while the home screen sits idle: the game
+// bundle and the host home page's module, both local files, so the first
+// tap pays only for the host's answers. Failures are left for the real
+// entry to report.
+export function preloadGame(): void {
+  void loadBundle()
+    .then((game) => game.prefetch?.("/"))
+    .catch(() => undefined);
 }
 
 // The audio and dice controls on the shell's Settings screen, drawn by the
@@ -185,14 +197,13 @@ function shellHostApi(hostId: string, origin: string, current: () => GameMount |
 // web view the way it always did.
 export async function tryOpenNative(hostId: string, path: string, serverVersion: string): Promise<boolean> {
   if (!nativeEligible(serverVersion).ok) return false;
+  // The bundle and the session do not depend on each other; the bundle's
+  // failure is swallowed only once the session says the door is open.
+  const loading = loadBundle().catch(() => null);
   const session = await window.odm.hostSession(hostId);
   if (!session) return false;
-  let game: GameModule;
-  try {
-    game = await loadBundle();
-  } catch {
-    return false;
-  }
+  const game = await loading;
+  if (!game) return false;
   unmountGame();
   state.screenName = "game";
   const root = el("div", "game-root");
@@ -222,6 +233,8 @@ export function mountedHostId(): string {
 export async function tryOpenNativeLocal(joinCode: string | undefined, path: string): Promise<boolean> {
   if (state.local.state === "unavailable" || state.local.firstRun || !state.local.hasAccount) return false;
   if (!nativeEligible(state.local.serverVersion).ok) return false;
+  // Waking the world can take a moment; the bundle loads meanwhile.
+  preloadGame();
   const started = await window.odm.localStart();
   if (!started.ok) return false;
   state.local = started.status;

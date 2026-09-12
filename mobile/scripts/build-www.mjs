@@ -28,6 +28,12 @@ await build({
   format: "iife",
   platform: "browser",
   target: "es2022",
+  minify: true,
+  // The barcode scanner plugin carries html5-qrcode (over a megabyte) as
+  // its browser fallback; on the device the native scanner does the work,
+  // so the fallback is swapped for a stub that only keeps the enum the
+  // plugin builds its type hints from.
+  alias: { "html5-qrcode": path.join(mobile, "src", "html5-qrcode-stub.ts") },
   outfile: path.join(www, "bridge.js"),
 });
 
@@ -41,6 +47,7 @@ for (const name of ["ble-polyfill", "download-shim", "shell-hook"]) {
     format: "iife",
     platform: "browser",
     target: "es2022",
+    minify: true,
     outfile: path.join(www, `${name}.js`),
   });
 }

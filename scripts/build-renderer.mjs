@@ -38,6 +38,9 @@ export const rendererBuildOptions = {
   jsx: "automatic",
   jsxImportSource: "preact",
   logLevel: "warning",
+  // The bundles are parsed from local files on every launch and on every
+  // entry into a world; minified they are about half the bytes to parse.
+  minify: true,
 };
 
 const shims = path.join(repo, "src", "renderer", "game", "shims");

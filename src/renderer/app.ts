@@ -6,7 +6,7 @@ import { closeDrawer, createDrawer, isDrawerOpen } from "./drawer.js";
 import { renderHome } from "./home.js";
 import { aiProgress } from "./local-ai.js";
 import { renderAdd, renderAuth } from "./servers.js";
-import { gameBack, isGameShowing } from "./game-screen.js";
+import { gameBack, isGameShowing, preloadGame } from "./game-screen.js";
 import { renderSettings } from "./settings.js";
 import { refresh, refreshFeed, state, tunnelWatchers } from "./state.js";
 import { endTour, isTourActive, maybeStartAppTour } from "./tour.js";
@@ -132,4 +132,7 @@ void refresh().then(() => {
   renderHome();
   void refreshFeed();
   maybeStartAppTour();
+  // Once the home screen is up, the game bundle loads in the background so
+  // entering a world does not start with a blank page.
+  setTimeout(preloadGame, 1000);
 });

@@ -153,6 +153,10 @@ export function show(layout: Layout, ...nodes: (HTMLElement | null)[]): void {
   page.classList.toggle("game", layout === "game");
   page.replaceChildren(topbar(), screen);
   renderDrawer();
+  // The backdrop breathes behind every shell screen; under a running
+  // world it holds its last frame, so the table has the frame budget.
+  if (layout === "game") window.odmTopo?.pause();
+  else window.odmTopo?.resume();
   if (!same) window.scrollTo({ top: 0 });
 }
 

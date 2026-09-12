@@ -172,14 +172,38 @@
     draw(nowMs);
   }
 
-  function onVisibility(): void {
-    if (document.hidden) {
+  // The shell pauses the loop under a running world (chrome.ts): a
+  // full-screen redraw twenty times a second is work the table and the
+  // call would rather have. The last frame stays drawn.
+  let paused = false;
+
+  function running(): boolean {
+    return !paused && !document.hidden && !reducedMotion;
+  }
+
+  function sync(): void {
+    if (running()) {
+      if (!raf) raf = window.requestAnimationFrame(tick);
+    } else if (raf) {
       window.cancelAnimationFrame(raf);
       raf = 0;
-    } else if (!raf && !reducedMotion) {
-      raf = window.requestAnimationFrame(tick);
     }
   }
+
+  function onVisibility(): void {
+    sync();
+  }
+
+  window.odmTopo = {
+    pause() {
+      paused = true;
+      sync();
+    },
+    resume() {
+      paused = false;
+      sync();
+    },
+  };
 
   let resizeTimer: ReturnType<typeof setTimeout> | undefined;
   function onResize(): void {

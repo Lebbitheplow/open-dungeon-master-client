@@ -165,6 +165,18 @@ export function mountGame(root: HTMLElement, options: GameOptions): GameMount {
   };
 }
 
+// Loads a path's page module ahead of time (the shell calls this for the
+// host home while its own home screen is idle). The lazy component is
+// created too, so the first render finds it resolved.
+export function prefetch(path: string): void {
+  for (const route of ROUTES) {
+    if (!matchRoute(route.pattern, path)) continue;
+    pageFor(route);
+    void route.load().catch(() => undefined);
+    return;
+  }
+}
+
 // The machine's audio and dice controls (the server's DeviceSettings), for
 // the shell's own Settings screen: the same stores the table's hooks read,
 // so a change here reaches a call or a table already running.
@@ -175,8 +187,12 @@ export function mountDeviceSettings(root: HTMLElement): () => void {
 
 declare global {
   interface Window {
-    odmGame?: { mountGame: typeof mountGame; mountDeviceSettings: typeof mountDeviceSettings };
+    odmGame?: {
+      mountGame: typeof mountGame;
+      mountDeviceSettings: typeof mountDeviceSettings;
+      prefetch: typeof prefetch;
+    };
   }
 }
 
-window.odmGame = { mountGame, mountDeviceSettings };
+window.odmGame = { mountGame, mountDeviceSettings, prefetch };
