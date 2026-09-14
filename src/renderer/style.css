@@ -457,3 +457,33 @@ p.error:empty { display: none; }
   text-align: center;
 }
 .foot button { font-size: 0.78rem; }
+
+/* Parchment day (docs/vtt-parity-implementation-plan.md section 14): the
+   server screens set data-theme on <html>; the shell's own chrome reads
+   the same attribute so the topbar, the drawer and the home agree. */
+html[data-theme="light"] {
+  --night-950: #fbf8f1;
+  --night-900: #f1ebde;
+  --night-800: #e4dccb;
+  --night-700: #cbc0a8;
+  --ink-600: #8f8468;
+  --ink-500: #6d6350;
+  --ink-400: #55493a;
+  --ink-300: #3f3427;
+  --ink-200: #2d2419;
+  --ink-100: #201a12;
+  --ink-50: #15100a;
+  --gold-950: #fbf1d6;
+  --gold-900: #f3e2ad;
+  --gold-500: #8a6b1c;
+  --gold-400: #705615;
+  --gold-300: #5a4410;
+  --gold-200: #47350c;
+  --gold-100: #352808;
+  --gold-50: #241a05;
+  --background: #f4efe4;
+  --foreground: #221a10;
+  --shadow-elev-2: 0 2px 6px rgba(60, 40, 10, 0.14), 0 12px 32px rgba(60, 40, 10, 0.12);
+  --glow-gold: 0 0 20px rgba(166, 132, 42, 0.18);
+  color-scheme: light;
+}

@@ -1,12 +1,12 @@
 // The shell UI's entry point: mounts the frame, wires the bridge's events
 // to the screens, and paints the home. The screens themselves live in the
 // sibling modules; all privileged work happens across window.odm.
-import { closeOverlay, mountShell } from "./chrome.js";
+import { closeOverlay, mountShell, updateNoteFor } from "./chrome.js";
 import { closeDrawer, createDrawer, isDrawerOpen } from "./drawer.js";
 import { renderHome } from "./home.js";
 import { aiProgress } from "./local-ai.js";
 import { renderAdd, renderAuth } from "./servers.js";
-import { gameBack, isGameShowing, preloadGame } from "./game-screen.js";
+import { gameBack, isGameShowing, preloadGame, tryOpenNative } from "./game-screen.js";
 import { renderSettings } from "./settings.js";
 import { refresh, refreshFeed, state, tunnelWatchers } from "./state.js";
 import { endTour, isTourActive, maybeStartAppTour } from "./tour.js";
@@ -64,9 +64,10 @@ window.odm.onEvent((event) => {
   } else if (event.kind === "update-progress") {
     const progress = event.progress;
     if (progress.state === "available") {
-      // The background check found something; the button click fills in the
-      // full status (can this install self-update, which instruction).
-      state.updateNote = `Version ${progress.latest} is available.`;
+      // The background check found something: keep its status so the
+      // footer and Settings offer the update button straight away.
+      if (progress.status) state.updateStatus = progress.status;
+      state.updateNote = updateNoteFor(progress.status, progress.latest);
     } else if (progress.state === "downloading") {
       state.updateNote = `Downloading update... ${progress.percent}%`;
     } else if (progress.state === "ready") {
@@ -128,7 +129,30 @@ void window.odm
     rerenderHome();
   })
   .catch(() => undefined);
-void refresh().then(() => {
+// The screens' theme reaches the shell's own chrome through the same
+// attribute the server sets on <html> (docs/vtt-parity-implementation-plan.md
+// 18.2, phase 29); the OS frame follows through the bridge.
+new MutationObserver(() => {
+  const mode = document.documentElement.dataset.theme === "light" ? "light" : "dark";
+  void window.odm.setTheme?.(mode);
+}).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+// A second window opened for the table view (phase 28) boots straight into
+// the campaign's table route instead of the home screen.
+const tableQuery = new URLSearchParams(window.location.search);
+const tableHost = tableQuery.get("table") === "1" ? tableQuery.get("host") ?? "" : "";
+const tableCampaign = tableQuery.get("campaign") ?? "";
+
+void refresh().then(async () => {
+  if (tableHost && tableCampaign) {
+    // The host's version gates the native screens; the device world
+    // answers from its status, a remote host from a probe.
+    const server = state.servers.find((entry) => entry.id === tableHost);
+    const probed = server ? await window.odm.probeServer(server.origin).catch(() => null) : null;
+    const version = probed?.ok ? probed.probe.version : state.local.serverVersion;
+    const opened = await tryOpenNative(tableHost, `/campaigns/${encodeURIComponent(tableCampaign)}/table`, version).catch(() => false);
+    if (opened) return;
+  }
   renderHome();
   void refreshFeed();
   maybeStartAppTour();

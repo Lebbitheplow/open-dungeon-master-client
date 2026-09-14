@@ -1,5 +1,5 @@
 import path from "node:path";
-import { BrowserWindow, Menu, WebContentsView, session, shell } from "electron";
+import { BrowserWindow, Menu, WebContentsView, screen, session, shell } from "electron";
 import type { ShellEvent } from "../shared/types";
 import { appIconPath } from "./app-icon";
 import { autoConfirmBluetoothPairing, wireBluetoothChooser } from "./bluetooth";
@@ -111,6 +111,45 @@ export class ShellWindow {
     });
     Menu.setApplicationMenu(this.buildMenu());
     void this.win.loadFile(path.join(__dirname, "../renderer/index.html"));
+  }
+
+  // The table view on a second screen (docs/vtt-parity-implementation-plan.md
+  // 13.2 and 18.2): a second shell window on the display the main window is
+  // not on, booting straight into the campaign's table route. One at a time;
+  // asking again brings the open one forward.
+  private tableWin: BrowserWindow | null = null;
+
+  openTableScreen(hostId: string, campaignId: string): boolean {
+    if (!hostId || !campaignId) return false;
+    if (this.tableWin && !this.tableWin.isDestroyed()) {
+      this.tableWin.focus();
+      return true;
+    }
+    const displays = screen.getAllDisplays();
+    const here = this.win ? screen.getDisplayMatching(this.win.getBounds()) : screen.getPrimaryDisplay();
+    const target = displays.find((display) => display.id !== here.id) ?? here;
+    const table = new BrowserWindow({
+      x: target.bounds.x,
+      y: target.bounds.y,
+      width: target.bounds.width,
+      height: target.bounds.height,
+      fullscreen: displays.length > 1,
+      autoHideMenuBar: true,
+      backgroundColor: "#0d0b1c",
+      webPreferences: {
+        preload: path.join(__dirname, "../preload/index.js"),
+        contextIsolation: true,
+        sandbox: true,
+      },
+    });
+    table.webContents.on("will-navigate", (event) => event.preventDefault());
+    table.on("closed", () => {
+      this.tableWin = null;
+    });
+    this.tableWin = table;
+    const query = new URLSearchParams({ table: "1", host: hostId, campaign: campaignId });
+    void table.loadFile(path.join(__dirname, "../renderer/index.html"), { search: `?${query.toString()}` });
+    return true;
   }
 
   private buildMenu(): Menu {

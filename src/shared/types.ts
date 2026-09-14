@@ -159,6 +159,8 @@ export interface UpdateStatus {
   canSelfUpdate: boolean;
   // Human words for installs that cannot self-update ("flatpak update", ...).
   instruction: string;
+  // Where the new build lives, for the installs that fetch it themselves.
+  releasesUrl: string;
 }
 
 // "available" is the once-per-run background check finding something; the
@@ -168,6 +170,9 @@ export interface UpdateProgress {
   percent: number;
   latest: string;
   error: string;
+  // Filled in with "available": what the background check found, so the
+  // renderer can show the same button an explicit check would.
+  status: UpdateStatus | null;
 }
 
 // One campaign as the home screen lists it, from any host. playingAs is the
@@ -243,6 +248,21 @@ export interface AccountDeletionResult {
 export interface OdmBridge {
   // Lets the shared shell UI adapt copy and layout per shell.
   platform: "desktop" | "android";
+  // What the device can draw (docs/vtt-parity-implementation-plan.md 18.2,
+  // phase 16): "low" switches the server screens' effects down without
+  // user agent sniffing. Absent on desktop, which always draws in full.
+  deviceClass?: "low" | "standard";
+  // A short buzz for a hit, a crit, your turn or a tap (phase 17). A
+  // no-op where the platform has no motor.
+  haptic?(kind: "hit" | "crit" | "turn" | "tap"): void;
+  // Opens a host document (a PDF page set) with the system viewer
+  // (phase 21). Absent where the platform's own viewer will do.
+  openDocument?(path: string): Promise<boolean>;
+  // The screens' theme (phase 29), so the shell's chrome and the OS
+  // frame can follow the parchment or the night.
+  setTheme?(mode: "dark" | "light"): Promise<void>;
+  // The table view on a second display (phase 28), desktop only.
+  openTableScreen?(hostId: string, campaignId: string): Promise<boolean>;
   listServers(): Promise<{ servers: ServerSummary[]; local: LocalStatus; tunnel: TunnelStatus }>;
   probeServer(origin: string): Promise<Result<{ probe: ServerProbe }>>;
   login(input: {

@@ -27,9 +27,11 @@ test("a bundled server without the proxy never portals", () => {
 });
 
 test("the native screens need a host that answers the app's own origin", () => {
-  assert.deepEqual(nativeEligible("0.16.1"), { ok: true });
-  assert.deepEqual(nativeEligible("0.17.0"), { ok: true });
+  assert.deepEqual(nativeEligible("0.19.0"), { ok: true });
+  assert.deepEqual(nativeEligible("0.20.0"), { ok: true });
   assert.deepEqual(nativeEligible("1.2.0"), { ok: true });
-  assert.equal(nativeEligible("0.16.0").ok, false);
+  // Hosts before the VTT parity release lack the routes the screens call.
+  assert.equal(nativeEligible("0.18.0").ok, false);
+  assert.equal(nativeEligible("0.16.1").ok, false);
   assert.equal(nativeEligible("").ok, false);
 });

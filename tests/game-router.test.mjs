@@ -46,3 +46,10 @@ test("refresh keeps the address but yields a new location object", () => {
   assert.deepEqual(router.location, before);
   assert.equal(fired, 1);
 });
+
+test("the table view has a native screen of its own", () => {
+  // docs/vtt-parity-implementation-plan.md 13.2 and 18.2: a second window
+  // boots straight into it.
+  assert.deepEqual(matchRoute("/campaigns/:campaignId/table", "/campaigns/c1/table"), { campaignId: "c1" });
+  assert.equal(matchRoute("/campaigns/:campaignId", "/campaigns/c1/table"), null);
+});

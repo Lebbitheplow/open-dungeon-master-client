@@ -20,6 +20,14 @@ export interface SseParser {
   lastEventId(): string;
 }
 
+// The headers a stream reconnect carries: the last id seen, so a host
+// replays what it published while the app was backgrounded or offline
+// (docs/vtt-parity-implementation-plan.md 18.3). The first connect carries
+// none and takes the host's snapshot.
+export function streamRequestHeaders(lastId: string): Record<string, string> {
+  return { accept: "text/event-stream", ...(lastId ? { "last-event-id": lastId } : {}) };
+}
+
 export function createSseParser(onEvent: (event: SseEvent) => void): SseParser {
   let buffer = "";
   let lastId = "";

@@ -30,6 +30,10 @@ const ROUTES: Route[] = [
     pattern: "/campaigns/:campaignId/character",
     load: () => import("@/app/campaigns/[campaignId]/character/page"),
   },
+  // The table view (docs/vtt-parity-implementation-plan.md 13.2): the
+  // board, the scene and the title cards with no chrome, for a second
+  // screen at an in-person table.
+  { pattern: "/campaigns/:campaignId/table", load: () => import("@/app/campaigns/[campaignId]/table/page") },
   { pattern: "/characters", load: () => import("@/app/characters/page") },
   { pattern: "/characters/new", load: () => import("@/app/characters/new/page") },
   { pattern: "/characters/:characterId", load: () => import("@/app/characters/[characterId]/page") },

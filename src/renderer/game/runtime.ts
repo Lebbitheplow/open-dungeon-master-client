@@ -6,6 +6,7 @@
 // the window.odmShell contract the pages already use inside the apps.
 import type { HostClient } from "../api/host.js";
 import type { SseEvent } from "../../shared/sse.js";
+import { createObjectUrlCache } from "../../shared/object-url-cache.js";
 
 // Public static files of the host: no session needed, so the address is
 // rewritten in place and the browser loads them itself.
@@ -19,7 +20,9 @@ let nativeFetch: typeof fetch | null = null;
 let nativeEventSource: typeof EventSource | null = null;
 let observer: MutationObserver | null = null;
 let mediaPatched = false;
-const objectUrls = new Map<string, Promise<string>>();
+// Sixty-four protected paths at a time, the oldest revoked as newer ones
+// arrive (docs/vtt-parity-implementation-plan.md 18.3).
+const objectUrls = createObjectUrlCache(64, (url) => URL.revokeObjectURL(url));
 
 function isRootRelative(url: string): boolean {
   return url.startsWith("/") && !url.startsWith("//");
@@ -86,16 +89,7 @@ class HostEventSource extends EventTarget {
 }
 
 function objectUrlFor(client: HostClient, path: string): Promise<string> {
-  const key = `${client.origin}${path}`;
-  let pending = objectUrls.get(key);
-  if (!pending) {
-    pending = client.objectUrl(path).catch(() => "");
-    objectUrls.set(key, pending);
-    void pending.then((url) => {
-      if (!url) objectUrls.delete(key);
-    });
-  }
-  return pending;
+  return objectUrls.get(`${client.origin}${path}`, () => client.objectUrl(path));
 }
 
 // Media elements: a public path is pointed at the host directly; a
@@ -262,10 +256,5 @@ export function activeHost(): HostClient | null {
 export function uninstallRuntime(): void {
   active = null;
   document.removeEventListener("click", onDownloadClick);
-  for (const pending of objectUrls.values()) {
-    void pending.then((url) => {
-      if (url) URL.revokeObjectURL(url);
-    });
-  }
   objectUrls.clear();
 }

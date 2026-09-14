@@ -52,7 +52,10 @@ export function portalEligible(input: { bundled: string; remote: string }): Port
 // answers the apps' cross-origin requests (the server's src/lib/app-cors.ts)
 // and routes its navigations through the app. An older host still opens
 // its pages in the web view.
-export const NATIVE_MIN_SERVER = "0.16.1";
+// Raised to the release that carries VTT parity phases 16 to 30
+// (docs/vtt-parity-implementation-plan.md 18.2): the screens call routes
+// an older host does not have (shops, factions, calendar, the table view).
+export const NATIVE_MIN_SERVER = "0.19.0";
 
 export function nativeEligible(remote: string): PortalVerdict {
   const version = parseVersion(remote);

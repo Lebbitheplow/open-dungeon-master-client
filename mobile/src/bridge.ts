@@ -1228,6 +1228,42 @@ async function handleLink(raw: string): Promise<void> {
 
 const bridge: OdmBridge = {
   platform: "android",
+  // What the phone can draw (docs/vtt-parity-implementation-plan.md 18.2,
+  // phase 16): under 4 GB the server screens start with effects low.
+  deviceClass: (navigator as { deviceMemory?: number }).deviceMemory !== undefined && (navigator as { deviceMemory?: number }).deviceMemory! < 4 ? "low" : "standard",
+  // A short buzz (phase 17) through the WebView's own motor; a phone that
+  // has none, or a user who turned vibration off, feels nothing.
+  haptic(kind) {
+    const pattern = kind === "crit" ? [30, 40, 60] : kind === "hit" ? [40] : kind === "turn" ? [20, 60, 20] : [12];
+    try {
+      navigator.vibrate?.(pattern);
+    } catch {
+      // no motor
+    }
+  },
+  // A host document (a PDF page set, phase 21) fetched with the session
+  // into the app's cache and handed to the system viewer through the share
+  // sheet, the same road a download takes.
+  async openDocument(path) {
+    const target = String(path ?? "");
+    if (!target.startsWith("/")) return false;
+    const hostId = window.odmMountedHostId ?? "";
+    const session = hostId ? await bridge.hostSession(hostId) : null;
+    if (!session) return false;
+    try {
+      const response = await CapacitorHttp.get({
+        url: `${session.origin}${target}`,
+        headers: { authorization: `Bearer ${session.token}` },
+        responseType: "blob",
+      });
+      if (response.status !== 200 || typeof response.data !== "string") return false;
+      const name = target.split("/").pop() || "document.pdf";
+      await downloadRelay.handleMessage({ type: "odm-download", name, data: response.data });
+      return true;
+    } catch {
+      return false;
+    }
+  },
 
   async listServers() {
     const servers = await loadServers();
@@ -1540,7 +1576,7 @@ const bridge: OdmBridge = {
   // About card renders as version-only without a special case crashing.
   updateCheck: async () => ({
     ok: true as const,
-    update: { current: "", latest: "", available: false, canSelfUpdate: false, instruction: "" },
+    update: { current: "", latest: "", available: false, canSelfUpdate: false, instruction: "", releasesUrl: "" },
   }),
   updateInstall: async () => fail(new Error("Updates come through the app store on Android.")),
 

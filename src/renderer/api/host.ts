@@ -4,7 +4,7 @@
 // reconnection on the last event id. One client per host session; the
 // origin and token come from the bridge (window.odm.hostSession), never
 // from a page.
-import { createSseParser, type SseEvent } from "../../shared/sse.js";
+import { createSseParser, type SseEvent, streamRequestHeaders } from "../../shared/sse.js";
 
 export class HostError extends Error {
   constructor(
@@ -96,10 +96,7 @@ export class HostClient {
       while (!closed) {
         try {
           const res = await fetch(`${this.origin}${path}`, {
-            headers: this.headers({
-              accept: "text/event-stream",
-              ...(lastId ? { "last-event-id": lastId } : {}),
-            }),
+            headers: this.headers(streamRequestHeaders(lastId)),
             signal: controller.signal,
           });
           if (!res.ok || !res.body) throw new HostError(`${res.status}`, res.status);

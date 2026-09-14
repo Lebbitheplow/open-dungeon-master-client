@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createSseParser } from "../dist/shared/sse.js";
+import { createSseParser, streamRequestHeaders } from "../dist/shared/sse.js";
 
 function collect() {
   const events = [];
@@ -52,4 +52,16 @@ test("a data line with no space after the colon keeps its value, an empty id is 
   const { events, parser } = collect();
   parser.feed("id:\ndata:x\n\n");
   assert.deepEqual(events, [{ event: "message", data: "x", id: "" }]);
+});
+
+// docs/vtt-parity-implementation-plan.md 18.3: after a drop, the reconnect
+// asks the host to replay from the last id it delivered, so a persisted
+// event published while the app was backgrounded still arrives.
+test("a reconnect carries the last event id and the first connect carries none", () => {
+  assert.deepEqual(streamRequestHeaders(""), { accept: "text/event-stream" });
+  const { events, parser } = collect();
+  parser.feed("id: 41\nevent: scene_state\ndata: {}\n\n");
+  const lastId = events.at(-1)?.id ?? "";
+  assert.equal(lastId, "41");
+  assert.deepEqual(streamRequestHeaders(lastId), { accept: "text/event-stream", "last-event-id": "41" });
 });

@@ -7,6 +7,10 @@ import type { AiSetup, OdmBridge, ShellEvent } from "../shared/types";
 
 const bridge: OdmBridge = {
   platform: "desktop",
+  // A desktop has no motor; the screens ask and nothing happens.
+  haptic: () => {},
+  setTheme: (mode: "dark" | "light") => ipcRenderer.invoke("theme:set", mode),
+  openTableScreen: (hostId: string, campaignId: string) => ipcRenderer.invoke("table:open", hostId, campaignId),
   listServers: () => ipcRenderer.invoke("servers:list"),
   probeServer: (origin: string) => ipcRenderer.invoke("servers:probe", origin),
   login: (input) => ipcRenderer.invoke("servers:login", input),

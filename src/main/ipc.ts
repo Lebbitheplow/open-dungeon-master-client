@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import os from "node:os";
-import { app, ipcMain, type IpcMainInvokeEvent } from "electron";
+import { app, ipcMain, nativeTheme, type IpcMainInvokeEvent } from "electron";
 import type {
   ServerProbe,
   AiSetup,
@@ -876,6 +876,16 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
   ipcMain.handle("local-ai:status", () => localAi.status());
 
   ipcMain.handle("app:info", () => ({ version: app.getVersion(), installKind: updater.kind }));
+
+  // The screens' theme (docs/vtt-parity-implementation-plan.md 18.2, phase
+  // 29): the OS frame follows the parchment or the night.
+  ipcMain.handle("theme:set", (_event, mode: unknown) => {
+    nativeTheme.themeSource = mode === "light" ? "light" : "dark";
+  });
+  // The table view on a second display (phase 28).
+  ipcMain.handle("table:open", (_event, hostId: unknown, campaignId: unknown) =>
+    win.openTableScreen(String(hostId ?? ""), String(campaignId ?? "")),
+  );
 
   ipcMain.handle("update:check", async () => {
     try {
