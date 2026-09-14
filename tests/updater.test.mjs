@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { detectInstallKind, isNewerVersion } from "../dist/main/updater.js";
+import {
+  detectInstallKind,
+  fetchLatestReleaseVersion,
+  isNewerVersion,
+  Updater,
+  versionFromTag,
+} from "../dist/main/updater.js";
 
 const LINUX_OPT = "/opt/open-dungeon-master/open-dungeon-master-client";
 const LINUX_USR = "/usr/lib/open-dungeon-master/open-dungeon-master-client";
@@ -51,4 +57,49 @@ test("version compare handles unequal lengths and non-numeric junk", () => {
   assert.equal(isNewerVersion("0.1.0", "0.2.0"), false);
   assert.equal(isNewerVersion("0.1.0.1", "0.1.0"), true);
   assert.equal(isNewerVersion("garbage", "0.1.0"), false);
+});
+
+test("release tags read as bare versions, junk as nothing", () => {
+  assert.equal(versionFromTag("v0.9.0"), "0.9.0");
+  assert.equal(versionFromTag("0.9.0"), "0.9.0");
+  assert.equal(versionFromTag("nightly"), "");
+  assert.equal(versionFromTag(undefined), "");
+});
+
+test("an install that cannot self-update still learns about a newer GitHub release", async () => {
+  const updater = new Updater("portable", "0.7.4", async () => "0.9.0");
+  const status = await updater.checkForUpdates();
+  assert.equal(status.available, true);
+  assert.equal(status.latest, "0.9.0");
+  assert.equal(status.canSelfUpdate, false);
+  assert.match(status.instruction, /releases page/);
+  assert.match(status.releasesUrl, /github\.com\/.*\/releases\/latest$/);
+});
+
+test("matching or missing releases read as up to date", async () => {
+  const same = await new Updater("managed", "0.9.0", async () => "0.9.0").checkForUpdates();
+  assert.equal(same.available, false);
+  const none = await new Updater("managed", "0.9.0", async () => "").checkForUpdates();
+  assert.equal(none.available, false);
+  assert.equal(none.latest, "0.9.0");
+});
+
+test("the startup check hands the renderer the full status", async () => {
+  const updater = new Updater("flatpak", "0.8.1", async () => "0.9.0", 0);
+  const heard = new Promise((resolve) => updater.onStatus(() => resolve(updater.progress())));
+  updater.checkOnStartup();
+  const progress = await heard;
+  assert.equal(progress.state, "available");
+  assert.equal(progress.latest, "0.9.0");
+  assert.equal(progress.status.canSelfUpdate, false);
+  assert.match(progress.status.instruction, /flatpak update/);
+});
+
+test("fetchLatestReleaseVersion reads the tag and treats 404 as no release", async () => {
+  const ok = async () => ({ ok: true, status: 200, json: async () => ({ tag_name: "v0.9.0" }) });
+  assert.equal(await fetchLatestReleaseVersion(ok), "0.9.0");
+  const missing = async () => ({ ok: false, status: 404, json: async () => ({}) });
+  assert.equal(await fetchLatestReleaseVersion(missing), "");
+  const broken = async () => ({ ok: false, status: 503, json: async () => ({}) });
+  await assert.rejects(() => fetchLatestReleaseVersion(broken), /503/);
 });

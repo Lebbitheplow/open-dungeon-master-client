@@ -6,12 +6,23 @@ import type { InstallKind, UpdateProgress, UpdateStatus } from "../shared/types"
 // every other install channel owns its files (pacman, flatpak, the Mac
 // bundle), so the app only tells the player where the new version lives.
 //
+// electron-updater answers null instead of checking whenever it does not
+// recognise the install (on Linux that is anything but an AppImage), which
+// used to read as "up to date" on a tar.gz or rpm install. So the installs
+// that cannot self-update ask GitHub for the latest release directly, and
+// the self-updating ones fall back to that same question when the feed
+// declines to answer.
+//
 // electron-updater drags in electron at require time, so it loads lazily
 // inside the class: this module must stay importable under plain node for
-// the detectInstallKind unit tests.
+// the unit tests.
 
 // Give the window time to appear before the one background check phones home.
 const STARTUP_CHECK_DELAY_MS = 15_000;
+
+const REPO = "Lebbitheplow/open-dungeon-master-client";
+export const RELEASES_URL = `https://github.com/${REPO}/releases/latest`;
+const LATEST_RELEASE_API = `https://api.github.com/repos/${REPO}/releases/latest`;
 
 const SELF_UPDATE_KINDS: ReadonlySet<InstallKind> = new Set(["appimage", "nsis"]);
 
@@ -62,6 +73,30 @@ export function isNewerVersion(latest: string, current: string): boolean {
   return false;
 }
 
+// Release tags are "v0.9.0" or "0.9.0"; anything that is not a dotted
+// version is not a release to offer.
+export function versionFromTag(tag: unknown): string {
+  if (typeof tag !== "string") return "";
+  const bare = tag.trim().replace(/^v/i, "");
+  return /^\d+(\.\d+)+$/.test(bare) ? bare : "";
+}
+
+export type LatestVersionFetcher = () => Promise<string>;
+
+// The newest published release on GitHub, straight from the API. No token:
+// the repo is public and one call per launch sits far under the anonymous
+// rate limit. A 404 means no release has shipped yet, which is "nothing to
+// update to" rather than a failure worth showing the player.
+export async function fetchLatestReleaseVersion(fetchImpl: typeof fetch = fetch): Promise<string> {
+  const res = await fetchImpl(LATEST_RELEASE_API, {
+    headers: { Accept: "application/vnd.github+json", "User-Agent": "open-dungeon-master-client" },
+  });
+  if (res.status === 404) return "";
+  if (!res.ok) throw new Error(`GitHub answered ${res.status} while checking for updates.`);
+  const body = (await res.json()) as { tag_name?: unknown };
+  return versionFromTag(body.tag_name);
+}
+
 // Before the first release ships, the feed URL serves a 404. That is
 // "nothing to update to", not a failure worth showing the player.
 function isMissingFeed(err: unknown): boolean {
@@ -74,11 +109,19 @@ export class Updater {
   private readonly listeners = new Set<() => void>();
   private updater: AppUpdater | null = null;
   private startupChecked = false;
-  private state: UpdateProgress = { state: "idle", percent: 0, latest: "", error: "" };
+  private state: UpdateProgress = {
+    state: "idle",
+    percent: 0,
+    latest: "",
+    error: "",
+    status: null,
+  };
 
   constructor(
     readonly kind: InstallKind,
     private readonly currentVersion: string,
+    private readonly fetchLatest: LatestVersionFetcher = fetchLatestReleaseVersion,
+    private readonly startupDelayMs = STARTUP_CHECK_DELAY_MS,
   ) {}
 
   onStatus(listener: () => void): void {
@@ -101,10 +144,11 @@ export class Updater {
   private statusOf(latest: string, available: boolean): UpdateStatus {
     return {
       current: this.currentVersion,
-      latest,
+      latest: latest || this.currentVersion,
       available,
       canSelfUpdate: this.canSelfUpdate(),
       instruction: INSTRUCTIONS[this.kind],
+      releasesUrl: RELEASES_URL,
     };
   }
 
@@ -121,13 +165,23 @@ export class Updater {
     return autoUpdater;
   }
 
+  // What GitHub says is newest, compared against this build.
+  private async checkGitHub(): Promise<UpdateStatus> {
+    const latest = await this.fetchLatest();
+    return this.statusOf(latest, Boolean(latest) && isNewerVersion(latest, this.currentVersion));
+  }
+
   async checkForUpdates(): Promise<UpdateStatus> {
     // A dev run has no app-update.yml and nothing meaningful to compare.
     if (this.kind === "dev") return this.statusOf(this.currentVersion, false);
+    if (!this.canSelfUpdate()) return this.checkGitHub();
     const updater = await this.load();
     try {
       const result = await updater.checkForUpdates();
-      if (!result) return this.statusOf(this.currentVersion, false);
+      // null is electron-updater declining to look (it did not recognise
+      // the install), not an answer; ask GitHub instead of calling that
+      // "up to date".
+      if (!result) return this.checkGitHub();
       return this.statusOf(result.updateInfo.version, result.isUpdateAvailable);
     } catch (err) {
       if (isMissingFeed(err)) return this.statusOf(this.currentVersion, false);
@@ -169,7 +223,9 @@ export class Updater {
   }
 
   // One quiet background check per app run; failures stay silent because the
-  // player did not ask. The renderer hears about a hit via the progress event.
+  // player did not ask. The renderer hears about a hit via the progress
+  // event, which carries the full status so it can offer the right button
+  // (install here, or fetch it from GitHub) without asking again.
   checkOnStartup(): void {
     if (this.startupChecked || this.kind === "dev") return;
     this.startupChecked = true;
@@ -177,10 +233,10 @@ export class Updater {
       void this.checkForUpdates()
         .then((status) => {
           if (status.available) {
-            this.setProgress({ state: "available", latest: status.latest });
+            this.setProgress({ state: "available", latest: status.latest, status });
           }
         })
         .catch(() => undefined);
-    }, STARTUP_CHECK_DELAY_MS);
+    }, this.startupDelayMs);
   }
 }

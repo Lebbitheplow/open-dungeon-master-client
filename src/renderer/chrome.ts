@@ -1,6 +1,7 @@
 // The frame around every screen: the topbar with its hamburger and brand,
 // the page column screens render into, the back link, intro block and form
 // card, the invite banner, and the footer with the updater controls.
+import type { UpdateStatus } from "../shared/types";
 import { button, chip, el, icon, iconButton, spinner, tile } from "./dom.js";
 import { renderDrawer, toggleDrawer } from "./drawer.js";
 import { unmountGame } from "./game-screen.js";
@@ -216,11 +217,28 @@ function rerenderHome(): void {
   if (state.screenName === "home") renderHome();
 }
 
-// The update button: install when one is ready, otherwise check. Shared by
-// the home footer and the Settings screen; rerender repaints whichever
-// screen asked, once the answer lands in state.updateNote.
+// One line for the footer once a check has answered.
+export function updateNoteFor(update: UpdateStatus | null, latest = ""): string {
+  if (!update) return `Version ${latest} is available.`;
+  if (!update.available) return "You have the latest version.";
+  if (update.canSelfUpdate) return `Version ${update.latest} is ready to install.`;
+  return `Version ${update.latest} is available. ${update.instruction}`;
+}
+
+// The update button: install when one is ready, fetch it from GitHub when
+// this install cannot replace itself, otherwise check. Shared by the home
+// footer and the Settings screen; rerender repaints whichever screen
+// asked, once the answer lands in state.updateNote.
 export function updateControls(rerender: () => void): HTMLElement {
   const update = state.updateStatus;
+  if (update?.available && !update.canSelfUpdate) {
+    // The shell window hands http(s) opens to the system browser.
+    const get = button("primary", `Get ${update.latest}`, () => {
+      window.open(update.releasesUrl);
+    }, "download");
+    get.classList.add("quiet-size");
+    return get;
+  }
   if (update?.available && update.canSelfUpdate) {
     const install = button("primary", `Update to ${update.latest}`, (btn) => {
       btn.disabled = true;
@@ -242,11 +260,7 @@ export function updateControls(rerender: () => void): HTMLElement {
     void window.odm.updateCheck().then((result) => {
       if (result.ok) {
         state.updateStatus = result.update;
-        state.updateNote = !result.update.available
-          ? "You have the latest version."
-          : result.update.canSelfUpdate
-            ? `Version ${result.update.latest} is ready to install.`
-            : `Update available: ${result.update.latest}. ${result.update.instruction}`;
+        state.updateNote = updateNoteFor(result.update);
       } else {
         state.updateNote = result.error;
       }
