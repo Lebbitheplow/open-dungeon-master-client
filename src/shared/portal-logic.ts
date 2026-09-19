@@ -55,7 +55,10 @@ export function portalEligible(input: { bundled: string; remote: string }): Port
 // Raised to the release that carries VTT parity phases 16 to 30
 // (docs/vtt-parity-implementation-plan.md 18.2): the screens call routes
 // an older host does not have (shops, factions, calendar, the table view).
-export const NATIVE_MIN_SERVER = "0.19.0";
+// Raised again for the redesign (server docs/visual-overhaul-plan.md 9.0b):
+// the screens save map skins and stamped props and read the turn budget and
+// enemy intent, all of which an older host would drop without a word.
+export const NATIVE_MIN_SERVER = "0.21.0";
 
 export function nativeEligible(remote: string): PortalVerdict {
   const version = parseVersion(remote);

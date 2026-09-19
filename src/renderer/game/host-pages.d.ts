@@ -13,3 +13,11 @@ declare module "@/components/DeviceSettings" {
   import type { ComponentType } from "preact/compat";
   export const DeviceSettings: ComponentType<Record<string, never>>;
 }
+
+// The server's page skeletons (src/components/PageSkeleton.tsx): the shape a
+// page holds while its code loads, shown by the game router's Suspense.
+declare module "@/components/PageSkeleton" {
+  import type { ComponentType } from "preact/compat";
+  export type SkeletonKind = "home" | "lobby" | "table" | "roster" | "sheet" | "shelf" | "hub" | "list" | "flat";
+  export const PageSkeleton: ComponentType<{ kind?: SkeletonKind; className?: string }>;
+}

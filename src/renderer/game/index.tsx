@@ -8,6 +8,7 @@
 import { Component, Suspense, lazy, type ComponentType, type ReactNode } from "preact/compat";
 import { render } from "preact";
 import { DeviceSettings } from "@/components/DeviceSettings";
+import { PageSkeleton, type SkeletonKind } from "@/components/PageSkeleton";
 import { HostClient, type HostSession } from "../api/host.js";
 import { GameRouter, matchRoute } from "./router.js";
 import { setNavigation } from "./shims/next-navigation.js";
@@ -20,29 +21,33 @@ type PageModule = { default: ComponentType<{ params: unknown; searchParams?: unk
 interface Route {
   pattern: string;
   load: () => Promise<PageModule>;
+  // The shape the page holds while its code loads (the server's own
+  // skeletons), so the screen arrives in place instead of after a spinner.
+  skeleton?: SkeletonKind;
 }
 
 // The host's pages, by path. Each is the server's own page component.
 const ROUTES: Route[] = [
-  { pattern: "/", load: () => import("@/app/page") },
-  { pattern: "/campaigns/:campaignId", load: () => import("@/app/campaigns/[campaignId]/page") },
+  { pattern: "/", load: () => import("@/app/page"), skeleton: "home" },
+  { pattern: "/campaigns/:campaignId", load: () => import("@/app/campaigns/[campaignId]/page"), skeleton: "lobby" },
   {
     pattern: "/campaigns/:campaignId/character",
     load: () => import("@/app/campaigns/[campaignId]/character/page"),
+    skeleton: "sheet",
   },
   // The table view (docs/vtt-parity-implementation-plan.md 13.2): the
   // board, the scene and the title cards with no chrome, for a second
   // screen at an in-person table.
-  { pattern: "/campaigns/:campaignId/table", load: () => import("@/app/campaigns/[campaignId]/table/page") },
-  { pattern: "/characters", load: () => import("@/app/characters/page") },
+  { pattern: "/campaigns/:campaignId/table", load: () => import("@/app/campaigns/[campaignId]/table/page"), skeleton: "table" },
+  { pattern: "/characters", load: () => import("@/app/characters/page"), skeleton: "roster" },
   { pattern: "/characters/new", load: () => import("@/app/characters/new/page") },
-  { pattern: "/characters/:characterId", load: () => import("@/app/characters/[characterId]/page") },
-  { pattern: "/workshop", load: () => import("@/app/workshop/page") },
-  { pattern: "/workshop/:workshopId", load: () => import("@/app/workshop/[workshopId]/page") },
+  { pattern: "/characters/:characterId", load: () => import("@/app/characters/[characterId]/page"), skeleton: "sheet" },
+  { pattern: "/workshop", load: () => import("@/app/workshop/page"), skeleton: "shelf" },
+  { pattern: "/workshop/:workshopId", load: () => import("@/app/workshop/[workshopId]/page"), skeleton: "hub" },
   { pattern: "/settings", load: () => import("@/app/settings/page") },
-  { pattern: "/friends", load: () => import("@/app/friends/page") },
+  { pattern: "/friends", load: () => import("@/app/friends/page"), skeleton: "list" },
   { pattern: "/admin", load: () => import("@/app/admin/page") },
-  { pattern: "/reference", load: () => import("@/app/reference/page") },
+  { pattern: "/reference", load: () => import("@/app/reference/page"), skeleton: "list" },
   { pattern: "/join/:code", load: () => import("@/app/join/[code]/page") },
 ];
 
@@ -69,14 +74,6 @@ class Boundary extends Component<{ children: ReactNode; onError: (error: unknown
     if (this.state.failed) return null;
     return this.props.children;
   }
-}
-
-function Spinner() {
-  return (
-    <main className="flex flex-1 items-center justify-center py-16">
-      <span className="size-6 animate-spin rounded-full border-2 border-stone-600 border-t-amber-300" />
-    </main>
-  );
 }
 
 // A route change crossfades instead of cutting, the same thing the server's
@@ -112,20 +109,24 @@ function GameApp({ router, onLeave }: { router: GameRouter; onLeave: (url: strin
   }
   if (!matched) {
     onLeave(location.pathname + location.search);
-    return <Spinner />;
+    return <PageSkeleton />;
   }
   setNavigation(router, matched.params);
   const Page = pageFor(matched.route);
   const search = Object.fromEntries(new URLSearchParams(location.search));
+  // The query is not part of the key: a filter or tab in the address updates
+  // the page it belongs to instead of tearing it down and starting it again.
   return (
     <Boundary
-      key={`${matched.route.pattern}${JSON.stringify(matched.params)}${location.search}`}
+      key={`${matched.route.pattern}${JSON.stringify(matched.params)}`}
       onError={(error) => {
         console.error("game page failed", error);
         onLeave(location.pathname + location.search);
       }}
     >
-      <Suspense fallback={<Spinner />}>
+      {/* Dust motes under every page, the same layer the server's layout lays. */}
+      <div className="ambient-dust" aria-hidden="true" />
+      <Suspense fallback={<PageSkeleton kind={matched.route.skeleton} />}>
         <Page params={resolvedParams(matched.params)} searchParams={resolvedParams(search)} />
       </Suspense>
     </Boundary>
@@ -176,11 +177,28 @@ export function mountGame(root: HTMLElement, options: GameOptions): GameMount {
     router.push(url);
   };
   root.addEventListener("click", onClick);
+  // Warm the page a pointer or a finger is heading for: its code is fetched
+  // on hover or touch, so the click lands on a page that is already loaded.
+  const warmed = new Set<string>();
+  const onIntent = (event: Event): void => {
+    const anchor = (event.target as Element | null)?.closest?.("a[href]");
+    const raw = anchor?.getAttribute("href") ?? "";
+    if (!raw.startsWith("/") || raw.startsWith("//")) return;
+    const pathname = raw.split(/[?#]/)[0] ?? raw;
+    const route = ROUTES.find((candidate) => matchRoute(candidate.pattern, pathname));
+    if (!route || warmed.has(route.pattern)) return;
+    warmed.add(route.pattern);
+    void route.load().catch(() => warmed.delete(route.pattern));
+  };
+  root.addEventListener("pointerover", onIntent, { passive: true });
+  root.addEventListener("touchstart", onIntent, { passive: true });
   render(<GameApp router={router} onLeave={options.onLeave} />, root);
   return {
     router,
     unmount() {
       root.removeEventListener("click", onClick);
+      root.removeEventListener("pointerover", onIntent);
+      root.removeEventListener("touchstart", onIntent);
       render(null, root);
       uninstallRuntime();
     },

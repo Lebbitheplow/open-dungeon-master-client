@@ -84,7 +84,15 @@ export function buildGameCss(server, outDir) {
   // The server's stylesheet is copied in rather than imported: its own
   // `@import "tailwindcss"` must resolve from this repo's node_modules,
   // since the server checkout beside it (CI) has none installed.
-  const globals = fs.readFileSync(path.join(server, "src", "app", "globals.css"), "utf8");
+  // Its relative imports (src/app/styles/*.css) are inlined for the same
+  // reason: copied text has no directory of its own to resolve them from.
+  // A sheet may import a neighbour of its own (hand.css brings in
+  // hand-motion.css), so each file's imports resolve from that file's folder.
+  const inline = (file) =>
+    fs
+      .readFileSync(file, "utf8")
+      .replace(/^@import\s+"(\.\/[^"]+\.css)";[ \t]*$/gm, (_, next) => inline(path.join(path.dirname(file), next)));
+  const globals = inline(path.join(server, "src", "app", "globals.css"));
   fs.writeFileSync(
     entry,
     [
@@ -102,7 +110,13 @@ export function buildGameCss(server, outDir) {
   fs.rmSync(entry, { force: true });
   // The sheet shares the page with the shell's own screens: every rule is
   // confined to the game's root element (scope-css.mjs).
-  fs.writeFileSync(out, scopeCss(fs.readFileSync(out, "utf8"), ".game-root"));
+  // Painted furniture the stylesheet draws as a background (the scroll, the
+  // book, the dust) cannot be pointed at the host the way an <img> is, so the
+  // parts ship beside the sheet and its root-relative addresses become local.
+  const art = path.join(server, "public", "assets", "ui");
+  if (fs.existsSync(art)) fs.cpSync(art, path.join(outDir, "ui-art"), { recursive: true });
+  const local = fs.readFileSync(out, "utf8").replace(/url\((["']?)\/assets\/ui\//g, "url($1./ui-art/");
+  fs.writeFileSync(out, scopeCss(local, ".game-root"));
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
