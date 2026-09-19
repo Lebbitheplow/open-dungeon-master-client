@@ -10,10 +10,16 @@ import { createObjectUrlCache } from "../../shared/object-url-cache.js";
 
 // Public static files of the host: no session needed, so the address is
 // rewritten in place and the browser loads them itself.
-const PUBLIC_PREFIXES = ["/assets/", "/sidebar-icons/", "/dice-box/", "/icon", "/apple-icon"];
+const PUBLIC_PREFIXES = ["/assets/", "/fx/", "/sidebar-icons/", "/dice-box/", "/icon", "/apple-icon"];
 // Everything else root-relative that a media element asks for is behind
 // the host's login and is fetched with the token.
 const MEDIA_ATTRS = ["src", "poster"];
+// The battle map is an SVG, and what it shows under and on the grid (a
+// backdrop, the DM's overlay, a token's portrait or plate, an effect sheet)
+// is an SVG <image>, whose address is its href. Left alone it would load from
+// the app's own origin and draw nothing.
+const SVG_IMAGE_ATTRS = ["href"];
+const MEDIA_SELECTOR = "img, audio, video, source, image";
 
 let active: HostClient | null = null;
 let nativeFetch: typeof fetch | null = null;
@@ -97,7 +103,7 @@ function objectUrlFor(client: HostClient, path: string): Promise<string> {
 function fixMedia(element: Element): void {
   const client = active;
   if (!client) return;
-  for (const attr of MEDIA_ATTRS) {
+  for (const attr of element.localName === "image" ? SVG_IMAGE_ATTRS : MEDIA_ATTRS) {
     const value = element.getAttribute(attr);
     if (!value || !isRootRelative(value)) continue;
     if (element.getAttribute(`data-odm-${attr}`) === value) continue;
@@ -166,8 +172,8 @@ function patchMediaSetters(): void {
 
 function scan(root: Node): void {
   if (root instanceof Element) {
-    if (root.matches("img, audio, video, source")) fixMedia(root);
-    for (const node of root.querySelectorAll("img, audio, video, source")) fixMedia(node);
+    if (root.matches(MEDIA_SELECTOR)) fixMedia(root);
+    for (const node of root.querySelectorAll(MEDIA_SELECTOR)) fixMedia(node);
   }
 }
 
@@ -235,7 +241,9 @@ export function installRuntime(client: HostClient): void {
   if (!observer) {
     observer = new MutationObserver((records) => {
       for (const record of records) {
-        if (record.type === "attributes" && record.target instanceof Element) fixMedia(record.target);
+        if (record.type === "attributes" && record.target instanceof Element && record.target.matches(MEDIA_SELECTOR)) {
+          fixMedia(record.target);
+        }
         for (const node of record.addedNodes) scan(node);
       }
     });
@@ -243,7 +251,7 @@ export function installRuntime(client: HostClient): void {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: MEDIA_ATTRS,
+      attributeFilter: [...MEDIA_ATTRS, ...SVG_IMAGE_ATTRS],
     });
   }
   scan(document.body);
