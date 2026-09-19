@@ -119,6 +119,16 @@ function localAsset(value: string): string | null {
   return new URL(`game/icons/${value.slice(LOCAL_ICONS.length)}`, document.baseURI).href;
 }
 
+// A page served over https (the Android app is https://localhost) may not show
+// a picture addressed at a plain http host: the WebView blocks it as an
+// insecure image, whatever the app's mixed content setting says, while a
+// fetch to the same host is allowed. So there every host picture, public or
+// not, takes the road the protected ones already take: fetched, then shown
+// from an object URL. Desktop (file://) and https hosts keep the direct road.
+function mustFetch(client: HostClient): boolean {
+  return window.location.protocol === "https:" && client.origin.startsWith("http:");
+}
+
 // Media elements: a public path is pointed at the host directly; a
 // protected one is loaded through the token and swapped for a blob.
 function fixMedia(element: Element): void {
@@ -135,7 +145,7 @@ function fixMedia(element: Element): void {
     }
     if (!client) continue;
     element.setAttribute(`data-odm-${attr}`, value);
-    if (PUBLIC_PREFIXES.some((prefix) => value.startsWith(prefix))) {
+    if (!mustFetch(client) && PUBLIC_PREFIXES.some((prefix) => value.startsWith(prefix))) {
       element.setAttribute(attr, `${client.origin}${value}`);
       continue;
     }
@@ -150,7 +160,7 @@ function fixMedia(element: Element): void {
 // second case is asynchronous, so the caller gets the object URL later.
 function resolveMedia(client: HostClient, value: string, apply: (url: string) => void): string | null {
   if (!isRootRelative(value)) return null;
-  if (PUBLIC_PREFIXES.some((prefix) => value.startsWith(prefix))) return `${client.origin}${value}`;
+  if (!mustFetch(client) && PUBLIC_PREFIXES.some((prefix) => value.startsWith(prefix))) return `${client.origin}${value}`;
   void objectUrlFor(client, value).then((url) => {
     if (url) apply(url);
   });

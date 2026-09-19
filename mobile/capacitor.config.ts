@@ -14,6 +14,13 @@ const config: CapacitorConfig = {
     // page between the status bar and the navigation bar; the window
     // background behind the bars is the same night color (styles.xml).
     adjustMarginsForEdgeToEdge: "force",
+    // The app's pages are https://localhost and a self-hosted server on a LAN
+    // is plain http (the manifest allows cleartext for the same reason). The
+    // app's own game screens ask that server for everything from this page,
+    // and without this the WebView blocks all of it as mixed content: the
+    // API calls and every picture ("requested an insecure image"). The web
+    // view fallback never hit this, because there the page IS the server's.
+    allowMixedContent: true,
   },
 };
 
