@@ -133,6 +133,14 @@ export function buildGameCss(server, outDir) {
   // parts ship beside the sheet and its root-relative addresses become local.
   const art = path.join(server, "public", "assets", "ui");
   if (fs.existsSync(art)) fs.cpSync(art, path.join(outDir, "ui-art"), { recursive: true });
+  // The painted icons (spells, items, features, conditions, the interface
+  // glyphs) ship inside the app as well: the runtime points every
+  // "/assets/icons/..." picture at this folder (src/renderer/game/runtime.ts),
+  // so they show on the app's own screens where no host is connected, offline,
+  // and without a round trip to the host for each one in a world.
+  const icons = path.join(server, "public", "assets", "icons");
+  fs.rmSync(path.join(outDir, "icons"), { recursive: true, force: true });
+  if (fs.existsSync(icons)) fs.cpSync(icons, path.join(outDir, "icons"), { recursive: true });
   const local = fs.readFileSync(out, "utf8").replace(/url\((["']?)\/assets\/ui\//g, "url($1./ui-art/");
   fs.writeFileSync(out, scopeCss(local, ".game-root"));
 }

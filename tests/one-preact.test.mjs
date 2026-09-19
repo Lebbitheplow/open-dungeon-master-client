@@ -35,3 +35,12 @@ for (const cwd of [repo, path.join(repo, "mobile")]) {
     }
   });
 }
+
+// The painted icons ship inside the app, so the app's own screens (Settings
+// draws the audio and dice panel with no host connected) have them.
+test("the built app carries the painted icons", () => {
+  const glyphs = path.join(repo, "dist", "renderer", "game", "icons", "glyph");
+  assert.ok(fs.existsSync(path.join(glyphs, "die-d20.webp")), "dist/renderer/game/icons/glyph/die-d20.webp is missing");
+  assert.ok(fs.readdirSync(glyphs).length > 100);
+  assert.ok(fs.existsSync(path.join(repo, "dist", "renderer", "game", "icons", "spell")));
+});

@@ -13,7 +13,7 @@ import { HostClient, type HostSession } from "../api/host.js";
 import { GameRouter, matchRoute } from "./router.js";
 import { setNavigation } from "./shims/next-navigation.js";
 import { resolvedParams } from "./params.js";
-import { installRuntime, uninstallRuntime } from "./runtime.js";
+import { installLocalAssets, installRuntime, uninstallRuntime } from "./runtime.js";
 import { useSyncExternalStore } from "preact/compat";
 
 type PageModule = { default: ComponentType<{ params: unknown; searchParams?: unknown }> };
@@ -221,6 +221,7 @@ export function prefetch(path: string): void {
 // the shell's own Settings screen: the same stores the table's hooks read,
 // so a change here reaches a call or a table already running.
 export function mountDeviceSettings(root: HTMLElement): () => void {
+  installLocalAssets();
   render(<DeviceSettings />, root);
   return () => render(null, root);
 }

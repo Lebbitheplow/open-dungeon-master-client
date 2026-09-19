@@ -98,15 +98,33 @@ function objectUrlFor(client: HostClient, path: string): Promise<string> {
   return objectUrls.get(`${client.origin}${path}`, () => client.objectUrl(path));
 }
 
+// The painted icons ship inside the app (scripts/build-renderer.mjs copies the
+// server's public/assets/icons beside the game bundle), so their addresses
+// resolve to the app's own files whether or not a host is connected. The
+// shell's Settings screen draws the audio and dice panel with no host at all,
+// and before this its icons pointed at files the app did not have.
+const LOCAL_ICONS = "/assets/icons/";
+
+function localAsset(value: string): string | null {
+  if (!value.startsWith(LOCAL_ICONS)) return null;
+  return new URL(`game/icons/${value.slice(LOCAL_ICONS.length)}`, document.baseURI).href;
+}
+
 // Media elements: a public path is pointed at the host directly; a
 // protected one is loaded through the token and swapped for a blob.
 function fixMedia(element: Element): void {
   const client = active;
-  if (!client) return;
   for (const attr of element.localName === "image" ? SVG_IMAGE_ATTRS : MEDIA_ATTRS) {
     const value = element.getAttribute(attr);
     if (!value || !isRootRelative(value)) continue;
     if (element.getAttribute(`data-odm-${attr}`) === value) continue;
+    const local = localAsset(value);
+    if (local) {
+      element.setAttribute(`data-odm-${attr}`, value);
+      element.setAttribute(attr, local);
+      continue;
+    }
+    if (!client) continue;
     element.setAttribute(`data-odm-${attr}`, value);
     if (PUBLIC_PREFIXES.some((prefix) => value.startsWith(prefix))) {
       element.setAttribute(attr, `${client.origin}${value}`);
@@ -148,6 +166,12 @@ function patchMediaSetters(): void {
       set(this: HTMLElement, value: string) {
         const client = active;
         const raw = String(value);
+        const local = isRootRelative(raw) ? localAsset(raw) : null;
+        if (local) {
+          this.setAttribute("data-odm-src", raw);
+          nativeSet.call(this, local);
+          return;
+        }
         if (!client || !isRootRelative(raw)) {
           nativeSet.call(this, value);
           return;
@@ -223,6 +247,13 @@ function onDownloadClick(event: MouseEvent): void {
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     })
     .catch((error: unknown) => console.error("download failed", error));
+}
+
+// For the app's own screens that draw a game panel with no host connected
+// (Settings): only the picture setters, which send the painted icons to the
+// app's own copy. Nothing else of the runtime needs a host-less page.
+export function installLocalAssets(): void {
+  patchMediaSetters();
 }
 
 export function installRuntime(client: HostClient): void {
