@@ -258,6 +258,48 @@ function onDownloadClick(event: MouseEvent): void {
     .catch((error: unknown) => console.error("download failed", error));
 }
 
+// A host picture is first asked for at the app's OWN address: the page sets
+// src="/uploads/x.png", which from file:// or capacitor:// is a file that does
+// not exist, and only then does the observer point it at the host. That first
+// request fails at once, and a component with an error fallback (the faces on
+// the board's turn rail, the painted icons) hears the failure and gives the
+// picture up before the real copy has been asked for. The failure of the app's
+// own bogus request is not news to anyone: it stops here, in the capture
+// phase, and the element is fixed straight away.
+const HOST_PATHS = ["/uploads/", "/generated/", "/generated-audio/", "/ambience/", "/assets/", "/fx/", "/sidebar-icons/", "/dice-box/", "/api/"];
+let errorsGuarded = false;
+
+function guardBogusErrors(): void {
+  if (errorsGuarded) return;
+  errorsGuarded = true;
+  document.addEventListener(
+    "error",
+    (event) => {
+      const element = event.target;
+      if (!(element instanceof Element) || !active) return;
+      const failed = (element as HTMLImageElement).currentSrc || element.getAttribute("src") || element.getAttribute("href") || "";
+      let path = "";
+      try {
+        const url = new URL(failed, document.baseURI);
+        // Only the app's own origin: a picture the HOST refused is real news.
+        if (url.origin !== new URL(document.baseURI).origin && url.protocol !== "file:") return;
+        path = url.pathname;
+      } catch {
+        return;
+      }
+      if (!HOST_PATHS.some((prefix) => path.startsWith(prefix))) return;
+      event.stopImmediatePropagation();
+      // The observer may not have reached it yet; the address is still the
+      // root-relative one, so clear the marker and fix it now.
+      for (const attr of ["src", "href", "xlink:href"]) {
+        if (element.getAttribute(`data-odm-${attr}`) === element.getAttribute(attr)) element.removeAttribute(`data-odm-${attr}`);
+      }
+      fixMedia(element);
+    },
+    true,
+  );
+}
+
 // For the app's own screens that draw a game panel with no host connected
 // (Settings): only the picture setters, which send the painted icons to the
 // app's own copy. Nothing else of the runtime needs a host-less page.
@@ -267,6 +309,7 @@ export function installLocalAssets(): void {
 
 export function installRuntime(client: HostClient): void {
   active = client;
+  guardBogusErrors();
   document.removeEventListener("click", onDownloadClick);
   document.addEventListener("click", onDownloadClick);
   if (!nativeFetch) {
