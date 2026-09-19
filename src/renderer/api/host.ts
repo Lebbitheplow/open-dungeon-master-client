@@ -70,7 +70,17 @@ export class HostClient {
   // A file behind the host's login (uploads, generated art) as an object
   // URL for an <img> or <audio>; the caller revokes it when done.
   async objectUrl(path: string): Promise<string> {
-    const res = await fetch(`${this.origin}${path}`, { headers: this.headers() });
+    // cache: "reload" goes to the network and replaces whatever the WebView
+    // had stored. The same picture may already sit in its HTTP cache from a
+    // request that carried no Origin (the web view fallback shows the host's
+    // own page, where a picture is same-origin), so that copy has no
+    // Access-Control-Allow-Origin. A host behind Cloudflare loses its
+    // "Vary: Origin" on the way, the cache then answers this cross-origin
+    // fetch with the header-less copy, and the fetch is blocked by CORS.
+    // Generated pictures are served "immutable" for a year, so without this
+    // they stayed broken in the apps for a year. The object URL cache above
+    // this call keeps one download per picture per session.
+    const res = await fetch(`${this.origin}${path}`, { headers: this.headers(), cache: "reload" });
     if (!res.ok) throw new HostError(`${this.origin} answered ${res.status}.`, res.status);
     return URL.createObjectURL(await res.blob());
   }
