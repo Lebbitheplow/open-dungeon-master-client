@@ -79,9 +79,27 @@ function Spinner() {
   );
 }
 
+// A route change crossfades instead of cutting, the same thing the server's
+// pages do through React (src/app/template.tsx there). The browser snapshots
+// the outgoing page, the router swaps, and the snapshot fades into the new
+// page. Skipped under reduced motion and where the API is missing, which
+// leaves the plain swap.
+function withViewTransition(update: () => void): void {
+  const start = (document as Document & { startViewTransition?: (callback: () => Promise<void>) => unknown }).startViewTransition;
+  if (!start || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    update();
+    return;
+  }
+  start.call(document, () => {
+    update();
+    // Preact renders on the next tick; hold the snapshot until it has painted.
+    return new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  });
+}
+
 function GameApp({ router, onLeave }: { router: GameRouter; onLeave: (url: string) => void }) {
   const location = useSyncExternalStore(
-    (listener) => router.subscribe(listener),
+    (listener) => router.subscribe(() => withViewTransition(listener)),
     () => router.location,
   );
   let matched: { route: Route; params: Record<string, string> } | null = null;
