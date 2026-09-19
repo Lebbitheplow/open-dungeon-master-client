@@ -8,7 +8,7 @@ import { renderHome } from "./home.js";
 import { playLocal } from "./local.js";
 import { renderError } from "./servers.js";
 import { isAndroid, state } from "./state.js";
-import type { AiSetup, HardwareInfo, LocalAiStatus, LocalAiTier } from "../shared/types";
+import type { AiSetup, HardwareInfo, LocalAiStatus, LocalAiTier, SavedAi } from "../shared/types";
 
 // The live progress bar of an install in flight, for the progress events to
 // fill; null when nothing is downloading.
@@ -293,18 +293,49 @@ function renderComfyInstall(): void {
   });
 }
 
-function renderOpenAiForm(): void {
+// Set once the player types in the OpenAI form, so a late answer about the
+// saved key never redraws the form out from under them.
+let openAiTouched = false;
+
+function renderOpenAiForm(saved: SavedAi | null = null): void {
   state.screenName = "local-ai-openai";
+  openAiTouched = false;
+  if (!saved) {
+    // Asked once per visit: a device that already holds a key shows it as
+    // saved and keeps its models, so changing one never means pasting the key
+    // again. The form is usable at once; the answer only fills it in.
+    void window.odm
+      .localAiSaved()
+      .catch(() => null)
+      .then((answer) => {
+        if (answer?.keySaved && state.screenName === "local-ai-openai" && !openAiTouched) {
+          renderOpenAiForm(answer);
+        }
+      });
+  }
+  const keySaved = saved?.keySaved === true;
   const form = el("form");
   const [keyLabel, keyField] = input("API key", "password");
-  keyField.placeholder = "sk-...";
-  const [modelLabel, modelField] = input("Dungeon Master model", "text", "gpt-5.1");
-  const [utilityLabel, utilityField] = input("Utility model (cheaper, for summaries)", "text", "gpt-5-mini");
+  keyField.placeholder = keySaved ? "Saved on this device. Blank keeps it." : "sk-...";
+  const [modelLabel, modelField] = input("Dungeon Master model", "text", saved?.model || "gpt-5.1");
+  const [utilityLabel, utilityField] = input(
+    "Utility model (cheaper, for summaries)",
+    "text",
+    saved?.utilityModel || "gpt-5-mini",
+  );
   const error = el("p", "error");
   const submit = button("primary", "Save and play");
   submit.type = "submit";
   submit.classList.add("block");
-  form.append(keyLabel, modelLabel, utilityLabel, error, submit);
+  const scope = el(
+    "p",
+    "hint",
+    "One key for this whole device: every campaign here uses it, new or old, for narration and for pictures.",
+  );
+  form.append(keyLabel, modelLabel, utilityLabel, scope, error, submit);
+  form.addEventListener("input", () => {
+    openAiTouched = true;
+  });
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     submit.disabled = true;

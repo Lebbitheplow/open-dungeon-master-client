@@ -268,6 +268,12 @@ async function patchAdminSettings(origin: string, token: string, patch: object):
   if (reply.status !== 200) throw new Error(errorText(reply, "Saving world settings failed."));
 }
 
+async function getAdminSettings(origin: string, token: string): Promise<unknown> {
+  const reply = await http(origin, "/api/admin/settings", { token });
+  if (reply.status !== 200) throw new Error(errorText(reply, "Reading world settings failed."));
+  return reply.data;
+}
+
 // ---------- events and the server webview ----------
 
 const listeners = new Set<(event: ShellEvent) => void>();
@@ -596,6 +602,7 @@ const localWorld = createLocalWorld({
   registerAccount,
   tokenIsValid,
   patchAdminSettings,
+  getAdminSettings,
   async open(origin, token, joinCode, path) {
     await clearPortalCookies(origin);
     await CapacitorCookies.setCookie({ url: origin, key: "odm_session", value: token });
@@ -1542,6 +1549,7 @@ const bridge: OdmBridge = {
       password: String(input?.password ?? ""),
     }),
   localConfigureAi: (setup) => localWorld.configureAi(setup),
+  localAiSaved: () => localWorld.aiSaved(),
   localPlay: (joinCode, path) => localWorld.play(cleanCode(joinCode), safeInnerPath(path)),
   async shareStart() {
     const status = await shareTunnel.start();

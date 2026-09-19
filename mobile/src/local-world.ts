@@ -4,8 +4,10 @@ import type {
   ConnectResult,
   LocalStatus,
   Result,
+  SavedAi,
   ShellEvent,
 } from "../../src/shared/types";
+import { NO_SAVED_AI, openAiPatch, savedAiFrom } from "../../src/shared/ai-setup";
 
 // The device-hosted world: the same server the desktop app bundles, run by a
 // Node runtime inside this app (see android/.../WorldRuntime.java) and
@@ -59,6 +61,7 @@ export interface LocalWorldDeps {
   ): Promise<TokenGrant>;
   tokenIsValid(origin: string, token: string): Promise<boolean>;
   patchAdminSettings(origin: string, token: string, patch: object): Promise<void>;
+  getAdminSettings(origin: string, token: string): Promise<unknown>;
   // Plants the session and opens the world's pages in the game webview.
   open(origin: string, token: string, joinCode: string, path: string): Promise<void>;
   emit(event: ShellEvent): void;
@@ -68,8 +71,6 @@ export interface LocalWorldDeps {
   currentShareUrl?(): string;
 }
 
-const OPENAI_BASE_URL = "https://api.openai.com/v1";
-const DEFAULT_MODEL = "gpt-5.1";
 
 export function tokenAlive(profile: LocalProfile | null): boolean {
   if (!profile?.token) return false;
@@ -260,26 +261,28 @@ export function createLocalWorld(deps: LocalWorldDeps) {
         return { ok: true };
       }
       if (setup.choice !== "openai") return { ok: true };
-      const apiKey = setup.apiKey.trim();
-      if (!apiKey) return fail(new Error("Enter the API key."));
-      const model = setup.model.trim() || DEFAULT_MODEL;
-      const utilityModel = setup.utilityModel.trim() || model;
-      await deps.patchAdminSettings(origin, profile.token, {
-        text: {
-          provider: "custom",
-          customBaseUrl: OPENAI_BASE_URL,
-          customModel: model,
-          customApiKey: apiKey,
-          utilityProvider: "custom",
-          utilityBaseUrl: OPENAI_BASE_URL,
-          utilityModel,
-          utilityApiKey: apiKey,
-        },
-        images: { defaultBackend: "openai", openaiApiKey: apiKey },
-      });
+      const saved = savedAiFrom(
+        await deps.getAdminSettings(origin, profile.token).catch(() => null),
+      );
+      const built = openAiPatch(setup, saved);
+      if ("error" in built) return fail(new Error(built.error));
+      await deps.patchAdminSettings(origin, profile.token, built.patch);
       return { ok: true };
     } catch (err) {
       return fail(err);
+    }
+  }
+
+  // What the OpenAI form shows as already saved on this device. Never
+  // throws: a world that is not up yet simply has nothing saved to show.
+  async function aiSaved(): Promise<SavedAi> {
+    try {
+      const origin = await start();
+      const profile = await liveToken(origin);
+      if (!profile) return NO_SAVED_AI;
+      return savedAiFrom(await deps.getAdminSettings(origin, profile.token));
+    } catch {
+      return NO_SAVED_AI;
     }
   }
 
@@ -288,5 +291,5 @@ export function createLocalWorld(deps: LocalWorldDeps) {
     await announce();
   }
 
-  return { status, start, play, createAccount, login, configureAi, stop, publish };
+  return { status, start, play, createAccount, login, configureAi, aiSaved, stop, publish };
 }

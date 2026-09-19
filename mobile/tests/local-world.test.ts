@@ -14,6 +14,7 @@ function harness(overrides: {
   profile?: LocalProfile | null;
   tokenValid?: boolean;
   loginFails?: boolean;
+  adminSettings?: unknown;
 } = {}) {
   const world: WorldStatus = {
     available: true,
@@ -63,6 +64,7 @@ function harness(overrides: {
     patchAdminSettings: async (_origin, _token, patch) => {
       patches.push(patch);
     },
+    getAdminSettings: async () => overrides.adminSettings ?? null,
     open: async (origin, token, joinCode) => {
       opened.push(`${origin}|${token}|${joinCode}`);
     },
@@ -153,4 +155,54 @@ test("a build without a runtime reports the world as unavailable", async () => {
   const h = harness({ world: { available: false } });
   const status = await createLocalWorld(h.deps).status();
   assert.equal(status.state, "unavailable");
+});
+
+// Story AI's OpenAI door: the key is the device's, saved once in the world's
+// admin settings, where every campaign on the phone follows it.
+const SIGNED_IN = {
+  world: { state: "running" as const, origin: "http://127.0.0.1:3210", firstRun: false },
+  profile: { username: "kaleb", secret: "", token: "t", tokenExpiresAt: "2030-01-01T00:00:00.000Z" },
+  tokenValid: true,
+};
+
+test("the first OpenAI key is saved for the whole device, text and pictures", async () => {
+  const h = harness(SIGNED_IN);
+  const world = createLocalWorld(h.deps);
+  assert.deepEqual(await world.aiSaved(), { keySaved: false, model: "", utilityModel: "" });
+  const blank = await world.configureAi({ choice: "openai", apiKey: " ", model: "", utilityModel: "" });
+  assert.equal(blank.ok, false, "no key saved yet, so a blank one is refused");
+  const saved = await world.configureAi({ choice: "openai", apiKey: "sk-1", model: "", utilityModel: "" });
+  assert.equal(saved.ok, true);
+  const patch = h.patches.at(-1) as { text: Record<string, string>; images: Record<string, string> };
+  assert.equal(patch.text.customApiKey, "sk-1");
+  assert.equal(patch.text.utilityApiKey, "sk-1");
+  assert.equal(patch.images.openaiApiKey, "sk-1");
+  assert.equal(patch.images.defaultBackend, "openai");
+});
+
+test("changing the model keeps the key the device already holds", async () => {
+  const h = harness({
+    ...SIGNED_IN,
+    adminSettings: {
+      config: {
+        text: {
+          provider: "custom",
+          customBaseUrl: "https://api.openai.com/v1",
+          customModel: "gpt-5.1",
+          utilityModel: "gpt-5-mini",
+          hasCustomApiKey: true,
+        },
+      },
+    },
+  });
+  const world = createLocalWorld(h.deps);
+  assert.deepEqual(await world.aiSaved(), { keySaved: true, model: "gpt-5.1", utilityModel: "gpt-5-mini" });
+  const result = await world.configureAi({ choice: "openai", apiKey: "", model: "gpt-5.4-mini", utilityModel: "" });
+  assert.equal(result.ok, true);
+  const patch = h.patches.at(-1) as { text: Record<string, string>; images: Record<string, string> };
+  assert.equal(patch.text.customModel, "gpt-5.4-mini");
+  // Omitted, not blank: the server reads a missing key as "keep" and "" as "clear".
+  assert.equal("customApiKey" in patch.text, false);
+  assert.equal("utilityApiKey" in patch.text, false);
+  assert.equal("openaiApiKey" in patch.images, false);
 });

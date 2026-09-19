@@ -60,6 +60,15 @@ export interface AiSetup {
   utilityModel: string;
 }
 
+// What Story AI already holds for this device, so the OpenAI form can show
+// it instead of asking again. The key itself never leaves the device's
+// server; keySaved only says one is there.
+export interface SavedAi {
+  keySaved: boolean;
+  model: string;
+  utilityModel: string;
+}
+
 // firstSetup: the shell just auto-provisioned the local profile, so the
 // renderer should offer the one-time AI choice before entering the world.
 // needsName: a fresh phone world has no OS username to borrow, so the
@@ -342,6 +351,7 @@ export interface OdmBridge {
   }): Promise<Result<{ status: LocalStatus }>>;
   localLogin(input: { username: string; password: string }): Promise<Result<{ status: LocalStatus }>>;
   localConfigureAi(setup: AiSetup): Promise<Result>;
+  localAiSaved(): Promise<SavedAi>;
   localPlay(joinCode?: string, path?: string): Promise<ConnectResult>;
   shareStart(): Promise<Result<{ tunnel: TunnelStatus }>>;
   shareStop(): Promise<Result<{ tunnel: TunnelStatus }>>;

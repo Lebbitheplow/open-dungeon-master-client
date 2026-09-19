@@ -31,6 +31,7 @@ const bridge: OdmBridge = {
   localCreateAccount: (input) => ipcRenderer.invoke("local:create-account", input),
   localLogin: (input) => ipcRenderer.invoke("local:login", input),
   localConfigureAi: (setup: AiSetup) => ipcRenderer.invoke("local:configure-ai", setup),
+  localAiSaved: () => ipcRenderer.invoke("local:ai-saved"),
   localPlay: (joinCode?: string, path?: string) =>
     ipcRenderer.invoke("local:play", joinCode, path),
   shareStart: () => ipcRenderer.invoke("share:start"),

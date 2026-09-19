@@ -168,6 +168,16 @@ export async function patchAdminSettings(
   if (!res.ok) throw await errorFrom(res, "Saving server settings failed.");
 }
 
+// The masked admin settings: every field, with each key reduced to whether
+// one is set.
+export async function getAdminSettings(origin: string, token: string): Promise<unknown> {
+  const res = await api(origin, "/api/admin/settings", {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await errorFrom(res, "Reading server settings failed.");
+  return res.json();
+}
+
 // Self-service account deletion (the server's DELETE /api/profile). Password
 // accounts must send their password; Discord-only accounts send "".
 export async function deleteAccount(

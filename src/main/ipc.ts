@@ -21,6 +21,7 @@ import {
   trustedTunnelOrigin,
   type JoinLink,
 } from "../shared/deep-link";
+import { NO_SAVED_AI, openAiPatch, savedAiFrom } from "../shared/ai-setup";
 import { coverRequestUrl, type HostInput } from "../shared/home-feed-logic";
 import { landingPath, safeInnerPath } from "../shared/open-path";
 import { createDesktopHomeFeed, fetchCoverImage } from "./home-feed";
@@ -30,6 +31,7 @@ import type { LocalServer } from "./local-server";
 import {
   deleteAccount,
   loginForToken,
+  getAdminSettings,
   patchAdminSettings,
   probeServer,
   registerAccount,
@@ -52,8 +54,6 @@ import type { QuickTunnel } from "./tunnel";
 import type { Updater } from "./updater";
 import type { ShellWindow } from "./window";
 
-const OPENAI_BASE_URL = "https://api.openai.com/v1";
-const DEFAULT_MODEL = "gpt-5.1";
 
 export interface ShellContext {
   store: ServerStore;
@@ -787,27 +787,30 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
         return { ok: true };
       }
       if (setup?.choice !== "openai") return { ok: true };
-      const apiKey = str(setup.apiKey, 400).trim();
-      if (!apiKey) return fail(new Error("Enter the API key."));
-      const model = str(setup.model, 200).trim() || DEFAULT_MODEL;
-      const utilityModel = str(setup.utilityModel, 200).trim() || model;
-      await patchAdminSettings(local.origin, token, {
-        text: {
-          provider: "custom",
-          customBaseUrl: OPENAI_BASE_URL,
-          customModel: model,
-          customApiKey: apiKey,
-          utilityProvider: "custom",
-          utilityBaseUrl: OPENAI_BASE_URL,
-          utilityModel,
-          utilityApiKey: apiKey,
+      const saved = savedAiFrom(await getAdminSettings(local.origin, token).catch(() => null));
+      const built = openAiPatch(
+        {
+          choice: "openai",
+          apiKey: str(setup.apiKey, 400),
+          model: str(setup.model, 200),
+          utilityModel: str(setup.utilityModel, 200),
         },
-        images: { defaultBackend: "openai", openaiApiKey: apiKey },
-      });
+        saved,
+      );
+      if ("error" in built) return fail(new Error(built.error));
+      await patchAdminSettings(local.origin, token, built.patch);
       return { ok: true };
     } catch (err) {
       return fail(err);
     }
+  });
+
+  // What the OpenAI form shows as already saved on this device. Never
+  // throws: a world that is not up yet simply has nothing saved to show.
+  ipcMain.handle("local:ai-saved", async () => {
+    const token = store.token(LOCAL_SERVER_ID);
+    if (!token || !local.origin) return NO_SAVED_AI;
+    return savedAiFrom(await getAdminSettings(local.origin, token).catch(() => null));
   });
 
   ipcMain.handle("local:play", async (_event, joinCode: unknown, path: unknown): Promise<ConnectResult> => {
