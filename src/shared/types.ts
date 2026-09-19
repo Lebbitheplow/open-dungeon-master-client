@@ -157,6 +157,9 @@ export interface UpdateStatus {
   latest: string;
   available: boolean;
   canSelfUpdate: boolean;
+  // The app can fetch this install's package itself and hand it to the
+  // system's installer (rpm, deb, dmg) or to the file manager (tar.gz).
+  canDownload: boolean;
   // Human words for installs that cannot self-update ("flatpak update", ...).
   instruction: string;
   // Where the new build lives, for the installs that fetch it themselves.
@@ -170,6 +173,8 @@ export interface UpdateProgress {
   percent: number;
   latest: string;
   error: string;
+  // What "ready" means for this install, when it is not a restart.
+  message: string;
   // Filled in with "available": what the background check found, so the
   // renderer can show the same button an explicit check would.
   status: UpdateStatus | null;

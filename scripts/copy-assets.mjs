@@ -20,17 +20,14 @@ for (const name of [
   fs.copyFileSync(path.join(repo, "src", "renderer", name), path.join(outDir, name));
 }
 
-export const FONT_FILES = [
-  "cinzel-latin-400-normal.woff2",
-  "cinzel-latin-600-normal.woff2",
-  "cinzel-latin-700-normal.woff2",
-];
+// `resolve` finds a package's folder: the desktop build reads this repo's
+// node_modules, the mobile build its own (CI installs only those).
+import { FONT_PACKAGES } from "./font-files.mjs";
 
-export function copyFonts(target) {
-  const source = path.join(repo, "node_modules", "@fontsource", "cinzel", "files");
+export function copyFonts(target, resolve = (name) => path.join(repo, "node_modules", ...name.split("/"))) {
   fs.mkdirSync(target, { recursive: true });
-  for (const name of FONT_FILES) {
-    fs.copyFileSync(path.join(source, name), path.join(target, name));
+  for (const [name, files] of Object.entries(FONT_PACKAGES)) {
+    for (const file of files) fs.copyFileSync(path.join(resolve(name), "files", file), path.join(target, file));
   }
 }
 

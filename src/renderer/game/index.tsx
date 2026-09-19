@@ -124,8 +124,8 @@ function GameApp({ router, onLeave }: { router: GameRouter; onLeave: (url: strin
         onLeave(location.pathname + location.search);
       }}
     >
-      {/* Dust motes under every page, the same layer the server's layout lays. */}
-      <div className="ambient-dust" aria-hidden="true" />
+      {/* The dust layer is the shell's (index.html, style.css): one for the
+          whole app, under the stars and the topographic lines. */}
       <Suspense fallback={<PageSkeleton kind={matched.route.skeleton} />}>
         <Page params={resolvedParams(matched.params)} searchParams={resolvedParams(search)} />
       </Suspense>

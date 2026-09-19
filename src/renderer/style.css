@@ -6,6 +6,16 @@
   and the world it opens read as one app.
 */
 
+/* The interface face and the story face, the same two the server loads
+   through next/font (scripts/font-files.mjs lists the files). */
+@font-face { font-family: "Geist"; font-style: normal; font-weight: 400; font-display: swap; src: url("./fonts/geist-sans-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Geist"; font-style: normal; font-weight: 500; font-display: swap; src: url("./fonts/geist-sans-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Geist"; font-style: normal; font-weight: 600; font-display: swap; src: url("./fonts/geist-sans-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Source Serif 4"; font-style: normal; font-weight: 400; font-display: swap; src: url("./fonts/source-serif-4-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Source Serif 4"; font-style: italic; font-weight: 400; font-display: swap; src: url("./fonts/source-serif-4-latin-400-italic.woff2") format("woff2"); }
+@font-face { font-family: "Source Serif 4"; font-style: normal; font-weight: 600; font-display: swap; src: url("./fonts/source-serif-4-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Source Serif 4"; font-style: italic; font-weight: 600; font-display: swap; src: url("./fonts/source-serif-4-latin-600-italic.woff2") format("woff2"); }
+
 @font-face {
   font-family: "Cinzel";
   font-style: normal;
@@ -117,6 +127,40 @@ body::before {
     radial-gradient(1px 1px at 6% 42%, rgba(244, 224, 166, 0.3), transparent 60%),
     radial-gradient(1px 1px at 96% 84%, rgba(233, 230, 244, 0.3), transparent 60%),
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.055'/%3E%3C/svg%3E");
+}
+
+/* Drifting dust, the server's own layer (src/app/styles/furniture.css): it
+   sits UNDER the stars and the topographic lines so it is texture beneath
+   them and never a haze over them. One layer for the whole app, the shell's
+   screens and the host's pages alike. The painting ships with the game
+   sheet's furniture (scripts/build-renderer.mjs copies public/assets/ui). */
+.ambient-dust {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  overflow: hidden;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  opacity: 0.16;
+}
+.ambient-dust::before {
+  content: "";
+  position: absolute;
+  inset: 0 -360px -720px 0;
+  background: url("./game/ui-art/dust-motes.webp") 0 0 / 360px;
+  filter: contrast(9) brightness(0.42) grayscale(1) sepia(1) saturate(2.2);
+  animation: dust-drift 90s linear infinite;
+  will-change: transform;
+}
+html[data-theme="light"] .ambient-dust { display: none; }
+[data-effects="low"] .ambient-dust { opacity: 0.1; }
+[data-effects="low"] .ambient-dust::before { animation: none; }
+@keyframes dust-drift {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-360px, -720px, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ambient-dust::before { animation: none; }
 }
 
 #topo {
@@ -236,7 +280,10 @@ body::before {
 
 /* ---------- type ---------- */
 
-h1, h2, h3 {
+/* Element rules stop at the game root: the host's pages bring their own
+   (scripts/scope-css.mjs confines theirs; this confines ours). :where keeps
+   the weight of a bare element selector. */
+h1:where(:not(.game-root *)), h2:where(:not(.game-root *)), h3:where(:not(.game-root *)) {
   font-family: var(--font-display);
   font-weight: 600;
   color: var(--gold-50);
@@ -244,9 +291,9 @@ h1, h2, h3 {
   letter-spacing: 0.03em;
   text-wrap: balance;
 }
-h1 { font-size: clamp(1.6rem, 4vw, 2rem); line-height: 1.2; }
-h2 { font-size: 1.25rem; line-height: 1.3; }
-h3 { font-size: 1rem; }
+h1:where(:not(.game-root *)) { font-size: clamp(1.6rem, 4vw, 2rem); line-height: 1.2; }
+h2:where(:not(.game-root *)) { font-size: 1.25rem; line-height: 1.3; }
+h3:where(:not(.game-root *)) { font-size: 1rem; }
 
 .eyebrow {
   font-family: var(--font-display);
@@ -267,7 +314,7 @@ h3 { font-size: 1rem; }
   background: linear-gradient(90deg, rgba(212, 171, 58, 0.35), transparent);
 }
 
-p { margin: 0; }
+p:where(:not(.game-root *)) { margin: 0; }
 p.sub { color: var(--ink-400); font-size: 0.95rem; margin: 0.4rem 0 1.25rem; text-wrap: pretty; }
 p.hint { color: var(--ink-500); font-size: 0.82rem; margin: 0.75rem 0 0; line-height: 1.5; }
 p.error { color: var(--danger); font-size: 0.88rem; min-height: 1.3rem; margin: 0.3rem 0 0; }

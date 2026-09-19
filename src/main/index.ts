@@ -1,5 +1,6 @@
 import path from "node:path";
-import { app, safeStorage } from "electron";
+import fs from "node:fs";
+import { app, safeStorage, shell } from "electron";
 import { joinLinkFromArgv, parseJoinLink, type JoinLink } from "../shared/deep-link";
 import { LocalAiManager } from "./local-ai/manager";
 import { LocalServer } from "./local-server";
@@ -84,9 +85,32 @@ function main(): void {
       path.join(app.getPath("userData"), "tunnel.log"),
     );
     const localAi = new LocalAiManager(path.join(app.getPath("userData"), "local-ai"));
+    // Which package this machine installs, for the installs that update by
+    // package: Debian's marker file, else an rpm database.
+    const packageFormat = fs.existsSync("/etc/debian_version")
+      ? "deb"
+      : fs.existsSync("/usr/lib/sysimage/rpm") || fs.existsSync("/var/lib/rpm")
+        ? "rpm"
+        : "";
     const updater = new Updater(
       detectInstallKind(process.env, process.execPath, process.platform, app.isPackaged),
       app.getVersion(),
+      undefined,
+      undefined,
+      {
+        format: packageFormat,
+        platform: process.platform,
+        arch: process.arch,
+        downloadsDir: () => app.getPath("downloads"),
+        open: async (file) => {
+          const failure = await shell.openPath(file);
+          if (failure) {
+            shell.showItemInFolder(file);
+            throw new Error(`The update is in your Downloads folder, but nothing here opens it: ${failure}`);
+          }
+        },
+        reveal: (file) => shell.showItemInFolder(file),
+      },
     );
 
     win = new ShellWindow();

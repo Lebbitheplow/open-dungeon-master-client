@@ -17,14 +17,54 @@ import type { InstallKind, UpdateProgress, UpdateStatus } from "../shared/types"
 // inside the class: this module must stay importable under plain node for
 // the unit tests.
 
-// Give the window time to appear before the one background check phones home.
-const STARTUP_CHECK_DELAY_MS = 15_000;
+// The background check runs as soon as the window can hear the answer: a
+// player on an old build should know before they have joined a table, since a
+// mismatched app and host is its own source of trouble.
+const STARTUP_CHECK_DELAY_MS = 1_200;
 
 const REPO = "Lebbitheplow/open-dungeon-master-client";
 export const RELEASES_URL = `https://github.com/${REPO}/releases/latest`;
 const LATEST_RELEASE_API = `https://api.github.com/repos/${REPO}/releases/latest`;
 
 const SELF_UPDATE_KINDS: ReadonlySet<InstallKind> = new Set(["appimage", "nsis"]);
+
+// Installs that cannot swap themselves out but whose new build is one file on
+// the release: the app fetches that file and hands it to the system (the
+// package installer for an rpm or deb, the disk image for a Mac, the folder
+// for a tar.gz), instead of sending the player to a web page to work out
+// which of twenty assets is theirs.
+export type PackageFormat = "rpm" | "deb" | "";
+
+export function packageAssetName(
+  version: string,
+  kind: InstallKind,
+  platform: NodeJS.Platform,
+  arch: string,
+  format: PackageFormat,
+): string {
+  const base = `open-dungeon-master-client-${version}`;
+  if (platform === "darwin" && kind === "mac") return `${base}-${arch === "arm64" ? "arm64" : "x64"}-mac.dmg`;
+  if (platform !== "linux" || arch !== "x64") return "";
+  if (kind === "managed") {
+    if (format === "rpm") return `${base}-x86_64.rpm`;
+    if (format === "deb") return `${base}-amd64.deb`;
+    return "";
+  }
+  if (kind === "portable") return `${base}-x64.tar.gz`;
+  return "";
+}
+
+export interface PackageInstaller {
+  format: PackageFormat;
+  platform: NodeJS.Platform;
+  arch: string;
+  downloadsDir(): string;
+  // Opens the file with whatever the system uses for it.
+  open(file: string): Promise<void>;
+  // Shows the file in the file manager (an archive has no installer).
+  reveal(file: string): void;
+  fetchImpl?: typeof fetch;
+}
 
 // Empty for the kinds that self-update; shown next to "Update available"
 // for the rest. The mac build would need signing before quitAndInstall can
@@ -114,6 +154,7 @@ export class Updater {
     percent: 0,
     latest: "",
     error: "",
+    message: "",
     status: null,
   };
 
@@ -122,7 +163,13 @@ export class Updater {
     private readonly currentVersion: string,
     private readonly fetchLatest: LatestVersionFetcher = fetchLatestReleaseVersion,
     private readonly startupDelayMs = STARTUP_CHECK_DELAY_MS,
+    private readonly installer: PackageInstaller | null = null,
   ) {}
+
+  private assetFor(version: string): string {
+    if (!this.installer || this.canSelfUpdate()) return "";
+    return packageAssetName(version, this.kind, this.installer.platform, this.installer.arch, this.installer.format);
+  }
 
   onStatus(listener: () => void): void {
     this.listeners.add(listener);
@@ -147,6 +194,7 @@ export class Updater {
       latest: latest || this.currentVersion,
       available,
       canSelfUpdate: this.canSelfUpdate(),
+      canDownload: available && Boolean(this.assetFor(latest)),
       instruction: INSTRUCTIONS[this.kind],
       releasesUrl: RELEASES_URL,
     };
@@ -189,10 +237,66 @@ export class Updater {
     }
   }
 
-  async downloadAndInstall(): Promise<void> {
-    if (!this.canSelfUpdate()) {
-      throw new Error(INSTRUCTIONS[this.kind] || "This install cannot update itself.");
+  // The package route: one file from the release into Downloads, then the
+  // system opens it. Nothing here needs root; the package installer asks for
+  // what it needs.
+  private async downloadPackage(): Promise<void> {
+    const installer = this.installer;
+    const status = await this.checkGitHub();
+    const asset = status.available ? this.assetFor(status.latest) : "";
+    if (!installer || !asset) {
+      throw new Error(status.available ? INSTRUCTIONS[this.kind] || "This install cannot update itself." : "You already have the latest version.");
     }
+    const { createWriteStream } = await import("node:fs");
+    const { mkdir, rename, rm } = await import("node:fs/promises");
+    const pathModule = await import("node:path");
+    const folder = installer.downloadsDir();
+    await mkdir(folder, { recursive: true });
+    const target = pathModule.join(folder, asset);
+    const partial = `${target}.part`;
+    this.setProgress({ state: "downloading", percent: 0, latest: status.latest, error: "", message: "" });
+    try {
+      const res = await (installer.fetchImpl ?? fetch)(`https://github.com/${REPO}/releases/download/v${status.latest}/${asset}`, {
+        headers: { "User-Agent": "open-dungeon-master-client" },
+      });
+      if (!res.ok || !res.body) throw new Error(`GitHub answered ${res.status} for ${asset}.`);
+      const total = Number(res.headers.get("content-length")) || 0;
+      const out = createWriteStream(partial);
+      let done = 0;
+      let shown = -1;
+      const reader = res.body.getReader();
+      for (;;) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        done += chunk.value.byteLength;
+        if (!out.write(chunk.value)) await new Promise<void>((resolve) => out.once("drain", () => resolve()));
+        const percent = total ? Math.min(99, Math.floor((done / total) * 100)) : 0;
+        if (percent !== shown) {
+          shown = percent;
+          this.setProgress({ state: "downloading", percent });
+        }
+      }
+      await new Promise<void>((resolve, reject) => out.end((err?: Error | null) => (err ? reject(err) : resolve())));
+      await rename(partial, target);
+      const archive = asset.endsWith(".tar.gz");
+      this.setProgress({
+        state: "ready",
+        percent: 100,
+        message: archive
+          ? `Version ${status.latest} is in your Downloads folder. Unpack it over the old one.`
+          : `Version ${status.latest} is downloaded. Your system's installer is opening it; close this app when it asks.`,
+      });
+      if (archive) installer.reveal(target);
+      else await installer.open(target);
+    } catch (err) {
+      await rm(partial, { force: true }).catch(() => undefined);
+      this.setProgress({ state: "error", error: err instanceof Error ? err.message : String(err) });
+      throw err;
+    }
+  }
+
+  async downloadAndInstall(): Promise<void> {
+    if (!this.canSelfUpdate()) return this.downloadPackage();
     const updater = await this.load();
     try {
       // electron-updater only downloads what its own last check found, so

@@ -64,11 +64,31 @@ export function splitRules(css) {
 
 // :root, html and body point at the scope element; everything else nests
 // beneath it. Written for minified preludes (no comments).
+// Attributes the server writes on <html> and its stylesheet keys on: the day
+// theme and the low effects setting. They stay on <html> in the apps too, so a
+// selector that reads them has to keep looking there. Rewriting
+// `html[data-theme="light"] .x` to `&[data-theme="light"] .x` asked the game
+// root for an attribute it never carries, and a bare `[data-effects="low"] .x`
+// nested under the root asked a descendant for it: between them the whole day
+// theme and every low effects rule were dead inside the apps.
+const DOCUMENT_ATTRIBUTE = /^(?:html|:root)?((?:\[data-(?:theme|effects)[^\]]*\])+)(?=$|[\s>+~:.#[])/;
+
 export function scopePrelude(prelude) {
   return prelude
     .split(",")
     .map((part) => {
       let selector = part.trim();
+      const documentLevel = DOCUMENT_ATTRIBUTE.exec(selector);
+      if (documentLevel) {
+        // "html[data-theme=light] .x" and "[data-theme=light] .x" both become
+        // "html[data-theme=light] & .x": the attribute on <html>, the rest
+        // inside the scope. Alone, the rule lands on the scope element itself.
+        const rest = selector.slice(documentLevel[0].length).trim();
+        const inner = rest.replace(/(^|[\s>+~])(html|body)(?=$|[\s>+~:.#[])/g, "$1&").replace(/:root\b/g, "&");
+        // "html[...] body .x": the body already IS the scope element.
+        if (inner.startsWith("&")) return `html${documentLevel[1]} ${inner}`;
+        return `html${documentLevel[1]} &${inner ? ` ${inner}` : ""}`;
+      }
       selector = selector.replace(/:root\b/g, "&");
       selector = selector.replace(/(^|[\s>+~])(html|body)(?=$|[\s>+~:.#[])/g, "$1&");
       return selector;

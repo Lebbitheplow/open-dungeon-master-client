@@ -21,6 +21,20 @@ test("scopePrelude turns the document selectors into the scope and leaves the re
   assert.equal(scopePrelude(".tbody,tbody"), ".tbody,tbody");
 });
 
+test("scopePrelude keeps the document's theme and effects attributes on <html>", () => {
+  // The server writes data-theme and data-effects on <html>, in the apps too.
+  assert.equal(scopePrelude('html[data-theme="light"] .plate-row'), 'html[data-theme="light"] & .plate-row');
+  assert.equal(scopePrelude('[data-theme="light"] .seg-pill'), 'html[data-theme="light"] & .seg-pill');
+  assert.equal(scopePrelude('[data-effects="low"] .ambient-dust::before'), 'html[data-effects="low"] & .ambient-dust::before');
+  assert.equal(scopePrelude("html[data-theme=light]"), "html[data-theme=light] &");
+  assert.equal(scopePrelude(':root[data-theme="light"]'), 'html[data-theme="light"] &');
+  assert.equal(scopePrelude('html[data-theme="light"] body'), 'html[data-theme="light"] &');
+  assert.equal(scopePrelude('html[data-theme="light"] body .glass'), 'html[data-theme="light"] & .glass');
+  assert.equal(scopePrelude('.a,[data-effects="low"] .b'), '.a,html[data-effects="low"] & .b');
+  // An attribute that lives on an ordinary element is left to nest as usual.
+  assert.equal(scopePrelude('[data-state="open"] .x'), '[data-state="open"] .x');
+});
+
 test("scopeCss nests style rules, keeps keyframes and properties on top, recurses into layers", () => {
   const css = [
     "@layer theme,base;",

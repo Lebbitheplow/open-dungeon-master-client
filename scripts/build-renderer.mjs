@@ -45,9 +45,25 @@ export const rendererBuildOptions = {
 
 const shims = path.join(repo, "src", "renderer", "game", "shims");
 
+// ONE Preact, by absolute path. esbuild resolves a bare alias target
+// ("preact/jsx-runtime") from the working directory, and the mobile build
+// runs from mobile/, which has a Preact of its own: the bundle then carried
+// two copies, an element made by one was not an element to the other, and
+// every Radix `asChild` (menu and dialog triggers, tooltips, the kit Select)
+// threw "failed to slot onto its children". Both shells now name the same
+// folder, whichever of the two installs is present.
+export function preactDir() {
+  const found = [path.join(repo, "node_modules", "preact"), path.join(repo, "mobile", "node_modules", "preact")].find((dir) =>
+    fs.existsSync(path.join(dir, "package.json")),
+  );
+  if (!found) throw new Error("Preact is not installed: run npm install in the client repo.");
+  return found;
+}
+
 // The game bundle's view of the world: React is Preact, Next's pieces are
 // the shims, "@/" is the server's src.
 export function gameBuildOptions(server) {
+  const preact = preactDir();
   return {
     ...rendererBuildOptions,
     format: "esm",
@@ -55,9 +71,11 @@ export function gameBuildOptions(server) {
     alias: {
       react: path.join(shims, "react.js"),
       "react-dom": path.join(shims, "react-dom.js"),
-      "react-dom/client": "preact/compat",
-      "react/jsx-runtime": "preact/jsx-runtime",
-      "react/jsx-dev-runtime": "preact/jsx-runtime",
+      "react-dom/client": path.join(preact, "compat"),
+      "react/jsx-runtime": path.join(preact, "jsx-runtime"),
+      "react/jsx-dev-runtime": path.join(preact, "jsx-runtime"),
+      // Every "preact" and "preact/..." import, the JSX runtime included.
+      preact,
       "next/link": path.join(shims, "next-link.tsx"),
       "next/navigation": path.join(shims, "next-navigation.ts"),
       "node:crypto": path.join(shims, "node-crypto.ts"),

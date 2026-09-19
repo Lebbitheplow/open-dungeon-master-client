@@ -221,7 +221,7 @@ function rerenderHome(): void {
 export function updateNoteFor(update: UpdateStatus | null, latest = ""): string {
   if (!update) return `Version ${latest} is available.`;
   if (!update.available) return "You have the latest version.";
-  if (update.canSelfUpdate) return `Version ${update.latest} is ready to install.`;
+  if (update.canSelfUpdate || update.canDownload) return `Version ${update.latest} is ready to install.`;
   return `Version ${update.latest} is available. ${update.instruction}`;
 }
 
@@ -231,7 +231,7 @@ export function updateNoteFor(update: UpdateStatus | null, latest = ""): string 
 // asked, once the answer lands in state.updateNote.
 export function updateControls(rerender: () => void): HTMLElement {
   const update = state.updateStatus;
-  if (update?.available && !update.canSelfUpdate) {
+  if (update?.available && !update.canSelfUpdate && !update.canDownload) {
     // The shell window hands http(s) opens to the system browser.
     const get = button("primary", `Get ${update.latest}`, () => {
       window.open(update.releasesUrl);
@@ -239,7 +239,7 @@ export function updateControls(rerender: () => void): HTMLElement {
     get.classList.add("quiet-size");
     return get;
   }
-  if (update?.available && update.canSelfUpdate) {
+  if (update?.available && (update.canSelfUpdate || update.canDownload)) {
     const install = button("primary", `Update to ${update.latest}`, (btn) => {
       btn.disabled = true;
       state.updateNote = "Starting the download...";
@@ -268,6 +268,82 @@ export function updateControls(rerender: () => void): HTMLElement {
     });
     rerender();
   });
+}
+
+// The update popup: a modal over whatever screen is up, so a new version is
+// never a line of small print. Shown once per run, when the background check
+// (or an explicit one) finds a newer build. "Later" only closes it; the
+// footer and Settings keep the button.
+let updatePopup: HTMLElement | null = null;
+let updatePopupShownFor = "";
+
+export function closeUpdatePopup(): void {
+  updatePopup?.remove();
+  updatePopup = null;
+}
+
+export function showUpdatePopup(update: UpdateStatus): void {
+  if (!update.available || updatePopupShownFor === update.latest) return;
+  updatePopupShownFor = update.latest;
+  closeUpdatePopup();
+  const scrim = el("div", "update-popup-scrim");
+  scrim.setAttribute("role", "alertdialog");
+  scrim.setAttribute("aria-modal", "true");
+  scrim.setAttribute("aria-label", "Update available");
+  const card = el("section", "update-popup card ornate");
+  const canInstall = update.canSelfUpdate || update.canDownload;
+  const note = el("p", "update-popup-note", "");
+  const paint = () => {
+    note.textContent = state.updateNote && state.updateNote !== updateNoteFor(update) ? state.updateNote : "";
+  };
+  card.append(
+    el("p", "eyebrow", "Update available"),
+    el("h2", "", `Version ${update.latest}`),
+    el(
+      "p",
+      "sub",
+      canInstall
+        ? `You are on ${update.current}. Hosts on a newer version may not open in an older app, so it is worth taking now.`
+        : `You are on ${update.current}. ${update.instruction}`,
+    ),
+    note,
+  );
+  const actions = el("div", "update-popup-actions");
+  const later = button("quiet", "Later", () => closeUpdatePopup());
+  if (canInstall) {
+    const install = button("primary", `Update to ${update.latest}`, (btn) => {
+      btn.disabled = true;
+      later.disabled = true;
+      state.updateNote = "Starting the download...";
+      paint();
+      void window.odm.updateInstall().then((result) => {
+        if (!result.ok) {
+          state.updateNote = result.error;
+          btn.disabled = false;
+        }
+        later.disabled = false;
+        paint();
+      });
+    }, "download");
+    actions.append(later, install);
+  } else {
+    actions.append(later, button("primary", `Get ${update.latest}`, () => window.open(update.releasesUrl), "download"));
+  }
+  card.append(actions);
+  scrim.append(card);
+  scrim.addEventListener("click", (event) => {
+    if (event.target === scrim) closeUpdatePopup();
+  });
+  updatePopup = scrim;
+  document.body.append(scrim);
+  // Progress lines reach the popup while it is open.
+  updatePopupPaint = paint;
+  (canInstall ? actions.lastElementChild as HTMLElement : later).focus();
+}
+
+let updatePopupPaint: (() => void) | null = null;
+export function repaintUpdatePopup(): void {
+  if (updatePopup) updatePopupPaint?.();
 }
 
 // Version, update state and the way home, in one quiet line at the bottom.

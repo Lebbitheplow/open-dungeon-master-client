@@ -78,16 +78,14 @@ for (const name of ["style.css", "controls.css", "home.css", "story.png"]) {
 }
 fs.copyFileSync(path.join(mobile, "src", "index.html"), path.join(www, "index.html"));
 
-// Same display face as the desktop shell. Resolved as a module so it works
-// from the mobile package's own node_modules (CI installs only those) or
-// the repo root's.
-const fontSource = path.join(
-  path.dirname(createRequire(import.meta.url).resolve("@fontsource/cinzel/package.json")),
-  "files",
-);
+// The same three faces as the desktop shell. Each package is resolved as a
+// module so it is found in the mobile package's own node_modules (CI installs
+// only those) or in the repo root's.
+const requireHere = createRequire(import.meta.url);
+const { FONT_PACKAGES } = await import(path.join(repo, "scripts", "font-files.mjs"));
 fs.mkdirSync(path.join(www, "fonts"), { recursive: true });
-for (const weight of ["400", "600", "700"]) {
-  const name = `cinzel-latin-${weight}-normal.woff2`;
-  fs.copyFileSync(path.join(fontSource, name), path.join(www, "fonts", name));
+for (const [name, files] of Object.entries(FONT_PACKAGES)) {
+  const folder = path.join(path.dirname(requireHere.resolve(`${name}/package.json`)), "files");
+  for (const file of files) fs.copyFileSync(path.join(folder, file), path.join(www, "fonts", file));
 }
 console.log("www built");

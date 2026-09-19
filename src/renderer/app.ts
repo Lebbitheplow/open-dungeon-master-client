@@ -1,7 +1,7 @@
 // The shell UI's entry point: mounts the frame, wires the bridge's events
 // to the screens, and paints the home. The screens themselves live in the
 // sibling modules; all privileged work happens across window.odm.
-import { closeOverlay, mountShell, updateNoteFor } from "./chrome.js";
+import { closeOverlay, mountShell, repaintUpdatePopup, showUpdatePopup, updateNoteFor } from "./chrome.js";
 import { closeDrawer, createDrawer, isDrawerOpen } from "./drawer.js";
 import { renderHome } from "./home.js";
 import { aiProgress } from "./local-ai.js";
@@ -68,13 +68,17 @@ window.odm.onEvent((event) => {
       // footer and Settings offer the update button straight away.
       if (progress.status) state.updateStatus = progress.status;
       state.updateNote = updateNoteFor(progress.status, progress.latest);
+      // A popup, not a line of small print: an app behind its host is a
+      // source of trouble the player should hear about at once.
+      if (progress.status) showUpdatePopup(progress.status);
     } else if (progress.state === "downloading") {
       state.updateNote = `Downloading update... ${progress.percent}%`;
     } else if (progress.state === "ready") {
-      state.updateNote = "Restarting to install the update...";
+      state.updateNote = progress.message || "Restarting to install the update...";
     } else if (progress.state === "error") {
       state.updateNote = progress.error;
     }
+    repaintUpdatePopup();
     rerenderLive();
   } else if (event.kind === "join-request") {
     // A second pass at the same server (the address alone, once the code

@@ -1576,7 +1576,7 @@ const bridge: OdmBridge = {
   // About card renders as version-only without a special case crashing.
   updateCheck: async () => ({
     ok: true as const,
-    update: { current: "", latest: "", available: false, canSelfUpdate: false, instruction: "", releasesUrl: "" },
+    update: { current: "", latest: "", available: false, canSelfUpdate: false, canDownload: false, instruction: "", releasesUrl: "" },
   }),
   updateInstall: async () => fail(new Error("Updates come through the app store on Android.")),
 

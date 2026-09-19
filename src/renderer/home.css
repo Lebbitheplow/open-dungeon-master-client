@@ -585,7 +585,13 @@
 .game-root {
   --font-geist-sans: var(--font-sans);
   --font-geist-mono: var(--font-mono);
-  --font-source-serif: Georgia, "Times New Roman", serif;
+  --font-source-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  /* The display face by name. The server's theme writes
+     "--font-display: var(--font-display), ..." and relies on Next's font class
+     to win on <html>; confined to this element that is a cycle, the variable
+     is invalid, and every title, tile label and button in the host's pages
+     fell back to the body's sans. */
+  --font-display: "Cinzel", Georgia, "Times New Roman", serif;
   display: flex;
   flex-direction: column;
   min-height: calc(100dvh - var(--game-top));
