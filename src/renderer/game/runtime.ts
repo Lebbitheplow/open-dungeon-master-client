@@ -28,7 +28,16 @@ let observer: MutationObserver | null = null;
 let mediaPatched = false;
 // Sixty-four protected paths at a time, the oldest revoked as newer ones
 // arrive (docs/vtt-parity-implementation-plan.md 18.3).
-const objectUrls = createObjectUrlCache(64, (url) => URL.revokeObjectURL(url));
+// Pictures fetched with the player's token (portraits, uploads, generated
+// art) live as object URLs. The cache drops the oldest past its cap, and a
+// dropped URL is revoked only when nothing on the page still shows it: the
+// table alone asks for more than a hundred pictures, and revoking one that an
+// element was showing, or was about to be handed, left a broken portrait.
+function revokeIfUnused(url: string): void {
+  const inUse = document.querySelector(`[src="${url}"], [href="${url}"]`);
+  if (!inUse) URL.revokeObjectURL(url);
+}
+const objectUrls = createObjectUrlCache(256, revokeIfUnused);
 
 function isRootRelative(url: string): boolean {
   return url.startsWith("/") && !url.startsWith("//");

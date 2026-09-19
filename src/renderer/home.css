@@ -597,6 +597,12 @@
   min-height: calc(100dvh - var(--game-top));
 }
 .page .game-root { background: transparent; height: auto; }
+/* The server's body rule (overflow-y: auto; overscroll-behavior: none) lands
+   on this element once the sheet is confined. Here that made a scroll
+   container that never overflows and never hands the wheel on: a tall page
+   (a character sheet) could not be scrolled at all. The page scrolls, not
+   the root. */
+.page .game-root { overflow: visible; overscroll-behavior: auto; }
 .page .game-root::before { display: none; }
 .game-root .h-dvh { height: calc(100dvh - var(--game-top)); }
 

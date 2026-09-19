@@ -89,8 +89,13 @@ function withViewTransition(update: () => void): void {
   }
   start.call(document, () => {
     update();
-    // Preact renders on the next tick; hold the snapshot until it has painted.
-    return new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    // Preact renders on its next tick; hold the snapshot until that has run.
+    // A timer, NOT requestAnimationFrame: the browser suppresses rendering,
+    // and with it every animation frame, while a view transition waits for
+    // this promise. Waiting on a frame meant waiting for the browser's own
+    // four second timeout, with the old page frozen on screen, on every
+    // change of page.
+    return new Promise<void>((resolve) => setTimeout(resolve, 0));
   });
 }
 
