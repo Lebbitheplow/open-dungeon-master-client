@@ -8,6 +8,7 @@ import { renderHome } from "./home.js";
 import { playLocal } from "./local.js";
 import { renderError } from "./servers.js";
 import { isAndroid, state } from "./state.js";
+import { renderHarnessPicker } from "./harness-ai.js";
 import type { AiSetup, HardwareInfo, LocalAiStatus, LocalAiTier, SavedAi } from "../shared/types";
 
 // The live progress bar of an install in flight, for the progress events to
@@ -56,8 +57,17 @@ export function renderLocalAi(fromHome = false, aiStatus: LocalAiStatus | null =
       () => renderOpenAiForm(),
     ),
   );
-  // Local models need a desktop GPU; a phone gets the two doors above.
+  // Local models need a desktop GPU, and an agent program runs on a
+  // computer; a phone gets the two doors above.
   if (!isAndroid) {
+    choices.append(
+      choice(
+        "wand",
+        "An agent you already have",
+        "Claude Code, Codex, opencode or Grok Build narrates on its own sign-in, with none of its own tools.",
+        () => renderHarnessPicker(finishAi, () => renderLocalAi()),
+      ),
+    );
     choices.append(
       choice(
         "cpu",

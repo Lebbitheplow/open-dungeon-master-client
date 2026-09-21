@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { DEFAULT_MODEL, NO_SAVED_AI, openAiPatch, savedAiFrom } from "../dist/shared/ai-setup.js";
+import { DEFAULT_MODEL, NO_SAVED_AI, harnessPatch, openAiPatch, savedAiFrom } from "../dist/shared/ai-setup.js";
 
 const setup = (apiKey, model = "", utilityModel = "") => ({ choice: "openai", apiKey, model, utilityModel });
 const openAiConfig = (text) => ({
@@ -45,4 +45,34 @@ test("a key for another backend is not an OpenAI key", () => {
   assert.deepEqual(savedAiFrom(lookalike), NO_SAVED_AI);
   const human = { config: { text: { provider: "none", customBaseUrl: "https://api.openai.com/v1", hasCustomApiKey: true } } };
   assert.deepEqual(savedAiFrom(human), NO_SAVED_AI);
+});
+
+test("an agent the device already has narrates every campaign, and no key is ever sent", () => {
+  const built = harnessPatch({
+    choice: "harness",
+    apiKey: "",
+    model: "",
+    utilityModel: "",
+    harness: { id: "claude", model: " sonnet ", utilityModel: "haiku" },
+  });
+  assert.deepEqual(built.patch, {
+    harness: { id: "claude", model: "sonnet", utilityModel: "haiku" },
+    text: { provider: "harness" },
+  });
+  assert.ok(!JSON.stringify(built.patch).includes("ApiKey"), "the agent's own sign-in is used, nothing else");
+  assert.deepEqual(harnessPatch({ choice: "harness", apiKey: "", model: "", utilityModel: "" }), { error: "Choose a program first." });
+  assert.deepEqual(
+    harnessPatch({ choice: "harness", apiKey: "", model: "", utilityModel: "", harness: { id: "bash", model: "", utilityModel: "" } }),
+    { error: "Choose a program first." },
+  );
+});
+
+test("a device narrating with an agent is read back as that agent, not as a key", () => {
+  const saved = savedAiFrom({
+    config: { text: { provider: "harness" }, harness: { id: "opencode", model: "llama/qwen3.6-35b", utilityModel: "" } },
+  });
+  assert.equal(saved.harnessId, "opencode");
+  assert.equal(saved.model, "llama/qwen3.6-35b");
+  assert.equal(saved.keySaved, false);
+  assert.deepEqual(savedAiFrom({ config: { text: { provider: "harness" }, harness: { id: "" } } }), NO_SAVED_AI);
 });

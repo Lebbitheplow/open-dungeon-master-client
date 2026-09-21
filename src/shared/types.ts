@@ -54,11 +54,39 @@ export interface LocalStatus {
 // The offline-play setup wizard's AI step. "human" changes nothing on the
 // server; campaigns simply run with a human Dungeon Master.
 export interface AiSetup {
-  choice: "openai" | "human";
+  choice: "openai" | "human" | "harness";
   apiKey: string;
   model: string;
   utilityModel: string;
+  // "harness": an agent program already installed and signed in on this
+  // computer (Claude Code, Codex, opencode, Grok Build) narrates instead.
+  harness?: { id: HarnessId; model: string; utilityModel: string };
 }
+
+export type HarnessId = "claude" | "codex" | "opencode" | "grok";
+
+// One agent program as the device world's server sees it (its
+// GET /api/admin/harness). The shell never looks for programs itself: the
+// bundled server is the one that will start them, so its answer is the truth.
+export interface HarnessCard {
+  id: HarnessId;
+  label: string;
+  installed: boolean;
+  version?: string;
+  auth: { state: "ready" | "signed-out" | "unknown"; plan?: string; account?: string };
+  models: Array<{ id: string; label: string; cheap?: boolean }>;
+  lockdown: "removed" | "contained";
+  lockdownProven: boolean;
+  nativeImages: "no" | "untested" | "verified";
+  availability: "ok" | "container" | "sandboxed-package" | "phone";
+  message?: string;
+  installHint?: string;
+  signInHint?: string;
+}
+
+export type HarnessStatusResult =
+  | { ok: true; statuses: HarnessCard[]; current: { id: string; model: string; utilityModel: string } }
+  | { ok: false; error: string };
 
 // What Story AI already holds for this device, so the OpenAI form can show
 // it instead of asking again. The key itself never leaves the device's
@@ -67,6 +95,8 @@ export interface SavedAi {
   keySaved: boolean;
   model: string;
   utilityModel: string;
+  // Set when the device narrates with an agent program.
+  harnessId?: string;
 }
 
 // firstSetup: the shell just auto-provisioned the local profile, so the
@@ -352,6 +382,9 @@ export interface OdmBridge {
   localLogin(input: { username: string; password: string }): Promise<Result<{ status: LocalStatus }>>;
   localConfigureAi(setup: AiSetup): Promise<Result>;
   localAiSaved(): Promise<SavedAi>;
+  // The agent programs the device world's server can start. Desktop only;
+  // the phone answers that there is no such thing on a phone.
+  localHarnessStatus(refresh?: boolean): Promise<HarnessStatusResult>;
   localPlay(joinCode?: string, path?: string): Promise<ConnectResult>;
   shareStart(): Promise<Result<{ tunnel: TunnelStatus }>>;
   shareStop(): Promise<Result<{ tunnel: TunnelStatus }>>;

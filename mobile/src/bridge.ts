@@ -1550,6 +1550,9 @@ const bridge: OdmBridge = {
     }),
   localConfigureAi: (setup) => localWorld.configureAi(setup),
   localAiSaved: () => localWorld.aiSaved(),
+  // Agent programs (Claude Code, Codex, ...) are started by a desktop's own
+  // server; a phone has none to start.
+  localHarnessStatus: async () => ({ ok: false, error: "Agent programs run on a computer, not a phone." }),
   localPlay: (joinCode, path) => localWorld.play(cleanCode(joinCode), safeInnerPath(path)),
   async shareStart() {
     const status = await shareTunnel.start();

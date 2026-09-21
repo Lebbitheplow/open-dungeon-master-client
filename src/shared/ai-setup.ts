@@ -23,7 +23,17 @@ function isOpenAi(baseUrl: unknown): boolean {
 // key itself never leaves the server, only whether one is set). A key for
 // some other backend does not count: it could not pay for OpenAI.
 export function savedAiFrom(body: unknown): SavedAi {
-  const text = (body as { config?: { text?: Record<string, unknown> } } | null)?.config?.text;
+  const config = (body as { config?: { text?: Record<string, unknown>; harness?: Record<string, unknown> } } | null)
+    ?.config;
+  const text = config?.text;
+  if (text?.provider === "harness" && typeof config?.harness?.id === "string" && config.harness.id) {
+    return {
+      ...NO_SAVED_AI,
+      harnessId: config.harness.id,
+      model: typeof config.harness.model === "string" ? config.harness.model : "",
+      utilityModel: typeof config.harness.utilityModel === "string" ? config.harness.utilityModel : "",
+    };
+  }
   if (!text || text.provider !== "custom" || !isOpenAi(text.customBaseUrl)) return NO_SAVED_AI;
   if (text.hasCustomApiKey !== true) return NO_SAVED_AI;
   return {
@@ -56,6 +66,28 @@ export function openAiPatch(setup: AiSetup, saved: SavedAi): { patch: object } |
         ...key("utilityApiKey"),
       },
       images: { defaultBackend: "openai", ...key("openaiApiKey") },
+    },
+  };
+}
+
+// The admin settings patch for "an agent I already have": the device's server
+// narrates every campaign with that program on its own sign-in. Pictures are
+// left as they are: a local ComfyUI keeps painting, and without one the
+// tables play with placeholder art. The program's own image tool is only
+// offered after a test picture from the admin page, never from here.
+export function harnessPatch(setup: AiSetup): { patch: object } | { error: string } {
+  const harness = setup.harness;
+  if (!harness || !["claude", "codex", "opencode", "grok"].includes(harness.id)) {
+    return { error: "Choose a program first." };
+  }
+  return {
+    patch: {
+      harness: {
+        id: harness.id,
+        model: harness.model.trim().slice(0, 200),
+        utilityModel: harness.utilityModel.trim().slice(0, 200),
+      },
+      text: { provider: "harness" },
     },
   };
 }

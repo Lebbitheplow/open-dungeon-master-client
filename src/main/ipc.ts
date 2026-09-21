@@ -5,6 +5,8 @@ import type {
   ServerProbe,
   AiSetup,
   ConnectResult,
+  HarnessCard,
+  HarnessStatusResult,
   LocalStatus,
   Result,
   ServerSummary,
@@ -21,7 +23,7 @@ import {
   trustedTunnelOrigin,
   type JoinLink,
 } from "../shared/deep-link";
-import { NO_SAVED_AI, openAiPatch, savedAiFrom } from "../shared/ai-setup";
+import { NO_SAVED_AI, harnessPatch, openAiPatch, savedAiFrom } from "../shared/ai-setup";
 import { coverRequestUrl, type HostInput } from "../shared/home-feed-logic";
 import { landingPath, safeInnerPath } from "../shared/open-path";
 import { createDesktopHomeFeed, fetchCoverImage } from "./home-feed";
@@ -32,6 +34,7 @@ import {
   deleteAccount,
   loginForToken,
   getAdminSettings,
+  getHarnessStatus,
   patchAdminSettings,
   probeServer,
   registerAccount,
@@ -786,6 +789,14 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
         await patchAdminSettings(local.origin, token, { text: { provider: "none" } });
         return { ok: true };
       }
+      if (setup?.choice === "harness") {
+        // The program must be one the device's own server can start; its
+        // status list is the only authority on that.
+        const built = harnessPatch(setup);
+        if ("error" in built) return fail(new Error(built.error));
+        await patchAdminSettings(local.origin, token, built.patch);
+        return { ok: true };
+      }
       if (setup?.choice !== "openai") return { ok: true };
       const saved = savedAiFrom(await getAdminSettings(local.origin, token).catch(() => null));
       const built = openAiPatch(
@@ -800,6 +811,33 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
       if ("error" in built) return fail(new Error(built.error));
       await patchAdminSettings(local.origin, token, built.patch);
       return { ok: true };
+    } catch (err) {
+      return fail(err);
+    }
+  });
+
+  // The agent programs this computer has, as the device world's server sees
+  // them (it is the server that will start them, with the PATH and sandbox it
+  // actually has, so the shell does no looking of its own). Starts the world
+  // if it is not running yet.
+  ipcMain.handle("local:harness-status", async (_event, refresh: unknown): Promise<HarnessStatusResult> => {
+    try {
+      if (!local.origin) await local.start();
+      const token = store.token(LOCAL_SERVER_ID);
+      if (!token || !local.origin) return { ok: false, error: "Set up the local account first." };
+      const body = (await getHarnessStatus(local.origin, token, refresh === true)) as {
+        statuses?: HarnessCard[];
+        config?: { id?: string; model?: string; utilityModel?: string };
+      };
+      return {
+        ok: true,
+        statuses: Array.isArray(body.statuses) ? body.statuses : [],
+        current: {
+          id: body.config?.id ?? "",
+          model: body.config?.model ?? "",
+          utilityModel: body.config?.utilityModel ?? "",
+        },
+      };
     } catch (err) {
       return fail(err);
     }

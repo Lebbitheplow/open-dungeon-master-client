@@ -168,6 +168,15 @@ export async function patchAdminSettings(
   if (!res.ok) throw await errorFrom(res, "Saving server settings failed.");
 }
 
+// The agent programs the server can start, as its admin page lists them.
+export async function getHarnessStatus(origin: string, token: string, refresh: boolean): Promise<unknown> {
+  const res = await api(origin, `/api/admin/harness${refresh ? "?refresh=1" : ""}`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await errorFrom(res, "Reading the agent programs failed.");
+  return res.json();
+}
+
 // The masked admin settings: every field, with each key reduced to whether
 // one is set.
 export async function getAdminSettings(origin: string, token: string): Promise<unknown> {

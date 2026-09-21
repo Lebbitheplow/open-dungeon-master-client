@@ -151,6 +151,24 @@ input:where(:not(.game-root *)):focus {
 }
 @media (max-width: 767px) { input { font-size: 16px; } }
 
+/* A picker styled like the text fields beside it (the agent program's model). */
+select:where(:not(.game-root *)) {
+  font: inherit;
+  width: 100%;
+  color: var(--ink-100);
+  background: rgba(13, 11, 28, 0.8);
+  border: 1px solid rgba(48, 40, 83, 0.7);
+  border-radius: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  box-shadow: 0 2px 6px rgba(4, 2, 12, 0.45) inset;
+  outline: none;
+  transition: border-color 150ms, box-shadow 150ms;
+}
+select:where(:not(.game-root *)):focus {
+  border-color: rgba(227, 193, 92, 0.7);
+  box-shadow: 0 0 0 3px rgba(212, 171, 58, 0.12), 0 2px 6px rgba(4, 2, 12, 0.45) inset;
+}
+
 .form-card { padding: 1.5rem; }
 .form-card h2 { margin-bottom: 0.25rem; }
 
@@ -225,6 +243,25 @@ input:where(:not(.game-root *)):focus {
 .choice .text { min-width: 0; flex: 1; }
 .choice .title { font-weight: 600; display: block; }
 .choice .desc { color: var(--ink-500); font-size: 0.84rem; display: block; margin-top: 0.15rem; }
+/* The chosen card holds its lift and its gold edge, so the choice is carried
+   by the frame rather than a scale that would soften the text. */
+.choice[aria-checked="true"] {
+  transform: translateY(-2px);
+  border-color: rgba(244, 212, 122, 0.75);
+  box-shadow:
+    0 0 0 1px rgba(244, 212, 122, 0.45),
+    0 8px 28px rgba(4, 2, 12, 0.55),
+    0 0 24px rgba(212, 171, 58, 0.22);
+}
+/* Status tags on the agent program cards cross-fade when a check lands. */
+.choice .tag { transition: color 180ms var(--ease-snap); }
+.choice .tag.ok { color: #6ee7b7; }
+.choice .tag.warn { color: #fcd34d; }
+.choice .tag.off { color: var(--ink-500); }
+@media (prefers-reduced-motion: reduce) {
+  .choice, .choice .tag { transition: none; }
+  .choice[aria-checked="true"], .choice:hover:not(:disabled) { transform: none; }
+}
 .choice .tag {
   font-size: 0.7rem;
   letter-spacing: 0.08em;
