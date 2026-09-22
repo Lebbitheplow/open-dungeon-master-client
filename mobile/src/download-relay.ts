@@ -1,10 +1,21 @@
+import { MAX_DOWNLOAD_BYTES, filenameFromUrl } from "./download-shim-core";
+
 // Native side of the download bridge for the game webview. The injected shim
-// (download-shim.ts) fetches an <a download> target inside the page and
-// posts its bytes here as base64 over the InAppBrowser message channel; this
-// relay parks them in the app cache and opens the system share sheet, where
-// the player saves to Files or Drive or sends the file on. Dependencies are
-// injected so tests drive the protocol against fakes; bridge.ts wires the
-// real Filesystem, Share and InAppBrowser plugins in.
+// (download-shim.ts) takes over an <a download> click inside the page and
+// posts it here over the InAppBrowser message channel: a blob: link as its
+// bytes in base64 (only the page can read those), an http(s) link as an
+// address, which this relay streams natively into the app cache with the
+// WebView's own cookies. Either way the file is parked in the cache and the
+// system share sheet opens, where the player saves to Files or Drive or
+// sends the file on. Dependencies are injected so tests drive the protocol
+// against fakes; bridge.ts wires the real plugins in.
+
+export interface NativeFetchResult {
+  size: number;
+  mime: string;
+  // What the server called the file (Content-Disposition), "" without one.
+  suggestedName: string;
+}
 
 export interface DownloadRelayDeps {
   // Writes base64 bytes at a path under the app cache directory, creating
@@ -12,6 +23,12 @@ export interface DownloadRelayDeps {
   writeCache(path: string, base64: string): Promise<string>;
   // Removes a cache folder and its contents; a missing folder is fine.
   clearCache(path: string): Promise<void>;
+  // Streams an http(s) address into DOWNLOAD_FOLDER/INCOMING_NAME with the
+  // cookies for it plus these headers, within the size cap. Rejects when
+  // the server refuses, the file is too big or the network fails.
+  fetchToCache(url: string, headers: Record<string, string>): Promise<NativeFetchResult>;
+  // Renames a cache file and returns its file:// uri.
+  renameCache(from: string, to: string): Promise<string>;
   // Opens the system share sheet for one file. Rejects with a message
   // containing "cancel" when the player backs out.
   share(title: string, uri: string): Promise<void>;
@@ -20,10 +37,13 @@ export interface DownloadRelayDeps {
 }
 
 export const DOWNLOAD_FOLDER = "odm-downloads";
+// Where a streamed file lands before it has a name.
+export const INCOMING_NAME = "incoming.part";
 // 40 MB of bytes is about 53.4 MB of base64; a little headroom on top.
 export const MAX_DOWNLOAD_B64_CHARS = 56 * 1024 * 1024;
 const MAX_NAME_LENGTH = 120;
 const MAX_MESSAGE_LENGTH = 200;
+const MAX_URL_LENGTH = 4096;
 
 // The share sheet derives the MIME type from the extension, so a nameless
 // export still needs one for the receiving app to open it.
@@ -44,7 +64,7 @@ const EXTENSION_BY_MIME: Record<string, string> = {
   "image/svg+xml": ".svg",
 };
 
-function extensionFor(mime: unknown): string {
+export function extensionFor(mime: unknown): string {
   const type = typeof mime === "string" ? (mime.split(";")[0] ?? "").trim().toLowerCase() : "";
   return EXTENSION_BY_MIME[type] ?? "";
 }
@@ -79,12 +99,42 @@ function str(value: unknown, max: number): string {
   return typeof value === "string" ? value.slice(0, max) : "";
 }
 
+// A web address the relay may stream, or "" for anything else (a page
+// could post any string here). With an origin given, only that origin's
+// files are fetched: the page's own cookies go with the request, and no
+// page gets to spend another host's session.
+export function fetchableUrl(raw: unknown, origin?: string): string {
+  if (typeof raw !== "string" || raw.length > MAX_URL_LENGTH) return "";
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return "";
+    if (origin && url.origin !== origin) return "";
+    return url.href;
+  } catch {
+    return "";
+  }
+}
+
 export function createDownloadRelay(deps: DownloadRelayDeps): {
-  handleMessage(detail: unknown): Promise<boolean>;
+  // Returns false for messages that are not download traffic, so the
+  // caller can route other webview messages elsewhere. origin, when given,
+  // is the only host an address message may point at.
+  handleMessage(detail: unknown, options?: { origin?: string }): Promise<boolean>;
+  // Streams a host file with these headers and hands it to the share
+  // sheet. True when the file arrived (whatever the player did with the
+  // sheet); false after a failure, which the player has been told about.
+  download(url: string, name: string, headers: Record<string, string>): Promise<boolean>;
 } {
   // Downloads run one at a time: each clears the cache folder before
   // writing, and a file mid-share must not be swept away by the next one.
   let queue: Promise<void> = Promise.resolve();
+
+  function report(name: string, err: unknown): void {
+    const message = err instanceof Error ? err.message : "";
+    // Backing out of the share sheet is a choice, not a failure.
+    if (/cancel/i.test(message)) return;
+    deps.notify(`Could not save ${name}. ${message || "Something went wrong."}`.trim());
+  }
 
   async function save(name: string, data: string): Promise<void> {
     try {
@@ -92,21 +142,56 @@ export function createDownloadRelay(deps: DownloadRelayDeps): {
       const uri = await deps.writeCache(`${DOWNLOAD_FOLDER}/${name}`, data);
       await deps.share(name, uri);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "";
-      // Backing out of the share sheet is a choice, not a failure.
-      if (/cancel/i.test(message)) return;
-      deps.notify(`Could not save ${name}. ${message || "Something went wrong."}`.trim());
+      report(name, err);
     }
   }
 
+  async function stream(url: string, wanted: string, headers: Record<string, string>): Promise<boolean> {
+    // The name the notice uses if the fetch never says what the file is.
+    let name = sanitizeFilename(wanted || filenameFromUrl(url), "");
+    try {
+      await deps.clearCache(DOWNLOAD_FOLDER).catch(() => undefined);
+      const fetched = await deps.fetchToCache(url, headers);
+      if (fetched.size > MAX_DOWNLOAD_BYTES) {
+        deps.notify(`${name} is larger than the 40 MB the app can hand off.`);
+        return false;
+      }
+      name = sanitizeFilename(wanted || fetched.suggestedName || filenameFromUrl(url), fetched.mime);
+      const uri = await deps.renameCache(`${DOWNLOAD_FOLDER}/${INCOMING_NAME}`, `${DOWNLOAD_FOLDER}/${name}`);
+      try {
+        await deps.share(name, uri);
+      } catch (err) {
+        report(name, err);
+      }
+      return true;
+    } catch (err) {
+      report(name, err);
+      return false;
+    }
+  }
+
+  function download(url: string, name: string, headers: Record<string, string>): Promise<boolean> {
+    const run = queue.then(() => stream(url, name, headers));
+    queue = run.then(() => undefined, () => undefined);
+    return run;
+  }
+
   return {
-    // Returns false for messages that are not download traffic, so the
-    // caller can route other webview messages elsewhere.
-    async handleMessage(detail: unknown): Promise<boolean> {
-      const msg = detail as { type?: unknown; name?: unknown; mime?: unknown; data?: unknown; message?: unknown } | null;
+    download,
+    async handleMessage(detail: unknown, options = {}): Promise<boolean> {
+      const msg = detail as { type?: unknown; name?: unknown; mime?: unknown; data?: unknown; message?: unknown; url?: unknown } | null;
       if (!msg || typeof msg !== "object") return false;
       if (msg.type === "odm-download-error") {
         deps.notify(str(msg.message, MAX_MESSAGE_LENGTH) || "The download failed.");
+        return true;
+      }
+      if (msg.type === "odm-download-url") {
+        const url = fetchableUrl(msg.url, options.origin);
+        if (!url) {
+          deps.notify("That download is not from this server.");
+          return true;
+        }
+        await download(url, str(msg.name, MAX_NAME_LENGTH), {});
         return true;
       }
       if (msg.type !== "odm-download") return false;

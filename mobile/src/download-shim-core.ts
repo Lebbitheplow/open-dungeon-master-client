@@ -1,13 +1,17 @@
 // Browser side of the download bridge for the game webview. The Android
 // WebView the game runs in has no download handler, so an <a download> click
 // (character-sheet PDF, workshop bundle, story export) would silently do
-// nothing. This core decides which clicks to take over, fetches the file in
-// the page where the session cookie and blob: URLs are valid, and posts the
-// bytes to the shell as base64; download-relay.ts saves and shares them
-// natively. DOM and transport are injected so the logic runs under Node.
+// nothing. This core decides which clicks to take over. A blob: link (a
+// file the page built itself) is only readable here, so it is fetched in
+// the page and posted to the shell as base64. An http(s) link is posted as
+// an address and a name, and the shell streams it natively with the same
+// cookie jar (download-relay.ts, DownloadPlugin.java), so a 40 MB export
+// never exists as a string. DOM and transport are injected so the logic
+// runs under Node.
 
 export const MAX_DOWNLOAD_BYTES = 40 * 1024 * 1024;
 export const DOWNLOAD_MESSAGE = "odm-download";
+export const DOWNLOAD_URL_MESSAGE = "odm-download-url";
 export const DOWNLOAD_ERROR_MESSAGE = "odm-download-error";
 export const DOWNLOAD_NOTICE_MESSAGE = "odm-download-notice";
 
@@ -165,6 +169,15 @@ export function createDownloadShim(deps: DownloadShimDeps): {
     href: string,
     download: string,
   ): Promise<void> {
+    if (!href.startsWith("blob:")) {
+      // The shell fetches it; the server's own name for the file (its
+      // Content-Disposition) is read there, so only the link's wish for a
+      // name travels.
+      channel.postMessage({
+        detail: { type: DOWNLOAD_URL_MESSAGE, url: href, name: download.trim() },
+      });
+      return;
+    }
     const name = deriveFilename(download, null, href);
     const fail = (message: string): void => {
       channel.postMessage({ detail: { type: DOWNLOAD_ERROR_MESSAGE, name, message } });

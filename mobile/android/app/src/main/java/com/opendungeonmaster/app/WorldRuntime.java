@@ -5,26 +5,17 @@ import android.content.SharedPreferences;
 import android.util.Log;
 import java.io.BufferedInputStream;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.net.HttpURLConnection;
-import java.net.Inet4Address;
-import java.net.InetAddress;
-import java.net.NetworkInterface;
-import java.net.ServerSocket;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.security.SecureRandom;
-import java.util.Collections;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
+import java.util.concurrent.atomic.AtomicReference;
 import org.json.JSONObject;
 
 /**
@@ -35,24 +26,32 @@ import org.json.JSONObject;
  * <code>node server.js</code> as a child process listening on all
  * interfaces, so friends on the same Wi-Fi can join. Mirrors the desktop
  * shell's LocalServer (src/main/local-server.ts) in shape and behavior.
+ *
+ * Threading: start() holds the runtime's monitor so two starts cannot race,
+ * and it can hold it for a while (a payload unpack, then up to ninety
+ * seconds of health polling). stop() never takes that monitor: it flips a
+ * flag and kills the child, and every wait inside start() watches the flag,
+ * so a stop from the notification or the bridge returns promptly. Both are
+ * meant for background threads; stop() waits up to five seconds for the
+ * child to exit.
  */
 public final class WorldRuntime {
 
     private static final String TAG = "ODMWorld";
     private static final int DEFAULT_PORT = 3210;
     private static final long HEALTH_TIMEOUT_MS = 90_000;
+    private static final long LOG_CAP_BYTES = 1024L * 1024;
+    private static final int PORT_ATTEMPTS = 3;
     private static final String PAYLOAD_ASSET = "server-payload.zip";
     private static final String PAYLOAD_INFO_ASSET = "server-payload.json";
     private static final String PREFS = "odm-world";
 
-    /** Player-made data inside the server tree that must survive a payload upgrade. */
-    private static final String[] PRESERVED = {
-        "public/uploads",
-        "public/generated",
-        "public/generated-audio",
-        "public/ambience",
-        "models",
-    };
+    /** Thrown inside start() when stop() cut it short: the outcome is "stopped", not a failure. */
+    private static final class StoppedException extends IOException {
+        StoppedException() {
+            super("The world was stopped before it came up.");
+        }
+    }
 
     private static WorldRuntime instance;
 
@@ -64,19 +63,46 @@ public final class WorldRuntime {
     }
 
     private final Context app;
-    private Process process;
-    private int port;
+    private final PayloadStore store;
+    private final AtomicReference<Process> process = new AtomicReference<>();
+    /** Guards the state transitions that start(), stop() and the exit watcher race on. */
+    private final Object stateLock = new Object();
+    private volatile boolean stopRequested;
+    private volatile int port;
     private volatile String state = "stopped";
     private volatile String error = "";
+    /** The LAN address for the current run; computed once the world is up. */
+    private volatile String lanOrigin = "";
+    private volatile WorldEventListener listener;
+    /** The payload description never changes while the app runs, so it is read once. */
+    private volatile boolean bundledLoaded;
+    private volatile JSONObject bundled;
+    private volatile Boolean availableCache;
 
     private WorldRuntime(Context app) {
         this.app = app;
+        this.store = new PayloadStore(app.getFilesDir());
+    }
+
+    /** Who hears about the server dying or a stop finishing; the plugin registers itself in load(). */
+    public void setListener(WorldEventListener listener) {
+        this.listener = listener;
+    }
+
+    private void emit(String eventState, String message) {
+        WorldEventListener target = listener;
+        if (target == null) return;
+        try {
+            target.onWorldEvent("world", eventState, message);
+        } catch (RuntimeException e) {
+            Log.w(TAG, "World listener failed: " + e.getMessage());
+        }
     }
 
     // ---------- paths ----------
 
     private File serverDir() {
-        return new File(app.getFilesDir(), "server");
+        return store.serverDir();
     }
 
     private File dataDir() {
@@ -97,100 +123,43 @@ public final class WorldRuntime {
 
     // ---------- payload ----------
 
-    private JSONObject readInfo(File dir) {
-        try {
-            byte[] bytes = Files.readAllBytes(new File(dir, "odm-payload.json").toPath());
-            return new JSONObject(new String(bytes, StandardCharsets.UTF_8));
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
     private JSONObject bundledInfo() {
-        try (InputStream in = app.getAssets().open(PAYLOAD_INFO_ASSET)) {
-            return new JSONObject(new String(readAll(in), StandardCharsets.UTF_8));
-        } catch (Exception e) {
-            return null;
+        if (!bundledLoaded) {
+            JSONObject info;
+            try (InputStream in = app.getAssets().open(PAYLOAD_INFO_ASSET)) {
+                info = new JSONObject(new String(WorldEnvironment.readAll(in), StandardCharsets.UTF_8));
+            } catch (Exception e) {
+                info = null;
+            }
+            bundled = info;
+            bundledLoaded = true;
         }
-    }
-
-    private static byte[] readAll(InputStream in) throws IOException {
-        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
-        byte[] buf = new byte[8192];
-        int n;
-        while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
-        return out.toByteArray();
+        return bundled;
     }
 
     /** True when this build carries both a runtime and a server payload. */
     public boolean available() {
-        return nodeBinary().exists() && bundledInfo() != null;
-    }
-
-    private static void deleteTree(File file) {
-        if (file.isDirectory()) {
-            File[] children = file.listFiles();
-            if (children != null) for (File child : children) deleteTree(child);
+        Boolean cached = availableCache;
+        if (cached == null) {
+            cached = nodeBinary().exists() && bundledInfo() != null;
+            availableCache = cached;
         }
-        //noinspection ResultOfMethodCallIgnored
-        file.delete();
-    }
-
-    private static void copyTree(File from, File to) throws IOException {
-        if (from.isDirectory()) {
-            if (!to.isDirectory() && !to.mkdirs()) throw new IOException("mkdir " + to);
-            File[] children = from.listFiles();
-            if (children != null) for (File child : children) copyTree(child, new File(to, child.getName()));
-        } else {
-            File parent = to.getParentFile();
-            if (parent != null && !parent.isDirectory() && !parent.mkdirs()) throw new IOException("mkdir " + parent);
-            Files.copy(from.toPath(), to.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-        }
+        return cached;
     }
 
     /** Unpacks the bundled server when it is newer than the one on disk, keeping player data. */
-    private synchronized void ensurePayload() throws IOException {
+    private void ensurePayload() throws IOException {
         JSONObject fresh = bundledInfo();
         if (fresh == null) throw new IOException("This build has no bundled server payload.");
-        JSONObject current = readInfo(serverDir());
+        store.recover();
+        JSONObject current = WorldEnvironment.readInfo(serverDir());
         String builtAt = fresh.optString("builtAt", "");
         if (current != null && builtAt.equals(current.optString("builtAt", ""))) return;
-
-        File keep = new File(app.getFilesDir(), "server.keep");
-        deleteTree(keep);
-        if (current != null) {
-            for (String rel : PRESERVED) {
-                File from = new File(serverDir(), rel);
-                if (from.exists()) copyTree(from, new File(keep, rel));
+        store.upgrade(target -> {
+            try (InputStream in = new BufferedInputStream(app.getAssets().open(PAYLOAD_ASSET))) {
+                WorldEnvironment.unpackZip(in, target);
             }
-        }
-        deleteTree(serverDir());
-        File target = serverDir();
-        if (!target.mkdirs()) throw new IOException("Could not create " + target);
-        String root = target.getCanonicalPath() + File.separator;
-        try (ZipInputStream zip = new ZipInputStream(new BufferedInputStream(app.getAssets().open(PAYLOAD_ASSET)))) {
-            ZipEntry entry;
-            byte[] buf = new byte[65536];
-            while ((entry = zip.getNextEntry()) != null) {
-                File out = new File(target, entry.getName());
-                if (!out.getCanonicalPath().startsWith(root)) throw new IOException("Bad zip entry " + entry.getName());
-                if (entry.isDirectory()) {
-                    if (!out.isDirectory() && !out.mkdirs()) throw new IOException("mkdir " + out);
-                    continue;
-                }
-                File parent = out.getParentFile();
-                if (parent != null && !parent.isDirectory() && !parent.mkdirs()) throw new IOException("mkdir " + parent);
-                try (OutputStream file = new FileOutputStream(out)) {
-                    int n;
-                    while ((n = zip.read(buf)) > 0) file.write(buf, 0, n);
-                }
-                zip.closeEntry();
-            }
-        }
-        if (keep.exists()) {
-            copyTree(keep, target);
-            deleteTree(keep);
-        }
+        });
         Log.i(TAG, "Unpacked server payload " + builtAt);
     }
 
@@ -200,70 +169,30 @@ public final class WorldRuntime {
         return app.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
-    private static boolean portFree(int candidate) {
-        try (ServerSocket probe = new ServerSocket(candidate)) {
-            probe.setReuseAddress(true);
-            return true;
-        } catch (IOException e) {
-            return false;
-        }
-    }
-
     private int pickPort() throws IOException {
         int wanted = prefs().getInt("port", DEFAULT_PORT);
-        if (!portFree(wanted)) {
-            if (portFree(DEFAULT_PORT)) {
-                wanted = DEFAULT_PORT;
-            } else {
-                try (ServerSocket any = new ServerSocket(0)) {
-                    wanted = any.getLocalPort();
-                }
-            }
+        if (!WorldEnvironment.portFree(wanted)) {
+            wanted = WorldEnvironment.portFree(DEFAULT_PORT) ? DEFAULT_PORT : WorldEnvironment.freePort();
         }
         prefs().edit().putInt("port", wanted).apply();
         return wanted;
     }
 
-    /**
-     * The server refuses to run without an encryption key even though the
-     * built-in SQLite engine on the phone cannot encrypt; one is minted per
-     * install so the same key works if a native engine ever ships.
-     */
-    private String dbEncryptionKey() throws IOException {
-        File keyFile = new File(dataDir(), "db-key");
-        if (keyFile.exists()) {
-            String existing = new String(Files.readAllBytes(keyFile.toPath()), StandardCharsets.UTF_8).trim();
-            if (!existing.isEmpty()) return existing;
-        }
-        byte[] bytes = new byte[32];
-        new SecureRandom().nextBytes(bytes);
-        StringBuilder hex = new StringBuilder();
-        for (byte b : bytes) hex.append(String.format("%02x", b));
-        Files.write(keyFile.toPath(), hex.toString().getBytes(StandardCharsets.UTF_8));
-        return hex.toString();
-    }
-
     public String origin() {
-        return port > 0 ? "http://127.0.0.1:" + port : "";
+        int current = port;
+        return current > 0 ? "http://127.0.0.1:" + current : "";
     }
 
     /** The address friends on the same network use; empty when there is no Wi-Fi address. */
     public String lanOrigin() {
-        if (port <= 0) return "";
-        try {
-            for (NetworkInterface iface : Collections.list(NetworkInterface.getNetworkInterfaces())) {
-                if (!iface.isUp() || iface.isLoopback()) continue;
-                List<InetAddress> addresses = Collections.list(iface.getInetAddresses());
-                for (InetAddress address : addresses) {
-                    if (address instanceof Inet4Address && !address.isLoopbackAddress() && !address.isLinkLocalAddress()) {
-                        return "http://" + address.getHostAddress() + ":" + port;
-                    }
-                }
-            }
-        } catch (Exception e) {
-            Log.w(TAG, "No LAN address: " + e.getMessage());
+        if (!"running".equals(state)) return "";
+        String cached = lanOrigin;
+        if (cached.isEmpty()) {
+            // Wi-Fi may come up after the start; look again only while nothing is cached.
+            cached = WorldEnvironment.lanOrigin(port);
+            lanOrigin = cached;
         }
-        return "";
+        return cached;
     }
 
     public JSONObject status() {
@@ -271,10 +200,12 @@ public final class WorldRuntime {
         JSONObject json = new JSONObject();
         try {
             boolean ok = available();
+            String current = state;
+            boolean running = "running".equals(current);
             json.put("available", ok);
-            json.put("state", ok ? state : "unavailable");
-            json.put("origin", "running".equals(state) ? origin() : "");
-            json.put("lanOrigin", "running".equals(state) ? lanOrigin() : "");
+            json.put("state", ok ? current : "unavailable");
+            json.put("origin", running ? origin() : "");
+            json.put("lanOrigin", running ? lanOrigin() : "");
             json.put("firstRun", !dbFile().exists());
             json.put("serverVersion", info != null ? info.optString("serverVersion", "") : "");
             json.put("error", error);
@@ -297,115 +228,205 @@ public final class WorldRuntime {
         }
     }
 
+    /**
+     * Brings the world up and returns once /api/health answers. A start cut
+     * short by stop() returns normally with the state "stopped" rather than
+     * throwing; the bridge reads the state from status() either way.
+     */
     public synchronized void start() throws IOException {
-        if ("running".equals(state) && process != null && process.isAlive()) return;
-        state = "starting";
-        error = "";
+        Process live = process.get();
+        if ("running".equals(state) && live != null && live.isAlive()) return;
+        synchronized (stateLock) {
+            stopRequested = false;
+            state = "starting";
+            error = "";
+        }
         try {
             if (!nodeBinary().exists()) throw new IOException("This build has no Node runtime for this device.");
             ensurePayload();
+            if (stopRequested) throw new StoppedException();
             if (!dataDir().isDirectory() && !dataDir().mkdirs()) throw new IOException("Could not create data dir.");
             File tmp = new File(app.getCacheDir(), "node-tmp");
             //noinspection ResultOfMethodCallIgnored
             tmp.mkdirs();
-            port = pickPort();
-
-            ProcessBuilder builder = new ProcessBuilder(nodeBinary().getAbsolutePath(), "server.js");
-            builder.directory(serverDir());
-            builder.redirectErrorStream(true);
-            builder.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile()));
-            Map<String, String> env = builder.environment();
-            env.put("NODE_ENV", "production");
-            env.put("PORT", String.valueOf(port));
-            env.put("HOSTNAME", "0.0.0.0");
-            env.put("SQLITE_DB_PATH", dbFile().getAbsolutePath());
-            env.put("DB_ENCRYPTION_KEY", dbEncryptionKey());
-            env.put("ODM_SQLITE_DRIVER", "node");
-            // The spells, items, monsters and feats catalogue shipped inside
-            // the payload (content/open5e.sqlite); without it every picker in
-            // the character builder searches an empty pack.
-            env.put("CONTENT_DB_PATH", new File(serverDir(), "content/open5e.sqlite").getAbsolutePath());
-            // Tells the server it is the shell's own world, so its admin panel
-            // hides what the shell manages (address, sign-ups, voice, Discord).
-            env.put("ODM_DEVICE_WORLD", "1");
-            env.put("HOME", app.getFilesDir().getAbsolutePath());
-            env.put("TMPDIR", tmp.getAbsolutePath());
-            env.put("LD_LIBRARY_PATH", app.getApplicationInfo().nativeLibraryDir);
-            Process child = builder.start();
-            process = child;
-            Thread watcher = new Thread(() -> {
-                try {
-                    int code = child.waitFor();
-                    synchronized (WorldRuntime.this) {
-                        if (process == child && !"stopping".equals(state) && !"stopped".equals(state)) {
-                            state = "error";
-                            error = "The world's server stopped unexpectedly (exit " + code + ", see local-server.log).";
-                            process = null;
-                        }
+            LogFiles.rotateIfOver(logFile(), LOG_CAP_BYTES);
+            String dbKey = WorldEnvironment.dbEncryptionKey(dataDir());
+            int candidate = pickPort();
+            for (int attempt = 1; ; attempt++) {
+                port = candidate;
+                long logMark = logFile().length();
+                Process child = launch(candidate, dbKey, tmp);
+                process.set(child);
+                if (stopRequested) throw new StoppedException();
+                watch(child);
+                if (waitHealthy(child)) {
+                    String lan = WorldEnvironment.lanOrigin(candidate);
+                    synchronized (stateLock) {
+                        if (stopRequested) throw new StoppedException();
+                        lanOrigin = lan;
+                        state = "running";
                     }
-                } catch (InterruptedException ignored) {
-                    Thread.currentThread().interrupt();
-                }
-            }, "odm-world-watcher");
-            watcher.setDaemon(true);
-            watcher.start();
-
-            long deadline = System.currentTimeMillis() + HEALTH_TIMEOUT_MS;
-            while (System.currentTimeMillis() < deadline) {
-                if (!child.isAlive()) throw new IOException("The world's server exited during startup (see local-server.log).");
-                if (healthy()) {
-                    state = "running";
-                    Log.i(TAG, "World running on port " + port);
+                    prefs().edit().putInt("port", candidate).apply();
+                    Log.i(TAG, "World running on port " + candidate);
                     return;
                 }
-                try {
-                    Thread.sleep(500);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw new IOException("Interrupted while starting.");
+                if (stopRequested) throw new StoppedException();
+                // The child exited during startup. The port probe in pickPort()
+                // and the server's own bind are separate steps, so another app
+                // can take the port in between: try again on a fresh one.
+                process.compareAndSet(child, null);
+                if (attempt < PORT_ATTEMPTS && addressInUse(logMark)) {
+                    candidate = WorldEnvironment.freePort();
+                    Log.w(TAG, "Port " + port + " was taken; retrying on " + candidate);
+                    continue;
                 }
+                throw new IOException("The world's server exited during startup (see local-server.log).");
             }
-            throw new IOException("The world's server did not become ready in time.");
         } catch (IOException e) {
-            stopQuietly();
-            state = "error";
-            error = e.getMessage() != null ? e.getMessage() : "Could not start the world.";
+            killQuietly(process.getAndSet(null));
+            boolean cancelled;
+            synchronized (stateLock) {
+                cancelled = stopRequested || e instanceof StoppedException;
+                port = 0;
+                lanOrigin = "";
+                state = cancelled ? "stopped" : "error";
+                error = cancelled ? "" : (e.getMessage() != null ? e.getMessage() : "Could not start the world.");
+            }
+            if (cancelled) return;
             throw e;
         }
     }
 
-    private void stopQuietly() {
-        Process child = process;
-        process = null;
-        if (child != null && child.isAlive()) {
-            child.destroy();
+    private Process launch(int listenPort, String dbKey, File tmp) throws IOException {
+        List<String> command = new ArrayList<>();
+        command.add(nodeBinary().getAbsolutePath());
+        // V8 flags go before the script, as for any node binary. Without a
+        // cap V8 sizes its heap from device RAM and grows until Android's
+        // low-memory killer takes the whole app; with one, a runaway session
+        // ends in a heap error in local-server.log instead.
+        command.add("--max-old-space-size=" + WorldEnvironment.heapMegabytes(app));
+        command.add("--max-semi-space-size=16");
+        command.add("server.js");
+        ProcessBuilder builder = new ProcessBuilder(command);
+        builder.directory(serverDir());
+        builder.redirectErrorStream(true);
+        builder.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile()));
+        Map<String, String> env = builder.environment();
+        env.put("NODE_ENV", "production");
+        env.put("PORT", String.valueOf(listenPort));
+        // Listens on every interface so friends on the same Wi-Fi can join.
+        // Binding 127.0.0.1 until LAN or tunnel sharing begins would be
+        // tighter; that change waits on Kaleb's call (plan item A10).
+        env.put("HOSTNAME", "0.0.0.0");
+        env.put("SQLITE_DB_PATH", dbFile().getAbsolutePath());
+        env.put("DB_ENCRYPTION_KEY", dbKey);
+        env.put("ODM_SQLITE_DRIVER", "node");
+        // The spells, items, monsters and feats catalogue shipped inside
+        // the payload (content/open5e.sqlite); without it every picker in
+        // the character builder searches an empty pack.
+        env.put("CONTENT_DB_PATH", new File(serverDir(), "content/open5e.sqlite").getAbsolutePath());
+        // Tells the server it is the shell's own world, so its admin panel
+        // hides what the shell manages (address, sign-ups, voice, Discord).
+        env.put("ODM_DEVICE_WORLD", "1");
+        env.put("HOME", app.getFilesDir().getAbsolutePath());
+        env.put("TMPDIR", tmp.getAbsolutePath());
+        env.put("LD_LIBRARY_PATH", app.getApplicationInfo().nativeLibraryDir);
+        return builder.start();
+    }
+
+    /** True once /api/health answers; false when the child died or a stop was requested. */
+    private boolean waitHealthy(Process child) throws IOException {
+        long deadline = System.currentTimeMillis() + HEALTH_TIMEOUT_MS;
+        while (System.currentTimeMillis() < deadline) {
+            if (stopRequested || !child.isAlive()) return false;
+            if (healthy()) return true;
             try {
-                if (!child.waitFor(5, TimeUnit.SECONDS)) child.destroyForcibly();
+                Thread.sleep(500);
             } catch (InterruptedException e) {
-                child.destroyForcibly();
                 Thread.currentThread().interrupt();
+                throw new IOException("Interrupted while starting.");
             }
+        }
+        throw new IOException("The world's server did not become ready in time.");
+    }
+
+    /** Whether the log written since the launch says the port was taken. */
+    private boolean addressInUse(long logMark) {
+        String out = LogFiles.readAfter(logFile(), logMark, 65536);
+        return out.contains("EADDRINUSE") || out.contains("address already in use");
+    }
+
+    /**
+     * Notices the server dying after startup: records the error, tells the
+     * bridge, and ends the share, since nobody can reach a dead world.
+     * Exits during startup are handled by start() itself.
+     */
+    private void watch(Process child) {
+        Thread watcher = new Thread(() -> {
+            int code;
+            try {
+                code = child.waitFor();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            String message;
+            synchronized (stateLock) {
+                if (!process.compareAndSet(child, null)) return;
+                if (stopRequested || !"running".equals(state)) return;
+                state = "error";
+                error = "The world's server stopped unexpectedly (exit " + code + ", see local-server.log).";
+                lanOrigin = "";
+                message = error;
+            }
+            Log.w(TAG, message);
+            emit("error", message);
+            ShareTunnel tunnel = ShareTunnel.get(app);
+            if (tunnel.running()) tunnel.stop();
+            WorldService.stop(app);
+        }, "odm-world-watcher");
+        watcher.setDaemon(true);
+        watcher.start();
+    }
+
+    private static void killQuietly(Process child) {
+        if (child == null || !child.isAlive()) return;
+        child.destroy();
+        try {
+            if (!child.waitFor(5, TimeUnit.SECONDS)) child.destroyForcibly();
+        } catch (InterruptedException e) {
+            child.destroyForcibly();
+            Thread.currentThread().interrupt();
         }
     }
 
-    public synchronized void stop() {
-        state = "stopping";
-        stopQuietly();
-        port = 0;
-        state = "stopped";
-        error = "";
+    /**
+     * Ends the world. Never takes the start monitor, so it returns promptly
+     * even while a start is unpacking or polling; that start then finishes
+     * as "stopped". Waits up to five seconds for the child, so call it from
+     * a background thread.
+     */
+    public void stop() {
+        Process child;
+        String before;
+        synchronized (stateLock) {
+            stopRequested = true;
+            before = state;
+            state = "stopping";
+            child = process.getAndSet(null);
+        }
+        killQuietly(child);
+        synchronized (stateLock) {
+            port = 0;
+            lanOrigin = "";
+            state = "stopped";
+            error = "";
+        }
+        if (child != null || !"stopped".equals(before)) emit("stopped", "");
     }
 
     public String tailLog(int maxBytes) {
-        File log = logFile();
-        if (!log.exists()) return "";
-        try {
-            byte[] bytes = Files.readAllBytes(log.toPath());
-            int from = Math.max(0, bytes.length - maxBytes);
-            return new String(bytes, from, bytes.length - from, StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            return "";
-        }
+        return LogFiles.tail(logFile(), maxBytes);
     }
 
     /** Extra environment for diagnostics screens. */

@@ -99,8 +99,16 @@ interface ActiveTour {
   screen: string;
   scrim: HTMLElement;
   spot: HTMLElement;
+  // The dim over everything but the spotlight (home.css .tour-dim).
+  dim: HTMLElement;
   card: HTMLElement;
   clock: number;
+  // The spotlight's corner radius in px, read once from the sheet.
+  radius: number;
+  // The last spotlight box and card placement written, so a clock tick
+  // that finds nothing moved writes nothing.
+  lit: string;
+  placed: string;
 }
 
 let active: ActiveTour | null = null;
@@ -121,9 +129,24 @@ function currentTarget(tour: ActiveTour): HTMLElement | null {
   return step && step.anchor ? findAnchor(step.anchor) : null;
 }
 
+// The dim's clip-path: the whole window with the spotlight's rounded box
+// cut out of it (even-odd fill). Every path has the same commands, so a
+// move from one box to the next is one clip-path transition.
+function holePath(x: number, y: number, w: number, h: number, radius: number): string {
+  const r = Math.min(radius, w / 2, h / 2);
+  const n = (value: number): number => Math.round(value * 100) / 100;
+  const arc = `A${n(r)} ${n(r)} 0 0 1`;
+  return (
+    `path(evenodd, "M0 0H${window.innerWidth}V${window.innerHeight}H0Z` +
+    `M${n(x + r)} ${n(y)}H${n(x + w - r)}${arc} ${n(x + w)} ${n(y + r)}V${n(y + h - r)}${arc} ${n(x + w - r)} ${n(y + h)}` +
+    `H${n(x + r)}${arc} ${n(x)} ${n(y + h - r)}V${n(y + r)}${arc} ${n(x + r)} ${n(y)}Z")`
+  );
+}
+
 // Lays the spotlight over the step's target and the card beside it. Called
 // on every frame that matters (resize, scroll, the drawer sliding) and on a
 // slow clock, since a home re-render replaces the very element being lit.
+// Most ticks find nothing moved and write nothing.
 function position(): void {
   const tour = active;
   if (!tour) return;
@@ -133,21 +156,40 @@ function position(): void {
   }
   const target = currentTarget(tour);
   const rect = target ? target.getBoundingClientRect() : null;
+  // No target: the scrim dims the whole page and the light goes out where
+  // it was, ready to move from there to the next step's target.
   tour.scrim.classList.toggle("dim", !rect);
+  tour.spot.classList.toggle("none", !rect);
+  tour.dim.classList.toggle("none", !rect);
   if (rect) {
-    tour.spot.classList.remove("none");
-    tour.spot.style.top = `${rect.top - SPOT_PAD}px`;
-    tour.spot.style.left = `${rect.left - SPOT_PAD}px`;
-    tour.spot.style.width = `${rect.width + SPOT_PAD * 2}px`;
-    tour.spot.style.height = `${rect.height + SPOT_PAD * 2}px`;
-  } else {
-    tour.spot.classList.add("none");
+    const x = rect.left - SPOT_PAD;
+    const y = rect.top - SPOT_PAD;
+    const w = rect.width + SPOT_PAD * 2;
+    const h = rect.height + SPOT_PAD * 2;
+    const lit = `${x},${y},${w},${h},${window.innerWidth},${window.innerHeight}`;
+    if (lit !== tour.lit) {
+      const first = tour.lit === "";
+      tour.lit = lit;
+      tour.spot.style.transform = `translate(${x}px, ${y}px)`;
+      tour.spot.style.width = `${w}px`;
+      tour.spot.style.height = `${h}px`;
+      tour.dim.style.clipPath = holePath(x, y, w, h, tour.radius);
+      if (first) {
+        // The first light lands in place; from then on a move glides.
+        void tour.spot.offsetWidth;
+        tour.spot.classList.add("live");
+        tour.dim.classList.add("live");
+      }
+    }
   }
   const placed = placeCard(
     rect ? { top: rect.top, left: rect.left, width: rect.width, height: rect.height } : null,
     { width: tour.card.offsetWidth, height: tour.card.offsetHeight },
     { width: window.innerWidth, height: window.innerHeight },
   );
+  const key = `${placed.top},${placed.left},${placed.side}`;
+  if (key === tour.placed) return;
+  tour.placed = key;
   tour.card.style.top = `${placed.top}px`;
   tour.card.style.left = `${placed.left}px`;
   tour.card.dataset.side = placed.side;
@@ -229,6 +271,7 @@ export function endTour(): void {
   document.removeEventListener("keydown", onKey, true);
   tour.scrim.remove();
   tour.spot.remove();
+  tour.dim.remove();
   tour.card.remove();
   if (!WIDE.matches) closeDrawer();
 }
@@ -240,10 +283,11 @@ export function startTour(id: string, steps: readonly TourStep[]): void {
   const scrim = el("div", "tour-scrim");
   scrim.addEventListener("click", () => endTour());
   const spot = el("div", "tour-spot");
+  const dim = el("div", "tour-dim");
   const card = el("div", "tour-card panel ornate grain");
   card.setAttribute("role", "dialog");
   card.setAttribute("aria-label", "Guided tour");
-  document.body.append(scrim, spot, card);
+  document.body.append(scrim, spot, dim, card);
   active = {
     id,
     steps: resolved,
@@ -251,8 +295,12 @@ export function startTour(id: string, steps: readonly TourStep[]): void {
     screen: state.screenName,
     scrim,
     spot,
+    dim,
     card,
     clock: window.setInterval(position, 400),
+    radius: parseFloat(getComputedStyle(spot).borderRadius) || 0,
+    lit: "",
+    placed: "",
   };
   window.addEventListener("resize", schedulePosition);
   window.addEventListener("scroll", schedulePosition, true);

@@ -181,9 +181,17 @@ export function createShareTunnel(deps: ShareTunnelDeps) {
     }
   }
 
+  // A stop that lands while the start is still deciding: the sooner the
+  // start notices, the sooner the lobby's button settles.
+  function bailIfStopped(): void {
+    if (stopRequested) throw new Error("stopped");
+  }
+
   async function launch(port: number, named: BrokerSession | null): Promise<void> {
+    bailIfStopped();
     if (named) {
       await deps.plugin.shareStart({ token: named.tunnelToken, url: named.url, port });
+      bailIfStopped();
       url = named.url;
       mode = "named";
       session = named;
@@ -197,6 +205,7 @@ export function createShareTunnel(deps: ShareTunnelDeps) {
       return;
     }
     const started = await deps.plugin.shareStart({ port });
+    bailIfStopped();
     if (!started?.url) throw new Error("The tunnel never reported its address.");
     url = started.url;
     mode = "quick";
@@ -217,7 +226,9 @@ export function createShareTunnel(deps: ShareTunnelDeps) {
     setState("starting");
     try {
       const port = await deps.worldPort();
+      bailIfStopped();
       const named = await requestSession(port);
+      bailIfStopped();
       let up = false;
       if (named) {
         try {
@@ -253,25 +264,37 @@ export function createShareTunnel(deps: ShareTunnelDeps) {
 
   async function stop(): Promise<TunnelStatus> {
     stopRequested = true;
-    if (inFlight) await inFlight.catch(() => undefined);
+    if (inFlight) {
+      // Cancel natively first: a start waiting on cloudflared unwinds the
+      // moment the process is gone, instead of at the end of its budget.
+      await deps.plugin.shareStop().catch(() => undefined);
+      await inFlight.catch(() => undefined);
+    }
     await tearDown();
     await deps.publish("").catch(() => undefined);
     setState("stopped");
     return snapshot();
   }
 
-  // The notification's "Stop hosting" ends the tunnel natively; this side
-  // learns of it on the next look and settles the leftovers.
+  // The tunnel ended natively (cloudflared exited, or the notification's
+  // "Stop hosting"): release what this side still holds so a dead address
+  // is not advertised any longer. A start in flight watches the process
+  // itself and is left to unwind; a stop in progress already does this.
+  async function dropped(next: "stopped" | "error", message = ""): Promise<void> {
+    if (inFlight || stopRequested || state !== "running") return;
+    await releaseSession();
+    url = "";
+    mode = "";
+    await deps.publish("").catch(() => undefined);
+    setState(next, message);
+  }
+
+  // The native side may have ended the tunnel without a word (older
+  // builds, a missed event); the next look settles the leftovers.
   async function status(): Promise<TunnelStatus> {
-    if (state === "running" && !(await stillUp())) {
-      await releaseSession();
-      url = "";
-      mode = "";
-      await deps.publish("").catch(() => undefined);
-      setState("stopped");
-    }
+    if (state === "running" && !(await stillUp())) await dropped("stopped");
     return snapshot();
   }
 
-  return { start, stop, status, snapshot };
+  return { start, stop, status, snapshot, dropped };
 }

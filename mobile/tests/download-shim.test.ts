@@ -170,40 +170,31 @@ test("a blob download (character-sheet PDF) is fetched and posted with its name"
   assert.deepEqual(decodeB64(detail.data), body);
 });
 
-test("a server export with an empty download attribute takes the header's name", async () => {
+test("a server export is posted as an address for the shell to stream, never fetched here", async () => {
   const href = `${ORIGIN}/api/campaigns/c1/export?format=docx`;
-  const h = makeHarness({
-    [href]: {
-      body: Uint8Array.from([1, 2, 3]),
-      headers: {
-        "Content-Type":
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document; charset=binary",
-        "Content-Disposition": 'attachment; filename="the-sunken-keep.docx"',
-      },
-    },
-  });
-  // ExportMenu sets anchor.download = "" and clicks a child-less anchor.
+  const h = makeHarness({});
+  // ExportMenu sets anchor.download = "" and clicks a child-less anchor;
+  // the server's own name for the file is read natively.
   const event = click(anchor({ href: "/api/campaigns/c1/export?format=docx", download: "" }));
   h.shim.onClick(event);
+  assert.equal(event.prevented, true);
   await settle();
-  const detail = h.posted[0].detail as { name: string; mime: string };
-  assert.equal(detail.name, "the-sunken-keep.docx");
-  assert.equal(
-    detail.mime,
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "parameters are stripped",
-  );
+  assert.deepEqual(h.fetched, []);
+  assert.deepEqual(h.posted, [{ detail: { type: "odm-download-url", url: href, name: "" } }]);
 });
 
 test("a tap on an icon inside the anchor still counts", async () => {
   const url = `${ORIGIN}/uploads/map.png`;
-  const h = makeHarness({ [url]: { body: Uint8Array.from([9]), headers: { "content-type": "image/png" } } });
-  const link = anchor({ href: url, download: "dungeon-map.png" });
+  const h = makeHarness({});
+  const link = anchor({ href: url, download: " dungeon-map.png " });
   const event = click({ tagName: "svg", parentElement: link });
   h.shim.onClick(event);
   assert.equal(event.prevented, true);
   await settle();
-  assert.equal((h.posted[0].detail as { name: string }).name, "dungeon-map.png");
+  const detail = h.posted[0].detail as { type: string; url: string; name: string };
+  assert.equal(detail.type, "odm-download-url");
+  assert.equal(detail.url, url);
+  assert.equal(detail.name, "dungeon-map.png");
 });
 
 test("clicks the shim must leave alone: no channel, cross-origin, no download, claimed, secondary button", async () => {
@@ -228,17 +219,17 @@ test("clicks the shim must leave alone: no channel, cross-origin, no download, c
   assert.equal(h.posted.length, 0);
 });
 
-test("oversize files are refused before the body is read, or after when the header lies", async () => {
-  const declared = `${ORIGIN}/big-declared.bin`;
-  const undeclared = `${ORIGIN}/big-undeclared.bin`;
+test("oversize page-built files are refused before the body is read, or after when the header lies", async () => {
+  const declared = "blob:https://play.example.test/big-declared";
+  const undeclared = "blob:https://play.example.test/big-undeclared";
   const h = makeHarness({
     [declared]: { body: new Uint8Array(1), headers: { "content-length": String(41 * 1024 * 1024) } },
     [undeclared]: { body: new Uint8Array(40 * 1024 * 1024 + 1) },
   });
-  h.shim.onClick(click(anchor({ href: declared, download: "" })));
+  h.shim.onClick(click(anchor({ href: declared, download: "big-declared.bin" })));
   await settle();
   assert.equal(h.bodiesRead, 0, "content-length alone rejects it");
-  h.shim.onClick(click(anchor({ href: undeclared, download: "" })));
+  h.shim.onClick(click(anchor({ href: undeclared, download: "big-undeclared.bin" })));
   await settle();
   assert.equal(h.bodiesRead, 1);
   assert.equal(h.posted.length, 2);
@@ -250,18 +241,19 @@ test("oversize files are refused before the body is read, or after when the head
   assert.equal((h.posted[0].detail as { name: string }).name, "big-declared.bin");
 });
 
-test("failed fetches report an error instead of a file", async () => {
-  const denied = `${ORIGIN}/api/campaigns/c1/export?format=html`;
-  const h = makeHarness({ [denied]: { status: 403 } });
-  h.shim.onClick(click(anchor({ href: denied, download: "" })));
-  h.shim.onClick(click(anchor({ href: `${ORIGIN}/missing.json`, download: "bundle.json" })));
+test("a page-built file that cannot be read reports an error instead of a file", async () => {
+  const gone = "blob:https://play.example.test/gone";
+  const h = makeHarness({ [gone]: { status: 404 } });
+  h.shim.onClick(click(anchor({ href: gone, download: "bundle.json" })));
+  h.shim.onClick(click(anchor({ href: "blob:https://play.example.test/missing", download: "sheet.pdf" })));
   await settle();
-  const first = h.posted[0].detail as { type: string; message: string };
+  const first = h.posted[0].detail as { type: string; name: string; message: string };
   assert.equal(first.type, "odm-download-error");
-  assert.match(first.message, /403/);
+  assert.equal(first.name, "bundle.json");
+  assert.match(first.message, /404/);
   const second = h.posted[1].detail as { type: string; name: string; message: string };
   assert.equal(second.type, "odm-download-error");
-  assert.equal(second.name, "bundle.json");
+  assert.equal(second.name, "sheet.pdf");
   assert.equal(second.message, "Failed to fetch");
 });
 

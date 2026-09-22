@@ -60,6 +60,55 @@ export function preactDir() {
   return found;
 }
 
+// The built-in art the apps carry beside the game bundle: the server's
+// public folders, whole, except `ambience` (gitignored, fetched separately,
+// and served behind the login). The list is the manifest the runtime
+// consults (src/shared/local-assets.ts): a host folder with a trailing
+// slash to the file names directly in it, sorted, so a path the app was
+// not built with still goes to the host.
+export const LOCAL_ASSET_FOLDERS = ["assets", "fx", "dice-box", "sidebar-icons"];
+
+export function localAssetManifest(server) {
+  const manifest = {};
+  const walk = (dir, hostDir) => {
+    if (!fs.existsSync(dir)) return;
+    const files = [];
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      if (entry.isDirectory()) walk(path.join(dir, entry.name), `${hostDir}${entry.name}/`);
+      else if (entry.isFile() && !entry.name.startsWith(".")) files.push(entry.name);
+    }
+    if (files.length) manifest[hostDir] = files;
+  };
+  for (const folder of LOCAL_ASSET_FOLDERS) walk(path.join(server, "public", folder), `/${folder}/`);
+  return Object.fromEntries(Object.entries(manifest).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+}
+
+// Where a host folder lands beside the bundle: the icons and the
+// stylesheet's furniture keep their old folders (the shell's own sheet
+// points at game/ui-art), the rest mirrors the server under game/public.
+// Mirrors localFolder() in src/shared/local-assets.ts.
+function localAssetTarget(outDir, hostDir) {
+  if (hostDir.startsWith("/assets/icons/")) return path.join(outDir, "icons", hostDir.slice("/assets/icons/".length));
+  if (hostDir.startsWith("/assets/ui/")) return path.join(outDir, "ui-art", hostDir.slice("/assets/ui/".length));
+  return path.join(outDir, "public", hostDir.slice(1));
+}
+
+// The manifest as a module ("odm:local-assets"), inlined into game.js so
+// the first pictures already resolve locally; a fetch at runtime would
+// race the first render.
+function localAssetsPlugin(server) {
+  return {
+    name: "odm-local-assets",
+    setup(build) {
+      build.onResolve({ filter: /^odm:local-assets$/ }, (args) => ({ path: args.path, namespace: "odm-local-assets" }));
+      build.onLoad({ filter: /.*/, namespace: "odm-local-assets" }, () => ({
+        contents: JSON.stringify(localAssetManifest(server)),
+        loader: "json",
+      }));
+    },
+  };
+}
+
 // The game bundle's view of the world: React is Preact, Next's pieces are
 // the shims, "@/" is the server's src.
 export function gameBuildOptions(server) {
@@ -68,6 +117,7 @@ export function gameBuildOptions(server) {
     ...rendererBuildOptions,
     format: "esm",
     splitting: true,
+    plugins: [localAssetsPlugin(server)],
     alias: {
       react: path.join(shims, "react.js"),
       "react-dom": path.join(shims, "react-dom.js"),
@@ -131,18 +181,27 @@ export function buildGameCss(server, outDir) {
   // Painted furniture the stylesheet draws as a background (the scroll, the
   // book, the dust) cannot be pointed at the host the way an <img> is, so the
   // parts ship beside the sheet and its root-relative addresses become local.
-  const art = path.join(server, "public", "assets", "ui");
-  if (fs.existsSync(art)) fs.cpSync(art, path.join(outDir, "ui-art"), { recursive: true });
-  // The painted icons (spells, items, features, conditions, the interface
-  // glyphs) ship inside the app as well: the runtime points every
-  // "/assets/icons/..." picture at this folder (src/renderer/game/runtime.ts),
-  // so they show on the app's own screens where no host is connected, offline,
-  // and without a round trip to the host for each one in a world.
-  const icons = path.join(server, "public", "assets", "icons");
-  fs.rmSync(path.join(outDir, "icons"), { recursive: true, force: true });
-  if (fs.existsSync(icons)) fs.cpSync(icons, path.join(outDir, "icons"), { recursive: true });
+  // The painted icons, the tiles, props, placeholders, themes, effects, the
+  // dice and the sidebar glyphs ship inside the app the same way: the
+  // runtime points every picture the manifest lists at the local copy
+  // (src/renderer/game/local-assets.ts), so they show on the app's own
+  // screens where no host is connected, offline, and without a round trip
+  // to the host for each one in a world.
+  copyLocalAssets(server, outDir);
   const local = fs.readFileSync(out, "utf8").replace(/url\((["']?)\/assets\/ui\//g, "url($1./ui-art/");
   fs.writeFileSync(out, scopeCss(local, ".game-root"));
+}
+
+export function copyLocalAssets(server, outDir) {
+  for (const folder of ["icons", "ui-art", "public"]) fs.rmSync(path.join(outDir, folder), { recursive: true, force: true });
+  const manifest = localAssetManifest(server);
+  for (const [hostDir, files] of Object.entries(manifest)) {
+    const target = localAssetTarget(outDir, hostDir);
+    fs.mkdirSync(target, { recursive: true });
+    for (const file of files) fs.copyFileSync(path.join(server, "public", hostDir.slice(1), file), path.join(target, file));
+  }
+  fs.mkdirSync(path.join(outDir, "public"), { recursive: true });
+  fs.writeFileSync(path.join(outDir, "public", "manifest.json"), JSON.stringify(manifest));
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

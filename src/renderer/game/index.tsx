@@ -5,7 +5,7 @@
 //
 // Routes map a host path to a page module; a path with no native page is
 // handed back to the shell (onLeave), which opens it the old way.
-import { Component, Suspense, lazy, type ComponentType, type ReactNode } from "preact/compat";
+import { Component, Suspense, lazy, useEffect, useMemo, type ComponentType, type ReactNode } from "preact/compat";
 import { render } from "preact";
 import { DeviceSettings } from "@/components/DeviceSettings";
 import { PageSkeleton, type SkeletonKind } from "@/components/PageSkeleton";
@@ -79,15 +79,26 @@ class Boundary extends Component<{ children: ReactNode; onError: (error: unknown
 // A route change crossfades instead of cutting, the same thing the server's
 // pages do through React (src/app/template.tsx there). The browser snapshots
 // the outgoing page, the router swaps, and the snapshot fades into the new
-// page. Skipped under reduced motion and where the API is missing, which
-// leaves the plain swap.
-function withViewTransition(update: () => void): void {
-  const start = (document as Document & { startViewTransition?: (callback: () => Promise<void>) => unknown }).startViewTransition;
+// page. Only the game root takes part (home.css takes the document's
+// transition name away), so the shell's topbar above it stays live. Skipped
+// under reduced motion and where the API is missing, which leaves the plain
+// swap.
+type ViewTransitionDocument = Document & {
+  startViewTransition?: (callback: () => Promise<void>) => { finished: Promise<void> };
+};
+
+function withViewTransition(root: HTMLElement, update: () => void): void {
+  const start = (document as ViewTransitionDocument).startViewTransition;
   if (!start || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
     update();
     return;
   }
-  start.call(document, () => {
+  // The root is named for the transition only. A name that stayed would
+  // make it a stacking context, and the pages' fixed dialogs and overlays
+  // (the new campaign wizard, the dice) would then sit under the shell's
+  // topbar instead of over it.
+  root.style.viewTransitionName = "odm-game";
+  const transition = start.call(document, () => {
     update();
     // Preact renders on its next tick; hold the snapshot until that has run.
     // A timer, NOT requestAnimationFrame: the browser suppresses rendering,
@@ -97,13 +108,23 @@ function withViewTransition(update: () => void): void {
     // change of page.
     return new Promise<void>((resolve) => setTimeout(resolve, 0));
   });
+  const unname = (): void => {
+    root.style.viewTransitionName = "";
+  };
+  transition.finished.then(unname, unname);
 }
 
-function GameApp({ router, onLeave }: { router: GameRouter; onLeave: (url: string) => void }) {
-  const location = useSyncExternalStore(
-    (listener) => router.subscribe(() => withViewTransition(listener)),
-    () => router.location,
+function GameApp({ router, root, onLeave }: { router: GameRouter; root: HTMLElement; onLeave: (url: string) => void }) {
+  // One subscription for the life of the mount (a fresh function each
+  // render would resubscribe each time). Every route change crossfades,
+  // a change of query included: Kaleb wants the full set of transitions
+  // on every device (decided 2026-09-22). Only the game root is captured,
+  // so the shell's topbar stays live and the snapshot is smaller.
+  const subscribe = useMemo(
+    () => (listener: () => void) => router.subscribe(() => withViewTransition(root, listener)),
+    [router, root],
   );
+  const location = useSyncExternalStore(subscribe, () => router.location);
   let matched: { route: Route; params: Record<string, string> } | null = null;
   for (const route of ROUTES) {
     const params = matchRoute(route.pattern, location.pathname);
@@ -112,18 +133,36 @@ function GameApp({ router, onLeave }: { router: GameRouter; onLeave: (url: strin
       break;
     }
   }
-  if (!matched) {
-    onLeave(location.pathname + location.search);
-    return <PageSkeleton />;
-  }
-  setNavigation(router, matched.params);
+  // A path with no native page is handed to the shell once per navigation:
+  // the location object is new for each one and the same across the
+  // re-renders in between, so an effect keyed on it never asks twice.
+  const unmatched = matched ? null : location;
+  useEffect(() => {
+    if (unmatched) onLeave(unmatched.pathname + unmatched.search);
+  }, [unmatched, onLeave]);
+  // The promises the page gets are kept per route and per query, so an
+  // effect a page keys on them runs when the address changes and not on
+  // every render of this root.
+  const routeKey = matched ? `${matched.route.pattern}${JSON.stringify(matched.params)}` : "";
+  const routeParams = matched?.params ?? {};
+  // routeKey carries the params' whole content, so it stands in for them.
+  const params = useMemo(() => resolvedParams(routeParams), [routeKey]);
+  const searchParams = useMemo(
+    () => resolvedParams(Object.fromEntries(new URLSearchParams(location.search))),
+    [location.search],
+  );
+  if (!matched) return <PageSkeleton />;
+  // A plain global write, made during render on purpose: the page's
+  // useParams() reads it synchronously on its own first render, which comes
+  // before any effect of this component would run. It has no subscribers,
+  // so writing it again on a re-render changes nothing.
+  setNavigation(router, params.__value);
   const Page = pageFor(matched.route);
-  const search = Object.fromEntries(new URLSearchParams(location.search));
   // The query is not part of the key: a filter or tab in the address updates
   // the page it belongs to instead of tearing it down and starting it again.
   return (
     <Boundary
-      key={`${matched.route.pattern}${JSON.stringify(matched.params)}`}
+      key={routeKey}
       onError={(error) => {
         console.error("game page failed", error);
         onLeave(location.pathname + location.search);
@@ -132,7 +171,7 @@ function GameApp({ router, onLeave }: { router: GameRouter; onLeave: (url: strin
       {/* The dust layer is the shell's (index.html, style.css): one for the
           whole app, under the stars and the topographic lines. */}
       <Suspense fallback={<PageSkeleton kind={matched.route.skeleton} />}>
-        <Page params={resolvedParams(matched.params)} searchParams={resolvedParams(search)} />
+        <Page params={params} searchParams={searchParams} />
       </Suspense>
     </Boundary>
   );
@@ -197,7 +236,7 @@ export function mountGame(root: HTMLElement, options: GameOptions): GameMount {
   };
   root.addEventListener("pointerover", onIntent, { passive: true });
   root.addEventListener("touchstart", onIntent, { passive: true });
-  render(<GameApp router={router} onLeave={options.onLeave} />, root);
+  render(<GameApp router={router} root={root} onLeave={options.onLeave} />, root);
   return {
     router,
     unmount() {

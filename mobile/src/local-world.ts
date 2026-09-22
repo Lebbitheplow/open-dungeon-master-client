@@ -1,4 +1,4 @@
-import { registerPlugin } from "@capacitor/core";
+import { registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 import type {
   AiSetup,
   ConnectResult,
@@ -25,11 +25,39 @@ export interface WorldStatus {
   error: string;
 }
 
+// What the native side reports on its own (LocalWorldPlugin's worldEvent):
+// the Node server or cloudflared leaving after they started, or a stop
+// finishing. Without it JS only learns of a dead server or tunnel on its
+// next status call, while the notification and the room codes keep
+// advertising an address nobody answers at.
+export interface WorldEvent {
+  source: "world" | "tunnel";
+  state: "running" | "stopped" | "error";
+  message?: string;
+}
+
 export interface LocalWorldPlugin {
   status(): Promise<WorldStatus>;
   start(): Promise<WorldStatus>;
   stop(): Promise<WorldStatus>;
   log(): Promise<{ text: string }>;
+  // Capacitor's event channel; optional so a fake plugin need not have one.
+  addListener?(
+    eventName: "worldEvent",
+    listener: (event: WorldEvent) => void,
+  ): Promise<PluginListenerHandle>;
+}
+
+export function parseWorldEvent(raw: unknown): WorldEvent | null {
+  const event = raw as { source?: unknown; state?: unknown; message?: unknown } | null;
+  if (!event || typeof event !== "object") return null;
+  if (event.source !== "world" && event.source !== "tunnel") return null;
+  if (event.state !== "running" && event.state !== "stopped" && event.state !== "error") return null;
+  return {
+    source: event.source,
+    state: event.state,
+    message: typeof event.message === "string" ? event.message.slice(0, 300) : "",
+  };
 }
 
 export const LocalWorld = registerPlugin<LocalWorldPlugin>("LocalWorld");
@@ -291,5 +319,22 @@ export function createLocalWorld(deps: LocalWorldDeps) {
     await announce();
   }
 
-  return { status, start, play, createAccount, login, configureAi, aiSaved, stop, publish };
+  // Native news about the world and the tunnel. A world that went down is
+  // announced as a local-status so the home screen shows it and can offer
+  // a restart; every event then reaches the caller, whose tunnel side
+  // settles the rest.
+  function watch(onEvent: (event: WorldEvent) => void): void {
+    const plugin = deps.plugin;
+    if (typeof plugin.addListener !== "function") return;
+    void plugin
+      .addListener("worldEvent", (raw) => {
+        const event = parseWorldEvent(raw);
+        if (!event) return;
+        if (event.source === "world") void announce();
+        onEvent(event);
+      })
+      .catch(() => undefined);
+  }
+
+  return { status, start, play, createAccount, login, configureAi, aiSaved, stop, publish, watch };
 }

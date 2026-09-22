@@ -78,17 +78,28 @@ function sourceChip(host: HomeHost, label: string): HTMLElement {
 // host's session and answers with a data URL; the page cannot load them by
 // address. Answers are kept for the session so a re-render is free, and a
 // miss (host offline, session lapsed) is asked again on the next paint.
+// The answers are base64 pictures, so the ring is small: the least recently
+// drawn cover goes once more than COVER_CAP distinct covers have been seen.
+const COVER_CAP = 64;
 const covers = new Map<string, Promise<string>>();
 
 function loadCover(hostId: string, url: string): Promise<string> {
   const key = `${hostId} ${url}`;
   let pending = covers.get(key);
-  if (!pending) {
-    pending = window.odm.coverImage(hostId, url).catch(() => "");
+  if (pending) {
+    // Re-inserting moves the key to the newest end of the map's order.
+    covers.delete(key);
     covers.set(key, pending);
-    void pending.then((data) => {
-      if (!data) covers.delete(key);
-    });
+    return pending;
+  }
+  pending = window.odm.coverImage(hostId, url).catch(() => "");
+  covers.set(key, pending);
+  void pending.then((data) => {
+    if (!data) covers.delete(key);
+  });
+  for (const oldest of covers.keys()) {
+    if (covers.size <= COVER_CAP) break;
+    covers.delete(oldest);
   }
   return pending;
 }

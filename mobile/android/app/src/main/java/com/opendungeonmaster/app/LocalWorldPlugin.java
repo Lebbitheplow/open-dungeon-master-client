@@ -18,9 +18,18 @@ import org.json.JSONObject;
  * and the tunnel alive while the host looks at other apps. Everything else
  * the shell does with the world (accounts, settings, opening it) goes over
  * plain HTTP to 127.0.0.1 like any server.
+ *
+ * Capacitor runs every plugin call of every plugin on one handler thread,
+ * so anything that waits on a child process happens on its own worker and
+ * resolves the call from there. Changes the native side makes on its own
+ * (the server dying, cloudflared exiting, a stop from the notification)
+ * reach the bridge as a <code>worldEvent</code>:
+ * <code>{ source: "world" | "tunnel", state: "running" | "stopped" | "error", message? }</code>.
  */
 @CapacitorPlugin(name = "LocalWorld")
 public class LocalWorldPlugin extends Plugin {
+
+    private static final String WORLD_EVENT = "worldEvent";
 
     private static JSObject toJS(JSONObject json) {
         JSObject object = new JSObject();
@@ -38,6 +47,20 @@ public class LocalWorldPlugin extends Plugin {
 
     private ShareTunnel tunnel() {
         return ShareTunnel.get(getContext());
+    }
+
+    @Override
+    public void load() {
+        runtime().setListener(this::emitWorldEvent);
+        tunnel().setListener(this::emitWorldEvent);
+    }
+
+    private void emitWorldEvent(String source, String state, String message) {
+        JSObject data = new JSObject();
+        data.put("source", source);
+        data.put("state", state);
+        if (message != null && !message.isEmpty()) data.put("message", message);
+        notifyListeners(WORLD_EVENT, data, false);
     }
 
     @PluginMethod
@@ -62,10 +85,13 @@ public class LocalWorldPlugin extends Plugin {
 
     @PluginMethod
     public void stop(PluginCall call) {
-        tunnel().stop();
-        WorldService.stop(getContext());
-        runtime().stop();
-        call.resolve(toJS(runtime().status()));
+        Thread worker = new Thread(() -> {
+            tunnel().stop();
+            WorldService.stop(getContext());
+            runtime().stop();
+            call.resolve(toJS(runtime().status()));
+        }, "odm-world-stop");
+        worker.start();
     }
 
     @PluginMethod
@@ -87,6 +113,8 @@ public class LocalWorldPlugin extends Plugin {
      * promised) as a named tunnel, otherwise as a quick tunnel whose address
      * comes back in the result. Hosting begins here, so the foreground
      * service starts first and stops again if the tunnel does not come up.
+     * A stop that lands while the tunnel is still coming up rejects with
+     * the code "stopped" so the bridge can tell it from a failure.
      */
     @PluginMethod
     public void shareStart(PluginCall call) {
@@ -107,7 +135,11 @@ public class LocalWorldPlugin extends Plugin {
                 JSObject result = new JSObject();
                 result.put("url", url);
                 call.resolve(result);
+            } catch (ShareTunnel.StoppedException e) {
+                WorldService.stop(getContext());
+                call.reject(e.getMessage(), "stopped");
             } catch (IOException e) {
+                tunnel().stop();
                 WorldService.stop(getContext());
                 call.reject(e.getMessage() != null ? e.getMessage() : "Could not open a public address.");
             } catch (RuntimeException e) {
@@ -121,8 +153,11 @@ public class LocalWorldPlugin extends Plugin {
 
     @PluginMethod
     public void shareStop(PluginCall call) {
-        tunnel().stop();
-        WorldService.stop(getContext());
-        call.resolve(toJS(tunnel().status()));
+        Thread worker = new Thread(() -> {
+            tunnel().stop();
+            WorldService.stop(getContext());
+            call.resolve(toJS(tunnel().status()));
+        }, "odm-share-stop");
+        worker.start();
     }
 }

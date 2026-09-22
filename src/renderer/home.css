@@ -201,10 +201,11 @@
   height: 14px;
   border-radius: 50%;
   background: var(--ink-300);
-  transition: left 200ms var(--ease-snap), background-color 200ms ease;
+  transition: transform 200ms var(--ease-snap), background-color 200ms ease;
 }
 .toggle.on .track { background: linear-gradient(90deg, var(--gold-400), var(--gold-200)); border-color: rgba(212, 171, 58, 0.5); }
-.toggle.on .knob { left: 16px; background: var(--gold-950); }
+/* Slides 14px, from left 2px to left 16px, without a layout per frame. */
+.toggle.on .knob { transform: translateX(14px); background: var(--gold-950); }
 
 .host-group { margin-bottom: 1.4rem; }
 .host-head {
@@ -523,24 +524,39 @@
 .qr-frame svg { display: block; width: 100%; height: auto; }
 
 .tour-scrim { position: fixed; inset: 0; z-index: 100; }
+/* The spotlight: a frame that tour.ts moves with a transform, and a dim
+   over the rest of the page with the frame's box cut out of it by a
+   clip-path (tour.ts writes the path). Both move as compositor animations;
+   the 9999px box-shadow this replaced repainted the whole window on every
+   frame of a move. The dim comes after the frame in the DOM so it lies over
+   the frame's glow, the way the shadow did. */
 .tour-spot {
   position: fixed;
+  top: 0;
+  left: 0;
   z-index: 101;
   pointer-events: none;
   border-radius: 0.8rem;
   border: 1px solid rgba(236, 210, 135, 0.65);
-  box-shadow: 0 0 0 9999px rgba(5, 3, 13, 0.76), 0 0 24px rgba(212, 171, 58, 0.35);
-  transition: top 260ms var(--ease-snap), left 260ms var(--ease-snap), width 260ms var(--ease-snap), height 260ms var(--ease-snap);
+  box-shadow: 0 0 24px rgba(212, 171, 58, 0.35);
+  will-change: transform;
 }
+.tour-dim {
+  position: fixed;
+  inset: 0;
+  z-index: 101;
+  pointer-events: none;
+  background: rgba(5, 3, 13, 0.76);
+}
+/* The first light lands in place; tour.ts turns the glide on after it. */
+.tour-spot.live { transition: transform 260ms var(--ease-snap), width 260ms var(--ease-snap), height 260ms var(--ease-snap); }
+.tour-dim.live { transition: clip-path 260ms var(--ease-snap); }
 .tour-spot.none {
-  top: 50%;
-  left: 50%;
-  width: 0;
-  height: 0;
   border: 0;
   border-radius: 50%;
   box-shadow: none;
 }
+.tour-dim.none { visibility: hidden; }
 /* A centred step (no target) dims the whole page from the scrim instead. */
 .tour-scrim.dim { background: rgba(5, 3, 13, 0.76); }
 .tour-card {
@@ -561,7 +577,7 @@
 .tour-actions .btn { height: 38px; padding: 0 0.9rem; }
 
 @media (prefers-reduced-motion: reduce) {
-  .tour-spot, .tour-card { transition: none; animation: none; }
+  .tour-spot, .tour-spot.live, .tour-dim.live, .tour-card { transition: none; animation: none; }
 }
 
 /* ---------- the native game screens ---------- */
@@ -605,6 +621,13 @@
 .page .game-root { overflow: visible; overscroll-behavior: auto; }
 .page .game-root::before { display: none; }
 .game-root .h-dvh { height: calc(100dvh - var(--game-top)); }
+/* A change of page crossfades through a view transition (game/index.tsx).
+   Only the game root is snapshotted, never the document, so the topbar
+   above it stays live and the fade covers the page column alone. The root
+   is named from there, for the transition only: a name that stayed would
+   make it a stacking context and put the pages' fixed dialogs under the
+   topbar. */
+:root { view-transition-name: none; }
 
 /* A short notice from the native side (a file saved, a save that failed). */
 .shell-toast {
@@ -639,7 +662,6 @@
   overscroll-behavior: contain;
   padding: 0.5rem 1.25rem calc(var(--safe-bottom) + 2rem);
   background: rgba(9, 7, 20, 0.96);
-  backdrop-filter: blur(6px);
   animation: fade-up 220ms var(--ease-snap) both;
 }
 .overlay .overlay-panel { margin: 0 auto; animation: none; }

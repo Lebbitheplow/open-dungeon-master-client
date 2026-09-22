@@ -13,8 +13,11 @@ import { BackgroundColor, InAppBrowser, ToolBarType } from "@capgo/inappbrowser"
 import { createWebBluetooth } from "./ble-polyfill-core";
 import { createBleRelay } from "./ble-relay";
 import { createDownloadRelay } from "./download-relay";
-import { createDownloadShim, noticeText } from "./download-shim-core";
+import { createDownloadShim, DOWNLOAD_URL_MESSAGE, noticeText } from "./download-shim-core";
 import { createAndroidHomeFeed, HOME_CACHE_KEY } from "./home-feed";
+import { fetchCover, fetchIncoming, OdmDownload, renameIncoming, sweepCovers } from "./native-download";
+import { createShortCache, createTransitionDebounce } from "./throttle";
+import { createIdleStopper, IDLE_STOP_GRACE_MS } from "./world-idle";
 import {
   createLocalWorld,
   LocalWorld,
@@ -39,8 +42,8 @@ import {
   tableEndpoint,
 } from "../../src/shared/broker";
 import {
+  COVER_MAX_BYTES,
   coverRequestUrl,
-  imageDataUrl,
   LOCAL_HOST_ID,
   type HomeCache,
 } from "../../src/shared/home-feed-logic";
@@ -345,10 +348,12 @@ const bleRelay = createBleRelay({
 // The game webview has no download handler, so an <a download> click there
 // (character-sheet PDF, workshop bundle, story export) would do nothing. A
 // shim (built to www/download-shim.js) injected next to the BLE polyfill
-// fetches the file inside the page and posts its bytes here; the relay parks
-// them in the app cache and opens the system share sheet, where the player
-// saves to Files or Drive or sends the file on. The cache folder is covered
-// by the FileProvider the app manifest already declares (res/xml/file_paths).
+// posts the click here: a host file as its address, streamed natively by
+// the app's own download plugin; a file the page built (blob:) as bytes.
+// The relay parks the file in the app cache and opens the system share
+// sheet, where the player saves to Files or Drive or sends the file on. The
+// cache folder is covered by the FileProvider the app manifest already
+// declares (res/xml/file_paths).
 const downloadRelay = createDownloadRelay({
   async writeCache(path, data) {
     const written = await Filesystem.writeFile({
@@ -362,6 +367,8 @@ const downloadRelay = createDownloadRelay({
   async clearCache(path) {
     await Filesystem.rmdir({ path, directory: Directory.Cache, recursive: true });
   },
+  fetchToCache: (url, headers) => fetchIncoming(OdmDownload, url, headers),
+  renameCache: renameIncoming,
   async share(title, uri) {
     await Share.share({ title, files: [uri] });
   },
@@ -415,14 +422,13 @@ function installPageBridges(): void {
   const pageOrigin = window.location.origin;
   const shim = createDownloadShim({
     origin: pageOrigin,
-    // A root-relative link resolves against this page; handing the path
-    // back to fetch lets the game runtime send it to the host with the
-    // session (src/renderer/game/runtime.ts).
-    fetch: (url) => fetch(url.startsWith(pageOrigin) ? url.slice(pageOrigin.length) : url),
+    // Only blob: links are fetched here (a root-relative one is posted as
+    // an address instead, see below), so this is the page's own fetch.
+    fetch: (url) => fetch(url),
     channel: () => ({
       postMessage(message) {
         const detail = (message as { detail?: unknown }).detail ?? message;
-        void downloadRelay.handleMessage(detail).catch(() => undefined);
+        void routeShellDownload(detail).catch(() => undefined);
       },
     }),
   });
@@ -438,7 +444,36 @@ function installPageBridges(): void {
   });
 }
 
+// A download from this page's own game screens. A host link there resolves
+// against this page (https://localhost/...), so its path is sent to the
+// mounted host with that host's session, the way the game runtime's fetch
+// would have (src/renderer/game/runtime.ts).
+async function routeShellDownload(detail: unknown): Promise<void> {
+  const msg = detail as { type?: unknown; url?: unknown; name?: unknown } | null;
+  if (!msg || typeof msg !== "object" || msg.type !== DOWNLOAD_URL_MESSAGE) {
+    await downloadRelay.handleMessage(detail);
+    return;
+  }
+  const hostId = window.odmMountedHostId ?? "";
+  const session = hostId ? await bridge.hostSession(hostId) : null;
+  let path = "";
+  try {
+    const url = new URL(String(msg.url ?? ""));
+    if (url.origin === window.location.origin) path = `${url.pathname}${url.search}`;
+  } catch {
+    // Not an address; refused below.
+  }
+  if (!session || !path) {
+    showShellToast("That download is not from this server.");
+    return;
+  }
+  await downloadRelay.download(`${session.origin}${path}`, String(msg.name ?? ""), {
+    authorization: `Bearer ${session.token}`,
+  });
+}
+
 installPageBridges();
+sweepCovers();
 
 // The manager UI ships the game-page scripts as sibling assets. Each is a
 // self-contained IIFE, so they concatenate into one preShowScript; a missing
@@ -461,12 +496,48 @@ function loadInjectedScripts(): Promise<string> {
   return injectedScripts;
 }
 
+// True while a game web view is up, and which origin it shows: address
+// downloads posted from it may only point back at that host.
+let gameWebViewOpen = false;
+let gameWebViewOrigin = "";
+
+// The shell's contour backdrop is paused under the web view (the native
+// game path pauses it through the game layout, chrome.ts). On close it
+// resumes only when the shell is not showing the native game, which owns
+// that decision itself.
+function resumeTopoUnderShell(): void {
+  if (document.querySelector(".page.game")) return;
+  window.odmTopo?.resume();
+}
+
+// Whether the last web view to close showed the device world's own pages.
+let closedOwnWorld = false;
+
+// The web view is gone: the manager is back, the backdrop breathes again,
+// and the phone's own world gets its grace period before sleeping.
+function gameWebViewClosed(): void {
+  gameWebViewOpen = false;
+  gameWebViewOrigin = "";
+  closedOwnWorld = worldPageOpen;
+  worldPageOpen = false;
+  resumeTopoUnderShell();
+  idleWorld.arm();
+}
+
 // No toolbar: the page is the app. The status bar and navigation bar keep
 // their space (the WebView cannot see them itself), the hardware back
 // button walks the page's own history, and at its root it closes the
 // page, landing here. The page's account menu offers the same door.
 async function openGameWebView(url: string, title: string): Promise<void> {
   const preShowScript = await loadInjectedScripts();
+  idleWorld.cancel();
+  gameWebViewOpen = true;
+  try {
+    gameWebViewOrigin = new URL(url).origin;
+  } catch {
+    gameWebViewOrigin = "";
+  }
+  window.odmTopo?.pause();
   await InAppBrowser.openWebView({
     url,
     toolbarType: ToolBarType.BLANK,
@@ -751,8 +822,23 @@ function keepRoomCodesPublished(url: string): void {
   }
   if (!url) return;
   republishTimer = setInterval(() => {
-    if (sharedUrl) void publishRoomCodes(sharedUrl);
+    void republishTick();
   }, REPUBLISH_MS);
+}
+
+// Each tick looks before it publishes: a tunnel that died (or was ended
+// from the notification) must not have its address put back on the
+// registry. status() itself tears the share down when the process is
+// gone, and that teardown publishes "" which clears this interval.
+async function republishTick(): Promise<void> {
+  if (!sharedUrl) return;
+  const status = await shareTunnel.status().catch(() => null);
+  if (status?.state === "running" && sharedUrl) {
+    await publishRoomCodes(sharedUrl);
+    return;
+  }
+  keepRoomCodesPublished("");
+  await unpublishRoomCodes();
 }
 
 // Room codes seen on a host, newest campaign first. These are the keys the
@@ -845,6 +931,52 @@ const shareTunnel = createShareTunnel({
   now: () => Date.now(),
 });
 
+// News from the native side: cloudflared or the Node server leaving, or a
+// stop finishing. The tunnel side lets go of a dead address at once (the
+// room codes and the game's publicUrl follow through publish("")); a dead
+// world takes any tunnel down with it, since there is nothing behind it.
+localWorld.watch((event) => {
+  if (event.source === "tunnel") {
+    if (event.state !== "running") void shareTunnel.dropped(event.state, event.message ?? "");
+    return;
+  }
+  if (event.state !== "running" && shareTunnel.snapshot().state !== "stopped") {
+    void shareTunnel.stop();
+  }
+});
+
+// A world that came up, went down or moved makes the last status() answer
+// stale; between such moments a second or two of memory folds the native
+// game screens' repeated asks into one plugin call.
+const LOCAL_STATUS_TTL_MS = 1500;
+const localStatusCached = createShortCache(LOCAL_STATUS_TTL_MS, () => localWorld.status());
+listeners.add((event) => {
+  if (event.kind === "local-status") localStatusCached.clear();
+});
+
+// The phone's own world goes to sleep a little after the game web view
+// closes, unless it is shared, the app's own screens are on it, or a web
+// view is up again. Waking it later is what every door here does anyway.
+const idleWorld = createIdleStopper({
+  graceMs: IDLE_STOP_GRACE_MS,
+  inspect: () => {
+    const tunnel = shareTunnel.snapshot().state;
+    return {
+      shared: tunnel === "running" || tunnel === "starting",
+      nativeWorldOpen: window.odmMountedHostId === LOCAL_HOST_ID,
+      webViewOpen: gameWebViewOpen,
+      ownWorldLeft: closedOwnWorld,
+    };
+  },
+  async stop() {
+    const status = await localWorld.status();
+    if (status.state !== "running" || !status.origin) return;
+    // The portal cookies only mean something while a host's pages are up.
+    await clearPortalCookies(status.origin);
+    await localWorld.stop();
+  },
+});
+
 const SHARE_UNSUPPORTED: ShellShareStatus = {
   supported: false,
   state: "stopped",
@@ -903,18 +1035,27 @@ const homeFeed = createAndroidHomeFeed({
       : relocateSaved(input.id, input.origin),
 });
 
-// The world coming up or the tunnel changing are reasons to look again; the
-// feed announces the outcome itself as a home-feed event.
+// The world coming up or going down, or the tunnel doing the same, is a
+// reason to look again; the feed announces the outcome itself as a
+// home-feed event. Only settled transitions count, and a burst of them
+// (starting, running, and the repeat announces around a start) becomes one
+// refresh, since each one asks every saved host for its campaigns.
+const FEED_REFRESH_DELAY_MS = 1500;
+const feedRefresh = createTransitionDebounce({
+  delayMs: FEED_REFRESH_DELAY_MS,
+  fire: () => void homeFeed.refresh().catch(() => undefined),
+});
 listeners.add((event) => {
   if (event.kind === "local-status" || event.kind === "tunnel-status") {
-    homeFeed.refresh().catch(() => undefined);
+    feedRefresh.notice(event.kind, event.status.state);
   }
 });
 
 // The lobby's invite dialog asks to share the world (or stop). A start is
-// answered at once with the "starting" snapshot; the outcome reaches the
-// page through the broadcast above, since a tunnel can take longer to come
-// up than a page should wait on one request.
+// answered at once with the "starting" snapshot and a stop with the
+// "stopped" one; the outcome reaches the page through the broadcast above,
+// since a tunnel can take longer to come up (or to be cancelled while
+// coming up) than a page should wait on one request.
 async function handleShareRequest(request: { action: string; id?: number }): Promise<void> {
   const id = typeof request.id === "number" ? request.id : undefined;
   if (!worldPageOpen) {
@@ -927,7 +1068,17 @@ async function handleShareRequest(request: { action: string; id?: number }): Pro
     return;
   }
   if (request.action === "stop") {
-    await shareTunnel.stop();
+    void shareTunnel.stop();
+    const world = await localWorld.status();
+    pushShareStatus(id, {
+      supported: true,
+      state: "stopped",
+      url: "",
+      mode: "",
+      error: "",
+      lanUrl: world.lanOrigin,
+    });
+    return;
   }
   pushShareStatus(id, await shellShareStatus());
 }
@@ -997,6 +1148,7 @@ async function onWebviewUrl(url: string): Promise<void> {
     // own words for it (src/app/AuthForm.tsx), so a refused signup says why
     // rather than hanging the promise forever.
     await InAppBrowser.close().catch(() => undefined);
+    gameWebViewClosed();
     const text =
       failed === "signups_disabled"
         ? "Signups are disabled on this server."
@@ -1028,6 +1180,7 @@ async function onWebviewUrl(url: string): Promise<void> {
     settleDiscord(await rememberGrant(pending.origin, grant));
   } catch (err) {
     await InAppBrowser.close().catch(() => undefined);
+    gameWebViewClosed();
     settleDiscord(fail(err));
   }
 }
@@ -1257,19 +1410,10 @@ const bridge: OdmBridge = {
     const hostId = window.odmMountedHostId ?? "";
     const session = hostId ? await bridge.hostSession(hostId) : null;
     if (!session) return false;
-    try {
-      const response = await CapacitorHttp.get({
-        url: `${session.origin}${target}`,
-        headers: { authorization: `Bearer ${session.token}` },
-        responseType: "blob",
-      });
-      if (response.status !== 200 || typeof response.data !== "string") return false;
-      const name = target.split("/").pop() || "document.pdf";
-      await downloadRelay.handleMessage({ type: "odm-download", name, data: response.data });
-      return true;
-    } catch {
-      return false;
-    }
+    const name = target.split("?")[0]?.split("/").pop() || "document.pdf";
+    return downloadRelay.download(`${session.origin}${target}`, name, {
+      authorization: `Bearer ${session.token}`,
+    });
   },
 
   async listServers() {
@@ -1456,39 +1600,21 @@ const bridge: OdmBridge = {
 
   // A cover for the home screen, fetched natively with the host's own
   // session (the WebView's image tags carry none, and the server keeps
-  // uploads behind its login) and only from that host. "" when it cannot
-  // be had right now.
+  // uploads behind its login) and only from that host, straight into the
+  // app cache; the page gets an address it can draw. "" when it cannot be
+  // had right now.
   async coverImage(hostId, url) {
     const id = String(hostId ?? "");
-    let origin = "";
-    let token = "";
-    if (id === LOCAL_HOST_ID) {
-      const profile = await loadLocalProfile();
-      origin = (await localWorld.status()).origin;
-      token = profileTokenAlive(profile) ? (profile?.token ?? "") : "";
-    } else {
-      const server = (await loadServers()).find((entry) => entry.id === id);
-      if (server && tokenAlive(server)) {
-        origin = server.origin;
-        token = server.token;
-      }
-    }
-    const target = coverRequestUrl(origin, String(url ?? ""));
-    if (!target || !token) return "";
+    const session = await bridge.hostSession(id);
+    const target = coverRequestUrl(session?.origin ?? "", String(url ?? ""));
+    if (!target || !session) return "";
     try {
-      // On native, a blob response arrives as a base64 string.
-      const response = await CapacitorHttp.request({
+      return await fetchCover(OdmDownload, {
+        hostId: id,
         url: target,
-        method: "GET",
-        headers: { authorization: `Bearer ${token}` },
-        connectTimeout: TIMEOUT_MS,
-        readTimeout: TIMEOUT_MS,
-        responseType: "blob",
+        token: session.token,
+        maxBytes: COVER_MAX_BYTES,
       });
-      if (response.status !== 200 || typeof response.data !== "string") return "";
-      const headers = (response.headers ?? {}) as Record<string, string>;
-      const type = Object.entries(headers).find(([name]) => name.toLowerCase() === "content-type")?.[1] ?? "";
-      return imageDataUrl(type, response.data) ?? "";
     } catch {
       return "";
     }
@@ -1500,7 +1626,7 @@ const bridge: OdmBridge = {
     const id = String(hostId ?? "");
     if (id === LOCAL_HOST_ID) {
       const profile = await loadLocalProfile();
-      const origin = (await localWorld.status()).origin;
+      const origin = (await localStatusCached.get()).origin;
       const token = profileTokenAlive(profile) ? (profile?.token ?? "") : "";
       return origin && token ? { origin, token } : null;
     }
@@ -1601,7 +1727,7 @@ window.odm = bridge;
 // Closing the server webview lands back on the manager; closing it in the
 // middle of a Discord sign-in is a cancel.
 void InAppBrowser.addListener("closeEvent", () => {
-  worldPageOpen = false;
+  gameWebViewClosed();
   settleDiscord(fail(new Error("Sign-in cancelled.")));
   emit({ kind: "show-manager" });
 });
@@ -1628,8 +1754,8 @@ async function routeWebviewMessage(event: unknown): Promise<void> {
     // "Switch server" from the page's account menu (shell-hook.js). The
     // plugin fires closeEvent for toolbar and back-button closes only, so
     // the manager is shown explicitly here.
-    worldPageOpen = false;
     await InAppBrowser.close().catch(() => undefined);
+    gameWebViewClosed();
     emit({ kind: "show-manager" });
     return;
   }
@@ -1646,7 +1772,8 @@ async function routeWebviewMessage(event: unknown): Promise<void> {
     return;
   }
   if (await bleRelay.handleMessage(detail)) return;
-  await downloadRelay.handleMessage(detail);
+  // An address download from the page may only name the host it shows.
+  await downloadRelay.handleMessage(detail, { origin: gameWebViewOrigin || "-" });
 }
 
 function isShellRequest(detail: unknown): boolean {

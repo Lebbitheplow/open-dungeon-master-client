@@ -157,6 +157,34 @@ test("a build without a runtime reports the world as unavailable", async () => {
   assert.equal(status.state, "unavailable");
 });
 
+test("native world events announce a status for the world and reach the caller", async () => {
+  const h = harness({ world: { state: "running", origin: "http://127.0.0.1:3210", firstRun: false } });
+  const emitted: string[] = [];
+  h.deps.emit = (event) => emitted.push(event.kind === "local-status" ? `local:${event.status.state}` : event.kind);
+  let fire: (event: unknown) => void = () => undefined;
+  h.deps.plugin.addListener = async (_name, listener) => {
+    fire = listener as (event: unknown) => void;
+    return { remove: async () => undefined };
+  };
+  const seen: string[] = [];
+  createLocalWorld(h.deps).watch((event) => seen.push(`${event.source}:${event.state}:${event.message ?? ""}`));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  h.world.state = "error";
+  h.world.error = "The world stopped unexpectedly.";
+  fire({ source: "world", state: "error", message: "The world stopped unexpectedly." });
+  fire({ source: "tunnel", state: "stopped" });
+  fire({ source: "nonsense" });
+  fire(null);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(seen, ["world:error:The world stopped unexpectedly.", "tunnel:stopped:"]);
+  assert.deepEqual(emitted, ["local:error"]);
+});
+
+test("watch is a no-op on a plugin without an event channel", () => {
+  const h = harness();
+  assert.doesNotThrow(() => createLocalWorld(h.deps).watch(() => undefined));
+});
+
 // Story AI's OpenAI door: the key is the device's, saved once in the world's
 // admin settings, where every campaign on the phone follows it.
 const SIGNED_IN = {

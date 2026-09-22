@@ -2,12 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createDownloadRelay,
+  fetchableUrl,
   sanitizeFilename,
   type DownloadRelayDeps,
+  type NativeFetchResult,
 } from "../src/download-relay";
 
-// Recording fakes for the filesystem, share sheet and notice channel, so each
-// test drives the message protocol end to end without a Capacitor runtime.
+// Recording fakes for the filesystem, the native streamer, the share sheet
+// and the notice channel, so each test drives the message protocol end to
+// end without a Capacitor runtime.
 
 interface Harness {
   relay: ReturnType<typeof createDownloadRelay>;
@@ -15,16 +18,32 @@ interface Harness {
   notices: string[];
 }
 
-function makeHarness(overrides: Partial<DownloadRelayDeps> = {}): Harness {
+const CACHE = "file:///data/user/0/com.opendungeonmaster.app/cache";
+
+function makeHarness(
+  overrides: Partial<DownloadRelayDeps> = {},
+  fetched: Partial<NativeFetchResult> = {},
+): Harness {
   const calls: string[] = [];
   const notices: string[] = [];
   const deps: DownloadRelayDeps = {
     async writeCache(path, base64) {
       calls.push(`write ${path} ${base64}`);
-      return `file:///data/user/0/com.opendungeonmaster.app/cache/${path}`;
+      return `${CACHE}/${path}`;
     },
     async clearCache(path) {
       calls.push(`clear ${path}`);
+    },
+    async fetchToCache(url, headers) {
+      const sent = Object.entries(headers)
+        .map(([name, value]) => `${name}=${value}`)
+        .join(",");
+      calls.push(`fetch ${url}${sent ? ` [${sent}]` : ""}`);
+      return { size: 3, mime: "application/pdf", suggestedName: "", ...fetched };
+    },
+    async renameCache(from, to) {
+      calls.push(`rename ${from} ${to}`);
+      return `${CACHE}/${to}`;
     },
     async share(title, uri) {
       calls.push(`share ${title} ${uri}`);
@@ -34,6 +53,8 @@ function makeHarness(overrides: Partial<DownloadRelayDeps> = {}): Harness {
   };
   return { relay: createDownloadRelay(deps), calls, notices };
 }
+
+const HOST = "https://play.example.test";
 
 const PDF_B64 = Buffer.from("%PDF-1.7").toString("base64");
 
@@ -168,4 +189,94 @@ test("downloads run one at a time so a sweep never removes a file mid-share", as
   await Promise.all([first, second]);
   const order = h.calls.map((call) => call.split(" ")[0]);
   assert.deepEqual(order, ["clear", "write", "share", "clear", "write", "share"]);
+});
+
+// ---------- host files, streamed natively ----------
+
+test("fetchableUrl takes web addresses only, and only the page's host when one is given", () => {
+  assert.equal(fetchableUrl(`${HOST}/api/campaigns/c1/export?format=pdf`), `${HOST}/api/campaigns/c1/export?format=pdf`);
+  assert.equal(fetchableUrl("http://192.168.1.9:3210/uploads/map.png", "http://192.168.1.9:3210"), "http://192.168.1.9:3210/uploads/map.png");
+  assert.equal(fetchableUrl(`${HOST}/a.pdf`, "https://other.test"), "");
+  assert.equal(fetchableUrl("blob:https://play.example.test/2b1c"), "");
+  assert.equal(fetchableUrl("file:///etc/passwd"), "");
+  assert.equal(fetchableUrl("javascript:alert(1)"), "");
+  assert.equal(fetchableUrl(42), "");
+  assert.equal(fetchableUrl(`${HOST}/${"a".repeat(5000)}`), "");
+});
+
+test("an address download is streamed with the page's cookies, renamed and shared", async () => {
+  const h = makeHarness();
+  const handled = await h.relay.handleMessage(
+    { type: "odm-download-url", url: `${HOST}/api/campaigns/c1/export?format=pdf`, name: "the-sunken-keep.pdf" },
+    { origin: HOST },
+  );
+  assert.equal(handled, true);
+  assert.deepEqual(h.calls, [
+    "clear odm-downloads",
+    `fetch ${HOST}/api/campaigns/c1/export?format=pdf`,
+    "rename odm-downloads/incoming.part odm-downloads/the-sunken-keep.pdf",
+    `share the-sunken-keep.pdf ${CACHE}/odm-downloads/the-sunken-keep.pdf`,
+  ]);
+  assert.deepEqual(h.notices, []);
+});
+
+test("without a name from the link, the server's name wins, then the path, with the extension from the type", async () => {
+  const fromServer = makeHarness({}, { suggestedName: "the-sunken-keep.docx", mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+  await fromServer.relay.handleMessage({ type: "odm-download-url", url: `${HOST}/api/campaigns/c1/export?format=docx`, name: "" });
+  assert.ok(fromServer.calls.some((call) => call.startsWith("share the-sunken-keep.docx ")));
+
+  const fromPath = makeHarness({}, { mime: "image/png" });
+  await fromPath.relay.handleMessage({ type: "odm-download-url", url: `${HOST}/uploads/dungeon-map`, name: "" });
+  assert.ok(fromPath.calls.some((call) => call.startsWith("share dungeon-map.png ")));
+});
+
+test("an address off the page's host is refused before anything is fetched", async () => {
+  const h = makeHarness();
+  await h.relay.handleMessage(
+    { type: "odm-download-url", url: "https://other.test/secret.pdf", name: "x.pdf" },
+    { origin: HOST },
+  );
+  await h.relay.handleMessage({ type: "odm-download-url", url: "file:///etc/passwd", name: "x" });
+  assert.equal(h.calls.length, 0);
+  assert.equal(h.notices.length, 2);
+  assert.match(h.notices[0], /not from this server/);
+});
+
+test("a streamed file that failed or is too big is reported, not shared", async () => {
+  const refused = makeHarness({
+    async fetchToCache() {
+      throw new Error("The server answered 403.");
+    },
+  });
+  await refused.relay.handleMessage({ type: "odm-download-url", url: `${HOST}/api/campaigns/c1/export`, name: "" });
+  assert.deepEqual(refused.notices, ["Could not save export. The server answered 403."]);
+  assert.ok(!refused.calls.some((call) => call.startsWith("share")));
+
+  const big = makeHarness({}, { size: 41 * 1024 * 1024 });
+  await big.relay.handleMessage({ type: "odm-download-url", url: `${HOST}/big.bin`, name: "" });
+  assert.match(big.notices[0], /40 MB/);
+  assert.ok(!big.calls.some((call) => call.startsWith("rename")));
+});
+
+test("download() sends the caller's headers and reports whether the file arrived", async () => {
+  const h = makeHarness();
+  const ok = await h.relay.download(`${HOST}/uploads/handout.pdf`, "handout.pdf", { authorization: "Bearer tok" });
+  assert.equal(ok, true);
+  assert.equal(h.calls[1], `fetch ${HOST}/uploads/handout.pdf [authorization=Bearer tok]`);
+
+  const cancelled = makeHarness({
+    async share() {
+      throw new Error("Share canceled");
+    },
+  });
+  assert.equal(await cancelled.relay.download(`${HOST}/uploads/handout.pdf`, "handout.pdf", {}), true);
+  assert.deepEqual(cancelled.notices, []);
+
+  const failed = makeHarness({
+    async fetchToCache() {
+      throw new Error("Could not reach the host.");
+    },
+  });
+  assert.equal(await failed.relay.download(`${HOST}/uploads/handout.pdf`, "handout.pdf", {}), false);
+  assert.deepEqual(failed.notices, ["Could not save handout.pdf. Could not reach the host."]);
 });

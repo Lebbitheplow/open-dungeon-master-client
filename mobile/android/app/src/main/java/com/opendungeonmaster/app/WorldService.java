@@ -11,6 +11,8 @@ import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.IBinder;
 import androidx.core.app.NotificationCompat;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * Keeps a shared world alive while the host is elsewhere: Android only lets
@@ -21,6 +23,10 @@ import androidx.core.app.NotificationCompat;
  * lives in {@link WorldRuntime}, the tunnel in {@link ShareTunnel}. "Stop
  * hosting" on the notification ends the share and leaves the world running
  * for the host; swiping the app away stops everything.
+ *
+ * Every stop waits on a child process (up to five seconds each), so the
+ * service callbacks, which run on the main thread, hand that work to one
+ * background lane instead of blocking the UI.
  */
 public class WorldService extends Service {
 
@@ -29,6 +35,13 @@ public class WorldService extends Service {
     public static final String EXTRA_TEXT = "text";
     private static final String CHANNEL = "odm-world";
     private static final int NOTIFICATION_ID = 4201;
+
+    /** One lane for the blocking stops, shared across service instances. */
+    private static final ExecutorService WORK = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "odm-service-work");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     /** Starts the service, or refreshes its notification text when already running. */
     public static void start(Context context, String text) {
@@ -43,7 +56,8 @@ public class WorldService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
-            ShareTunnel.get(this).stop();
+            Context app = getApplicationContext();
+            WORK.execute(() -> ShareTunnel.get(app).stop());
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -102,15 +116,19 @@ public class WorldService extends Service {
 
     @Override
     public void onTaskRemoved(Intent rootIntent) {
-        ShareTunnel.get(this).stop();
-        WorldRuntime.get(this).stop();
+        Context app = getApplicationContext();
+        WORK.execute(() -> {
+            ShareTunnel.get(app).stop();
+            WorldRuntime.get(app).stop();
+        });
         stopSelf();
         super.onTaskRemoved(rootIntent);
     }
 
     @Override
     public void onDestroy() {
-        ShareTunnel.get(this).stop();
+        Context app = getApplicationContext();
+        WORK.execute(() -> ShareTunnel.get(app).stop());
         super.onDestroy();
     }
 

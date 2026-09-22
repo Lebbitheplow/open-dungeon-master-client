@@ -20,6 +20,9 @@ function harness(overrides: {
   // cloudflared exits as it starts: the one named failure worth falling
   // back for.
   namedProcessDies?: boolean;
+  // Holds the start at the broker call until released, so a stop can land
+  // in the middle.
+  gate?: Promise<void>;
 } = {}) {
   const broker = overrides.broker ?? "ok";
   const namedDns = overrides.namedDns ?? true;
@@ -48,6 +51,7 @@ function harness(overrides: {
     fetchJson: async (url, init) => {
       calls.push(`${init?.method ?? "GET"} ${url}`);
       if (url.endsWith("/session")) {
+        if (overrides.gate) await overrides.gate;
         if (broker === "down") return { status: 503, data: null };
         if (broker === "offshape") return { status: 200, data: { ...SESSION, hostname: "evil.example" } };
         return { status: 200, data: SESSION };
@@ -161,6 +165,41 @@ test("a tunnel ended from the notification is noticed on the next status look", 
   assert.equal(status.state, "stopped");
   assert.equal(h.published.at(-1), "");
   assert.ok(h.calls.some((call) => call.startsWith("DELETE ")));
+});
+
+test("a stop during a start cancels natively and the start unwinds without launching", async () => {
+  let release: () => void = () => undefined;
+  const h = harness({ gate: new Promise<void>((resolve) => (release = resolve)) });
+  const starting = h.tunnel.start();
+  const stopping = h.tunnel.stop();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  // The native cancel went out before the start had a chance to finish.
+  assert.ok(h.calls.includes("stop"));
+  release();
+  const [started, stopped] = await Promise.all([starting, stopping]);
+  assert.equal(started.state, "stopped");
+  assert.equal(started.error, "");
+  assert.equal(stopped.state, "stopped");
+  assert.equal(h.calls.filter((call) => call.startsWith("named:") || call.startsWith("quick:")).length, 0);
+  assert.equal(h.published.at(-1), "");
+});
+
+test("the native side reporting the tunnel gone drops the share at once", async () => {
+  const h = harness();
+  await h.tunnel.start();
+  h.plugin.running = false;
+  await h.tunnel.dropped("error", "cloudflared exited.");
+  const status = h.tunnel.snapshot();
+  assert.equal(status.state, "error");
+  assert.equal(status.error, "cloudflared exited.");
+  assert.equal(status.url, "");
+  assert.equal(h.published.at(-1), "");
+  assert.ok(h.calls.some((call) => call.startsWith("DELETE ")));
+  assert.equal(h.events.at(-1)?.kind, "tunnel-status");
+  // Nothing to drop twice, and nothing to drop while a stop is under way.
+  const before = h.events.length;
+  await h.tunnel.dropped("stopped");
+  assert.equal(h.events.length, before);
 });
 
 test("starting twice shares one attempt", async () => {
