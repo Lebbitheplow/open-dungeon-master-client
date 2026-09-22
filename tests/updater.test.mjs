@@ -92,7 +92,7 @@ test("the startup check hands the renderer the full status", async () => {
   assert.equal(progress.state, "available");
   assert.equal(progress.latest, "0.9.0");
   assert.equal(progress.status.canSelfUpdate, false);
-  assert.match(progress.status.instruction, /flatpak update/);
+  assert.match(progress.status.instruction, /flatpak bundle/);
 });
 
 test("fetchLatestReleaseVersion reads the tag and treats 404 as no release", async () => {
@@ -104,40 +104,71 @@ test("fetchLatestReleaseVersion reads the tag and treats 404 as no release", asy
   await assert.rejects(() => fetchLatestReleaseVersion(broken), /503/);
 });
 
+// A stand-in for the machine: records what the updater asked it to do.
+function fakeHost(overrides = {}) {
+  const log = { opened: [], revealed: [], ran: [], relaunched: [] };
+  const host = {
+    format: "rpm",
+    platform: "linux",
+    arch: "x64",
+    execPath: "/opt/Open Dungeon Master/open-dungeon-master-client",
+    appImagePath: "",
+    downloadsDir: () => "",
+    open: async (file) => void log.opened.push(file),
+    reveal: (file) => void log.revealed.push(file),
+    has: async () => true,
+    writable: async () => true,
+    run: async (command, args) => {
+      log.ran.push([command, ...args]);
+      return { code: 0, stderr: "" };
+    },
+    relaunch: (execPath) => void log.relaunched.push(execPath ?? ""),
+    fetchImpl: async () =>
+      new Response(new Uint8Array([1, 2, 3, 4]), { status: 200, headers: { "content-length": "4" } }),
+    ...overrides,
+  };
+  return { host, log };
+}
+
+async function tempFolder() {
+  const fsp = await import("node:fs/promises");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  return fsp.mkdtemp(path.join(os.tmpdir(), "odm-update-"));
+}
+
 test("packageAssetName picks the one release file an install updates from", async () => {
   const { packageAssetName } = await import("../dist/main/updater.js");
   assert.equal(packageAssetName("0.12.1", "managed", "linux", "x64", "rpm"), "open-dungeon-master-client-0.12.1-x86_64.rpm");
   assert.equal(packageAssetName("0.12.1", "managed", "linux", "x64", "deb"), "open-dungeon-master-client-0.12.1-amd64.deb");
   assert.equal(packageAssetName("0.12.1", "portable", "linux", "x64", ""), "open-dungeon-master-client-0.12.1-x64.tar.gz");
-  assert.equal(packageAssetName("0.12.1", "mac", "darwin", "arm64", ""), "open-dungeon-master-client-0.12.1-arm64-mac.dmg");
-  assert.equal(packageAssetName("0.12.1", "mac", "darwin", "x64", ""), "open-dungeon-master-client-0.12.1-x64-mac.dmg");
+  assert.equal(packageAssetName("0.12.1", "flatpak", "linux", "x64", "rpm"), "open-dungeon-master-client-0.12.1-x86_64.flatpak");
+  // The zip unpacks into a bundle the app can swap in; the dmg would need mounting.
+  assert.equal(packageAssetName("0.12.1", "mac", "darwin", "arm64", ""), "open-dungeon-master-client-0.12.1-arm64-mac.zip");
+  assert.equal(packageAssetName("0.12.1", "mac", "darwin", "x64", ""), "open-dungeon-master-client-0.12.1-x64-mac.zip");
   // No package manager we know, a store install, another architecture: the app says where to go instead.
   assert.equal(packageAssetName("0.12.1", "managed", "linux", "x64", ""), "");
-  assert.equal(packageAssetName("0.12.1", "flatpak", "linux", "x64", "rpm"), "");
+  assert.equal(packageAssetName("0.12.1", "snap", "linux", "x64", "rpm"), "");
   assert.equal(packageAssetName("0.12.1", "managed", "linux", "arm64", "deb"), "");
   assert.equal(packageAssetName("0.12.1", "portable", "win32", "x64", ""), "");
 });
 
-test("a package install downloads its file and hands it to the system", async () => {
+test("an rpm install downloads the package, installs it through pkexec and restarts", async () => {
   const { Updater } = await import("../dist/main/updater.js");
   const fsp = await import("node:fs/promises");
-  const os = await import("node:os");
   const path = await import("node:path");
-  const folder = await fsp.mkdtemp(path.join(os.tmpdir(), "odm-update-"));
-  const opened = [];
+  const folder = await tempFolder();
   const asked = [];
-  const updater = new Updater("managed", "0.12.0", async () => "0.12.1", 0, {
-    format: "rpm",
-    platform: "linux",
-    arch: "x64",
+  const { host, log } = fakeHost({
     downloadsDir: () => folder,
-    open: async (file) => void opened.push(file),
-    reveal: () => undefined,
+    // dnf is there, so it wins over rpm.
+    has: async (command) => ["pkexec", "dnf", "rpm"].includes(command),
     fetchImpl: async (url) => {
       asked.push(String(url));
       return new Response(new Uint8Array([1, 2, 3, 4]), { status: 200, headers: { "content-length": "4" } });
     },
   });
+  const updater = new Updater("managed", "0.12.0", async () => "0.12.1", 0, host);
   const status = await updater.checkForUpdates();
   assert.equal(status.available, true);
   assert.equal(status.canSelfUpdate, false);
@@ -145,28 +176,199 @@ test("a package install downloads its file and hands it to the system", async ()
   await updater.downloadAndInstall();
   const file = path.join(folder, "open-dungeon-master-client-0.12.1-x86_64.rpm");
   assert.deepEqual(asked, ["https://github.com/Lebbitheplow/open-dungeon-master-client/releases/download/v0.12.1/open-dungeon-master-client-0.12.1-x86_64.rpm"]);
-  assert.deepEqual(opened, [file]);
-  assert.equal((await fsp.readFile(file)).length, 4);
+  assert.deepEqual(log.ran, [["pkexec", "dnf", "install", "-y", file]]);
+  assert.deepEqual(log.relaunched, [""]);
+  assert.deepEqual(log.opened, []);
+  // The package is gone from Downloads once it is installed.
+  assert.deepEqual(await fsp.readdir(folder), []);
   assert.equal(updater.progress().state, "ready");
+  assert.match(updater.progress().message, /Restarting/);
+  await fsp.rm(folder, { recursive: true, force: true });
+});
+
+test("a deb install goes through apt-get without prompts", async () => {
+  const { Updater } = await import("../dist/main/updater.js");
+  const fsp = await import("node:fs/promises");
+  const folder = await tempFolder();
+  const { host, log } = fakeHost({
+    format: "deb",
+    downloadsDir: () => folder,
+    has: async (command) => ["pkexec", "apt-get", "dpkg"].includes(command),
+  });
+  const updater = new Updater("managed", "0.12.0", async () => "0.12.1", 0, host);
+  await updater.downloadAndInstall();
+  assert.equal(log.ran.length, 1);
+  assert.deepEqual(log.ran[0].slice(0, 5), ["pkexec", "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "install"]);
+  assert.deepEqual(log.relaunched, [""]);
+  await fsp.rm(folder, { recursive: true, force: true });
+});
+
+test("a closed password prompt keeps the package and says so; a failed install quotes the reason", async () => {
+  const { Updater } = await import("../dist/main/updater.js");
+  const fsp = await import("node:fs/promises");
+  const folder = await tempFolder();
+  let answer = { code: 126, stderr: "" };
+  const { host, log } = fakeHost({
+    downloadsDir: () => folder,
+    run: async () => answer,
+  });
+  const updater = new Updater("managed", "0.12.0", async () => "0.12.1", 0, host);
+  await assert.rejects(() => updater.downloadAndInstall(), /cancelled/);
+  assert.equal(updater.progress().state, "error");
+  assert.equal((await fsp.readdir(folder)).length, 1);
+  assert.deepEqual(log.relaunched, []);
+  answer = { code: 1, stderr: "Error: Transaction failed\nnothing provides libfoo\n" };
+  await assert.rejects(() => updater.downloadAndInstall(), /nothing provides libfoo/);
+  await fsp.rm(folder, { recursive: true, force: true });
+});
+
+test("without pkexec the package is handed to the system's installer", async () => {
+  const { Updater } = await import("../dist/main/updater.js");
+  const fsp = await import("node:fs/promises");
+  const path = await import("node:path");
+  const folder = await tempFolder();
+  const { host, log } = fakeHost({ downloadsDir: () => folder, has: async (command) => command === "dnf" });
+  const updater = new Updater("managed", "0.12.0", async () => "0.12.1", 0, host);
+  await updater.downloadAndInstall();
+  assert.deepEqual(log.opened, [path.join(folder, "open-dungeon-master-client-0.12.1-x86_64.rpm")]);
+  assert.deepEqual(log.ran, []);
+  assert.deepEqual(log.relaunched, []);
   assert.match(updater.progress().message, /installer/);
   await fsp.rm(folder, { recursive: true, force: true });
+});
+
+test("a tar.gz install unpacks over itself and restarts, or reveals the archive when it cannot", async () => {
+  const { Updater } = await import("../dist/main/updater.js");
+  const fsp = await import("node:fs/promises");
+  const path = await import("node:path");
+  const folder = await tempFolder();
+  const { host, log } = fakeHost({
+    format: "",
+    execPath: "/home/kaleb/apps/odm/open-dungeon-master-client",
+    downloadsDir: () => folder,
+  });
+  const updater = new Updater("portable", "0.12.0", async () => "0.12.1", 0, host);
+  await updater.downloadAndInstall();
+  const file = path.join(folder, "open-dungeon-master-client-0.12.1-x64.tar.gz");
+  assert.deepEqual(log.ran, [["tar", "-xzf", file, "-C", "/home/kaleb/apps/odm", "--strip-components=1"]]);
+  assert.deepEqual(log.relaunched, [""]);
+  assert.equal(updater.progress().state, "ready");
+
+  const readOnly = fakeHost({ format: "", execPath: host.execPath, downloadsDir: () => folder, writable: async () => false });
+  const stuck = new Updater("portable", "0.12.0", async () => "0.12.1", 0, readOnly.host);
+  await stuck.downloadAndInstall();
+  assert.deepEqual(readOnly.log.ran, []);
+  assert.deepEqual(readOnly.log.revealed, [file]);
+  assert.match(stuck.progress().message, /Unpack it/);
+  await fsp.rm(folder, { recursive: true, force: true });
+});
+
+test("a Mac install swaps the bundle from the release zip", async () => {
+  const { Updater } = await import("../dist/main/updater.js");
+  const fsp = await import("node:fs/promises");
+  const path = await import("node:path");
+  const folder = await tempFolder();
+  const apps = path.join(folder, "Applications");
+  const bundle = path.join(apps, "Open Dungeon Master.app");
+  await fsp.mkdir(path.join(bundle, "Contents", "MacOS"), { recursive: true });
+  await fsp.writeFile(path.join(bundle, "Contents", "MacOS", "Open Dungeon Master"), "old");
+  const { host, log } = fakeHost({
+    platform: "darwin",
+    arch: "arm64",
+    format: "",
+    execPath: path.join(bundle, "Contents", "MacOS", "Open Dungeon Master"),
+    downloadsDir: () => folder,
+    // ditto stands in: it drops a new bundle into the staging folder.
+    run: async (command, args) => {
+      log.ran.push([command, ...args]);
+      const staging = args[args.length - 1];
+      await fsp.mkdir(path.join(staging, "Open Dungeon Master.app", "Contents", "MacOS"), { recursive: true });
+      await fsp.writeFile(path.join(staging, "Open Dungeon Master.app", "Contents", "MacOS", "Open Dungeon Master"), "new");
+      return { code: 0, stderr: "" };
+    },
+  });
+  const updater = new Updater("mac", "0.12.0", async () => "0.12.1", 0, host);
+  await updater.downloadAndInstall();
+  const zip = path.join(folder, "open-dungeon-master-client-0.12.1-arm64-mac.zip");
+  assert.equal(log.ran.length, 1);
+  assert.deepEqual(log.ran[0].slice(0, 4), ["ditto", "-x", "-k", zip]);
+  assert.equal(await fsp.readFile(path.join(bundle, "Contents", "MacOS", "Open Dungeon Master"), "utf8"), "new");
+  // No staging folder or retired bundle left beside it.
+  assert.deepEqual(await fsp.readdir(apps), ["Open Dungeon Master.app"]);
+  assert.deepEqual(log.relaunched, [""]);
+  await fsp.rm(folder, { recursive: true, force: true });
+});
+
+test("a flatpak bundle is handed to the software center", async () => {
+  const { Updater } = await import("../dist/main/updater.js");
+  const fsp = await import("node:fs/promises");
+  const path = await import("node:path");
+  const folder = await tempFolder();
+  const { host, log } = fakeHost({ format: "", downloadsDir: () => folder });
+  const updater = new Updater("flatpak", "0.12.0", async () => "0.12.1", 0, host);
+  assert.equal((await updater.checkForUpdates()).canDownload, true);
+  await updater.downloadAndInstall();
+  assert.deepEqual(log.opened, [path.join(folder, "open-dungeon-master-client-0.12.1-x86_64.flatpak")]);
+  assert.deepEqual(log.relaunched, []);
+  assert.match(updater.progress().message, /software center/);
+  await fsp.rm(folder, { recursive: true, force: true });
+});
+
+test("replaceAppImage keeps a renamed file's name and replaces a versioned one", async () => {
+  const { replaceAppImage } = await import("../dist/main/updater.js");
+  const fsp = await import("node:fs/promises");
+  const path = await import("node:path");
+  const folder = await tempFolder();
+  const renamed = path.join(folder, "odm.AppImage");
+  await fsp.writeFile(renamed, "old");
+  const fresh = path.join(folder, "pending", "open-dungeon-master-client-0.12.1-x86_64.AppImage");
+  await fsp.mkdir(path.dirname(fresh), { recursive: true });
+  await fsp.writeFile(fresh, "new");
+  assert.equal(await replaceAppImage(renamed, fresh), renamed);
+  assert.equal(await fsp.readFile(renamed, "utf8"), "new");
+  assert.equal(((await fsp.stat(renamed)).mode & 0o111) !== 0, true);
+
+  const versioned = path.join(folder, "open-dungeon-master-client-0.12.0-x86_64.AppImage");
+  await fsp.writeFile(versioned, "old");
+  await fsp.writeFile(fresh, "new");
+  const destination = await replaceAppImage(versioned, fresh);
+  assert.equal(destination, path.join(folder, "open-dungeon-master-client-0.12.1-x86_64.AppImage"));
+  assert.equal(await fsp.readFile(destination, "utf8"), "new");
+  await assert.rejects(() => fsp.stat(versioned));
+  await fsp.rm(folder, { recursive: true, force: true });
+});
+
+test("the startup check waits for the page and keeps its find for a late page", async () => {
+  const { Updater } = await import("../dist/main/updater.js");
+  const updater = new Updater("managed", "0.12.0", async () => "0.12.1", 0);
+  let seen = null;
+  updater.onStatus(() => {
+    seen = updater.progress();
+  });
+  let pageReady;
+  const ready = new Promise((resolve) => {
+    pageReady = resolve;
+  });
+  updater.checkOnStartup(ready);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(seen, null);
+  assert.equal(updater.lastFound(), null);
+  pageReady();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(seen.state, "available");
+  assert.equal(updater.lastFound().latest, "0.12.1");
 });
 
 test("a failed package download leaves no partial file and says why", async () => {
   const { Updater } = await import("../dist/main/updater.js");
   const fsp = await import("node:fs/promises");
-  const os = await import("node:os");
-  const path = await import("node:path");
-  const folder = await fsp.mkdtemp(path.join(os.tmpdir(), "odm-update-"));
-  const updater = new Updater("managed", "0.12.0", async () => "0.12.1", 0, {
+  const folder = await tempFolder();
+  const { host } = fakeHost({
     format: "deb",
-    platform: "linux",
-    arch: "x64",
     downloadsDir: () => folder,
-    open: async () => undefined,
-    reveal: () => undefined,
     fetchImpl: async () => new Response("no", { status: 404 }),
   });
+  const updater = new Updater("managed", "0.12.0", async () => "0.12.1", 0, host);
   await assert.rejects(() => updater.downloadAndInstall(), /404/);
   assert.equal(updater.progress().state, "error");
   assert.deepEqual(await fsp.readdir(folder), []);

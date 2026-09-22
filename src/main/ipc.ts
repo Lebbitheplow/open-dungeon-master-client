@@ -916,7 +916,7 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
 
   ipcMain.handle("local-ai:status", () => localAi.status());
 
-  ipcMain.handle("app:info", () => ({ version: app.getVersion(), installKind: updater.kind }));
+  ipcMain.handle("app:info", () => ({ version: app.getVersion(), installKind: updater.kind, update: updater.lastFound() }));
 
   // The screens' theme (docs/vtt-parity-implementation-plan.md 18.2, phase
   // 29): the OS frame follows the parchment or the night.

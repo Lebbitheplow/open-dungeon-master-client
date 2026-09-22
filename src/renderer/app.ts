@@ -73,6 +73,8 @@ window.odm.onEvent((event) => {
       if (progress.status) showUpdatePopup(progress.status);
     } else if (progress.state === "downloading") {
       state.updateNote = `Downloading update... ${progress.percent}%`;
+    } else if (progress.state === "installing") {
+      state.updateNote = progress.message || "Installing the update...";
     } else if (progress.state === "ready") {
       state.updateNote = progress.message || "Restarting to install the update...";
     } else if (progress.state === "error") {
@@ -121,6 +123,12 @@ window.odm.onEvent((event) => {
 
 void window.odm.appInfo().then((info) => {
   state.appInfo = info;
+  // The background check may have answered before this page was listening.
+  if (info.update?.available) {
+    state.updateStatus = info.update;
+    state.updateNote = updateNoteFor(info.update);
+    showUpdatePopup(info.update);
+  }
   rerenderHome();
 });
 

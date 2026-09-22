@@ -2,13 +2,16 @@
 // in one scrollable screen, with the guided tour a tap away. Reachable
 // from the topbar on every screen and from Settings.
 import { backLink, closeOverlay, intro, show, showOverlay } from "./chrome.js";
-import { button, chip, el } from "./dom.js";
+import { button, chip, el, icon } from "./dom.js";
 import type { IconName } from "./dom.js";
 import { isGameShowing } from "./game-screen.js";
 import { renderHome } from "./home.js";
 import { renderSettings } from "./settings.js";
 import { isAndroid, refresh, state } from "./state.js";
 import { startAppTour } from "./tour.js";
+
+// The full guide on the site, kept current between app releases.
+export const GUIDE_URL = "https://opendungeonmaster.com/guide/";
 
 function section(iconName: IconName, title: string, ...paragraphs: string[]): HTMLElement {
   const card = el("section", "panel ornate grain guide-section");
@@ -41,6 +44,15 @@ export function renderHelp(): void {
     }), "play"),
     button("secondary", "Settings", () => renderSettings(), "gear"),
   );
+  // An anchor, not a button: both hosts hand an off-origin link to the
+  // system browser (Electron through its window-open handler, Capacitor
+  // as a view intent), so this works the same on desktop and Android.
+  const online = el("a", "btn secondary", "");
+  online.href = GUIDE_URL;
+  online.target = "_blank";
+  online.rel = "noopener noreferrer";
+  online.append(icon("book"), document.createTextNode("Full guide online"));
+  actions.append(online);
 
   const present = overlaid
     ? (...nodes: (HTMLElement | null)[]) =>

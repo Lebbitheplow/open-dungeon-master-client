@@ -189,6 +189,9 @@ export type InstallKind =
 export interface AppInfo {
   version: string;
   installKind: InstallKind | "android";
+  // What the background check had found by the time the page asked: a
+  // renderer that loaded after the check still hears about it.
+  update?: UpdateStatus | null;
 }
 
 export interface UpdateStatus {
@@ -196,8 +199,9 @@ export interface UpdateStatus {
   latest: string;
   available: boolean;
   canSelfUpdate: boolean;
-  // The app can fetch this install's package itself and hand it to the
-  // system's installer (rpm, deb, dmg) or to the file manager (tar.gz).
+  // The app can fetch this install's release file itself and apply it: the
+  // package manager for an rpm or deb, an unpack over the install for a
+  // tar.gz or the Mac bundle, the software center for a flatpak bundle.
   canDownload: boolean;
   // Human words for installs that cannot self-update ("flatpak update", ...).
   instruction: string;
@@ -207,8 +211,10 @@ export interface UpdateStatus {
 
 // "available" is the once-per-run background check finding something; the
 // rest narrate an explicit download started from the About card.
+// "installing" is the stretch between the download and the restart, when
+// the system may be asking for a password.
 export interface UpdateProgress {
-  state: "idle" | "available" | "downloading" | "ready" | "error";
+  state: "idle" | "available" | "downloading" | "installing" | "ready" | "error";
   percent: number;
   latest: string;
   error: string;

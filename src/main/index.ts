@@ -1,5 +1,6 @@
 import path from "node:path";
 import fs from "node:fs";
+import { spawn } from "node:child_process";
 import { app, safeStorage, shell } from "electron";
 import { joinLinkFromArgv, parseJoinLink, type JoinLink } from "../shared/deep-link";
 import { LocalAiManager } from "./local-ai/manager";
@@ -92,6 +93,20 @@ function main(): void {
       : fs.existsSync("/usr/lib/sysimage/rpm") || fs.existsSync("/var/lib/rpm")
         ? "rpm"
         : "";
+    // Is the command on the PATH? Decides which package manager (and
+    // whether pkexec) an install can lean on.
+    const onPath = async (command: string): Promise<boolean> => {
+      for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
+        if (!dir) continue;
+        try {
+          await fs.promises.access(path.join(dir, command), fs.constants.X_OK);
+          return true;
+        } catch {
+          // Not here; try the next directory.
+        }
+      }
+      return false;
+    };
     const updater = new Updater(
       detectInstallKind(process.env, process.execPath, process.platform, app.isPackaged),
       app.getVersion(),
@@ -101,6 +116,8 @@ function main(): void {
         format: packageFormat,
         platform: process.platform,
         arch: process.arch,
+        execPath: process.execPath,
+        appImagePath: process.env.APPIMAGE ?? "",
         downloadsDir: () => app.getPath("downloads"),
         open: async (file) => {
           const failure = await shell.openPath(file);
@@ -110,6 +127,31 @@ function main(): void {
           }
         },
         reveal: (file) => shell.showItemInFolder(file),
+        has: onPath,
+        writable: async (dir) => {
+          try {
+            await fs.promises.access(dir, fs.constants.W_OK);
+            return true;
+          } catch {
+            return false;
+          }
+        },
+        run: (command, args) =>
+          new Promise((resolve, reject) => {
+            const child = spawn(command, args, { stdio: ["ignore", "ignore", "pipe"] });
+            let stderr = "";
+            child.stderr.on("data", (chunk: Buffer) => {
+              stderr += chunk.toString();
+            });
+            child.on("error", reject);
+            child.on("close", (code) => resolve({ code: code ?? -1, stderr }));
+          }),
+        // The new binary starts once this process is gone: from an AppImage
+        // the mount goes with the process, so the path must be the file.
+        relaunch: (execPath) => {
+          app.relaunch(execPath ? { execPath, args: [] } : undefined);
+          app.quit();
+        },
       },
     );
 
@@ -125,7 +167,9 @@ function main(): void {
       if (entry) store.clearToken(entry.id);
     });
     ipc = registerIpc({ store, window: win, local, tunnel, localAi, updater });
-    updater.checkOnStartup();
+    // Not before the page listens: an answer sent into a loading window was
+    // lost, and the player never saw the popup.
+    updater.checkOnStartup(win.whenPageReady());
 
     // Leaving takes the share down properly: the tunnel, then the room
     // codes in the registry and the world's publicUrl (capped, so a broker

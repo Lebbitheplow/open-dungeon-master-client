@@ -8,7 +8,7 @@ import { button, chip, el, icon, spinner } from "./dom.js";
 import type { IconName } from "./dom.js";
 import { isGameShowing, mountDeviceSettings } from "./game-screen.js";
 import { offlineToggle, renderHome } from "./home.js";
-import { renderHelp } from "./help.js";
+import { GUIDE_URL, renderHelp } from "./help.js";
 import { openLocal, shareRow } from "./local.js";
 import { renderLocalAi } from "./local-ai.js";
 import { DEVICE, isAndroid, refresh, state } from "./state.js";
@@ -194,8 +194,9 @@ function serversNote(): HTMLElement | null {
 }
 
 function legalSection(): HTMLElement {
-  const { card, body } = section("link", "Legal", "");
+  const { card, body } = section("link", "Links", "");
   for (const [label, href] of [
+    ["User guide online", GUIDE_URL],
     ["Privacy policy", "https://opendungeonmaster.com/privacy/"],
     ["Terms of service", "https://opendungeonmaster.com/terms/"],
   ] as const) {
