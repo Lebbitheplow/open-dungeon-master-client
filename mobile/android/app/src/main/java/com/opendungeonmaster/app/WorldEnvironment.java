@@ -19,7 +19,9 @@ import java.security.SecureRandom;
 import java.util.Collections;
 import java.util.List;
 import java.util.zip.ZipEntry;
+import java.util.Iterator;
 import java.util.zip.ZipInputStream;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
@@ -88,6 +90,68 @@ final class WorldEnvironment {
         }
         if (marker == null) throw new IOException("The payload has no " + PayloadStore.MARKER);
         PayloadStore.writeMarker(target, marker);
+    }
+
+    /** Opens a file of the app's web assets by path under assets/public (the Capacitor www folder). */
+    interface AssetSource {
+        InputStream open(String path) throws IOException;
+    }
+
+    /** The manifest the renderer build writes beside the game bundle: host folder to file names. */
+    static final String LOCAL_ASSET_MANIFEST = "game/public/manifest.json";
+
+    /**
+     * Where a host folder lives among the web assets. Mirrors localFolder()
+     * in src/shared/local-assets.ts: the painted icons and the stylesheet's
+     * furniture keep their old folders, the rest mirrors the server's
+     * public tree under game/public.
+     */
+    static String localFolder(String hostDir) {
+        if (hostDir.startsWith("/assets/icons/")) return "game/icons/" + hostDir.substring("/assets/icons/".length());
+        if (hostDir.startsWith("/assets/ui/")) return "game/ui-art/" + hostDir.substring("/assets/ui/".length());
+        return "game/public" + hostDir;
+    }
+
+    /**
+     * Puts the art the app carries in its web assets (tiles, icons, props,
+     * the dice) back into the server's public tree, where browser players
+     * joining this phone's world fetch it from. The payload zip leaves it
+     * out (mobile/scripts/bundle-android-payload.mjs) so the same bytes do
+     * not ship twice. Returns how many files were written; none when this
+     * build has no manifest, in which case the payload is taken as
+     * complete.
+     */
+    static int copyLocalAssets(AssetSource source, File target) throws IOException {
+        JSONObject manifest;
+        try (InputStream in = source.open(LOCAL_ASSET_MANIFEST)) {
+            manifest = new JSONObject(new String(readAll(in), StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            return 0;
+        } catch (org.json.JSONException e) {
+            throw new IOException("Unreadable " + LOCAL_ASSET_MANIFEST, e);
+        }
+        String root = target.getCanonicalPath() + File.separator;
+        int copied = 0;
+        byte[] buf = new byte[65536];
+        for (Iterator<String> dirs = manifest.keys(); dirs.hasNext(); ) {
+            String hostDir = dirs.next();
+            JSONArray files = manifest.optJSONArray(hostDir);
+            if (files == null) continue;
+            File folder = new File(target, "public" + hostDir);
+            if (!folder.getCanonicalPath().startsWith(root)) throw new IOException("Bad manifest folder " + hostDir);
+            if (!folder.isDirectory() && !folder.mkdirs()) throw new IOException("mkdir " + folder);
+            for (int i = 0; i < files.length(); i++) {
+                String name = files.optString(i, "");
+                if (name.isEmpty() || name.contains("/") || name.equals("..")) continue;
+                try (InputStream in = source.open(localFolder(hostDir) + name);
+                     OutputStream out = new FileOutputStream(new File(folder, name))) {
+                    int n;
+                    while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                }
+                copied += 1;
+            }
+        }
+        return copied;
     }
 
     static boolean portFree(int candidate) {

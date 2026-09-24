@@ -6,7 +6,12 @@ files:
   - dist/**
   - package.json
 extraResources:
-  - from: vendor/server
+  # vendor/desktop is vendor/server staged for packaging by
+  # scripts/stage-desktop-payload.mjs (run after npm run build): module
+  # folders renamed so electron-builder does not drop them, alias links as
+  # a list, the art the renderer carries left out. src/main/run-tree.ts
+  # turns it back into a server tree in user data.
+  - from: vendor/desktop
     to: server
   # The window and taskbar icon at runtime (src/main/window.ts); the
   # platform icons below are derived from the same file by electron-builder.

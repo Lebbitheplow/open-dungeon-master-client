@@ -80,7 +80,7 @@ function main(): void {
     const payloadDir = app.isPackaged
       ? path.join(process.resourcesPath, "server")
       : path.join(app.getAppPath(), "vendor", "server");
-    const local = new LocalServer(payloadDir, app.getPath("userData"));
+    const local = new LocalServer(payloadDir, app.getPath("userData"), path.join(__dirname, "..", "renderer"));
     const tunnel = new QuickTunnel(
       path.join(app.getPath("userData"), "bin"),
       path.join(app.getPath("userData"), "tunnel.log"),
