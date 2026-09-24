@@ -1,21 +1,21 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# R8 rules for the app module. Capacitor and its plugins ship their own
+# consumer rules (every @CapacitorPlugin, every Plugin subclass, the
+# Cordova bridge); these cover what is ours.
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# The app's classes are small and named in logs and crash reports, so they
+# are kept as they are; the size win is in shrinking the libraries.
+-keep class com.opendungeonmaster.app.** { *; }
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Readable stack traces from the field.
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# The WebView's JavaScript interfaces are looked up by name.
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
+
+# The scanner plugin's library (com.outsystems.plugins.barcode) annotates its
+# models for Gson without depending on it; the annotations are never read at
+# runtime, and R8 would otherwise refuse the missing class.
+-dontwarn com.google.gson.annotations.SerializedName

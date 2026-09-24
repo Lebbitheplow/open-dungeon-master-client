@@ -80,3 +80,116 @@ test("a payload with no src at all prunes without complaint", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+import {
+  dropLocalAssets,
+  pruneBuildTraces,
+  pruneGpuProviders,
+  pruneNamedModuleDirs,
+  readLocalAssetManifest,
+} from "../scripts/prune-server-payload.mjs";
+
+test("the build's file-trace manifests and the GPU providers go with the prune", () => {
+  const dir = stage([
+    ".next/server/app/api/health/route.js",
+    ".next/server/app/api/health/route.js.nft.json",
+    ".next/server/app/page.js.nft.json",
+    ".next/server/chunks/x.js",
+    "node_modules/onnxruntime-node/bin/napi-v6/linux/x64/libonnxruntime.so.1",
+    "node_modules/onnxruntime-node/bin/napi-v6/linux/x64/libonnxruntime_providers_cuda.so",
+    "node_modules/onnxruntime-node/bin/napi-v6/linux/x64/libonnxruntime_providers_tensorrt.so",
+    "node_modules/onnxruntime-node/bin/napi-v6/linux/x64/libonnxruntime_providers_shared.so",
+    "node_modules/onnxruntime-node/bin/napi-v6/win32/x64/onnxruntime_providers_cuda.dll",
+    "server.js",
+    "package.json",
+  ]);
+  try {
+    const dropped = pruneServerPayload(dir);
+    assert.ok(dropped.includes(".next/server/**/*.nft.json (2)"), dropped.join(", "));
+    assert.ok(dropped.includes("onnxruntime GPU providers (2)"), dropped.join(", "));
+    assert.ok(fs.existsSync(path.join(dir, ".next/server/app/api/health/route.js")));
+    assert.ok(!fs.existsSync(path.join(dir, ".next/server/app/api/health/route.js.nft.json")));
+    assert.ok(!fs.existsSync(path.join(dir, ".next/server/app/page.js.nft.json")));
+    const bin = path.join(dir, "node_modules/onnxruntime-node/bin/napi-v6/linux/x64");
+    assert.deepEqual(fs.readdirSync(bin).sort(), ["libonnxruntime.so.1", "libonnxruntime_providers_shared.so"]);
+    // A second run has nothing left to report.
+    assert.equal(pruneBuildTraces(dir), 0);
+    assert.equal(pruneGpuProviders(dir), 0);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a package is pruned wherever a node_modules holds it", () => {
+  const dir = stage([
+    "node_modules/@img/sharp-linux-x64/lib/x.node",
+    "node_modules/next/node_modules/@img/sharp-libvips-linux-x64/lib/libvips.so",
+    "node_modules/next/node_modules/sharp/lib/index.js",
+    "node_modules/next/dist/server.js",
+    "node_modules/@huggingface/transformers/dist/x.js",
+    "node_modules/imgproxy/index.js",
+    "public/@img/not-a-module.txt",
+  ]);
+  try {
+    const removed = pruneNamedModuleDirs(dir, ["@img", "sharp", "@huggingface"]);
+    assert.deepEqual(removed, [
+      "node_modules/@huggingface",
+      "node_modules/@img",
+      "node_modules/next/node_modules/@img",
+      "node_modules/next/node_modules/sharp",
+    ]);
+    assert.ok(fs.existsSync(path.join(dir, "node_modules/next/dist/server.js")));
+    assert.ok(fs.existsSync(path.join(dir, "node_modules/imgproxy/index.js")));
+    assert.ok(fs.existsSync(path.join(dir, "public/@img/not-a-module.txt")));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the art the shell carries leaves the payload, and only that", () => {
+  const dir = stage([
+    "public/assets/tiles/floor/grass.webp",
+    "public/assets/tiles/floor/stone.webp",
+    "public/assets/tiles/manifest.json",
+    "public/assets/icons/spell/fireball.webp",
+    "public/assets/ambience/rain.mp3",
+    "public/fx/loop-sigil.webp",
+    "public/icon-512.png",
+  ]);
+  const manifest = {
+    "/assets/tiles/floor/": ["grass.webp", "stone.webp"],
+    "/assets/tiles/": ["manifest.json"],
+    "/assets/icons/spell/": ["fireball.webp", "not-in-payload.webp"],
+    "/fx/": ["loop-sigil.webp"],
+  };
+  try {
+    assert.equal(dropLocalAssets(dir, manifest), 5);
+    const left = [];
+    const walkDir = (d) => {
+      for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
+        const full = path.join(d, entry.name);
+        if (entry.isDirectory()) walkDir(full);
+        else left.push(path.relative(dir, full));
+      }
+    };
+    walkDir(dir);
+    assert.deepEqual(left.sort(), ["public/assets/ambience/rain.mp3", "public/icon-512.png"]);
+    // Emptied folders are gone too, but public/ itself stays.
+    assert.ok(!fs.existsSync(path.join(dir, "public/assets/tiles")));
+    assert.ok(!fs.existsSync(path.join(dir, "public/fx")));
+    assert.ok(fs.existsSync(path.join(dir, "public")));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the renderer's manifest is read from beside its game bundle", () => {
+  const dir = stage(["game/public/manifest.json"]);
+  try {
+    fs.writeFileSync(path.join(dir, "game/public/manifest.json"), JSON.stringify({ "/fx/": ["a.webp"] }));
+    assert.deepEqual(readLocalAssetManifest(dir), { "/fx/": ["a.webp"] });
+    assert.equal(readLocalAssetManifest(path.join(dir, "nowhere")), null);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

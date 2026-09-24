@@ -44,6 +44,8 @@ public final class WorldRuntime {
     private static final int PORT_ATTEMPTS = 3;
     private static final String PAYLOAD_ASSET = "server-payload.zip";
     private static final String PAYLOAD_INFO_ASSET = "server-payload.json";
+    /** The Capacitor www folder inside the APK's assets. */
+    private static final String WWW_ASSETS = "public/";
     private static final String PREFS = "odm-world";
 
     /** Thrown inside start() when stop() cut it short: the outcome is "stopped", not a failure. */
@@ -156,9 +158,15 @@ public final class WorldRuntime {
         String builtAt = fresh.optString("builtAt", "");
         if (current != null && builtAt.equals(current.optString("builtAt", ""))) return;
         store.upgrade(target -> {
+            // The art first, the zip last: the zip carries the marker that
+            // says the tree is complete, and it must not be written before
+            // everything else is.
+            int art = WorldEnvironment.copyLocalAssets(
+                    (path) -> app.getAssets().open(WWW_ASSETS + path), target);
             try (InputStream in = new BufferedInputStream(app.getAssets().open(PAYLOAD_ASSET))) {
                 WorldEnvironment.unpackZip(in, target);
             }
+            Log.i(TAG, "Restored " + art + " art files from the app's own copy");
         });
         Log.i(TAG, "Unpacked server payload " + builtAt);
     }

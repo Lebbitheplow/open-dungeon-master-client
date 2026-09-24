@@ -31,8 +31,15 @@ export const KEEP = new Set([
 // (src/lib/worlds/index.ts), so it survives while the rest of src goes.
 export const KEEP_IN_SRC = path.join("lib", "worlds", "bundled");
 
-// Removes everything outside the keep-list from `dir`. Returns the names of
-// what was dropped, sorted, for the bundler's log.
+// GPU execution providers the embedding runtime would load if a CUDA or
+// TensorRT install were present. Embeddings run on the CPU in the apps
+// (next.config.ts ships only the linux/x64 binding for that reason), and
+// the CUDA provider alone is over 300 MB, so they go on every platform.
+const GPU_PROVIDER = /^libonnxruntime_providers_(cuda|tensorrt)\.(so|dll|dylib)(\.\d+)*$/;
+
+// Removes everything outside the keep-list from `dir`, then the build
+// leftovers inside what stays. Returns the names of what was dropped,
+// sorted, for the bundler's log.
 export function pruneServerPayload(dir) {
   const dropped = [];
   for (const entry of fs.readdirSync(dir)) {
@@ -53,5 +60,105 @@ export function pruneServerPayload(dir) {
     fs.rmSync(target, { recursive: true, force: true });
     dropped.push(entry);
   }
+  const traces = pruneBuildTraces(dir);
+  if (traces) dropped.push(`.next/server/**/*.nft.json (${traces})`);
+  const providers = pruneGpuProviders(dir);
+  if (providers) dropped.push(`onnxruntime GPU providers (${providers})`);
   return dropped.sort();
+}
+
+// Walks `dir` depth first, calling `visit(fullPath, dirent)` for each entry
+// before descending into it. A visitor that removes an entry stops the
+// descent by returning true.
+export function walk(dir, visit) {
+  if (!fs.existsSync(dir)) return;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (visit(full, entry)) continue;
+    if (entry.isDirectory()) walk(full, visit);
+  }
+}
+
+// The file-trace manifests (`route.js.nft.json`) that `next build` writes
+// beside every server chunk. They only feed the standalone copy step at
+// build time; the running server never opens one, and a payload carries a
+// hundred megabytes of them. Returns how many went.
+export function pruneBuildTraces(dir) {
+  let count = 0;
+  walk(path.join(dir, ".next", "server"), (full, entry) => {
+    if (!entry.isFile() || !entry.name.endsWith(".nft.json")) return false;
+    fs.rmSync(full);
+    count += 1;
+    return true;
+  });
+  return count;
+}
+
+export function pruneGpuProviders(dir) {
+  let count = 0;
+  walk(path.join(dir, "node_modules", "onnxruntime-node"), (full, entry) => {
+    if (!entry.isFile() || !GPU_PROVIDER.test(entry.name)) return false;
+    fs.rmSync(full);
+    count += 1;
+    return true;
+  });
+  return count;
+}
+
+// Removes every directory called one of `names` found under any
+// node_modules in the payload, however deep: a package nested under
+// another (next carries its own copy of sharp's binaries) escapes a
+// top-level prune. Returns the payload-relative paths removed, sorted.
+export function pruneNamedModuleDirs(dir, names) {
+  const wanted = new Set(names);
+  const removed = [];
+  walk(dir, (full, entry) => {
+    if (!entry.isDirectory()) return false;
+    if (path.basename(path.dirname(full)) !== "node_modules" || !wanted.has(entry.name)) return false;
+    fs.rmSync(full, { recursive: true, force: true });
+    removed.push(path.relative(dir, full).split(path.sep).join("/"));
+    return true;
+  });
+  return removed.sort();
+}
+
+// The art the app carries beside its own game bundle (scripts/
+// build-renderer.mjs copies the server's public folders and writes the
+// manifest of what it took: host folder to file names). The same bytes
+// need not ship a second time inside the payload; the shells put them back
+// into the server's public tree when they unpack it (src/main/run-tree.ts
+// on the desktop, WorldEnvironment.copyLocalAssets on Android). Returns
+// how many files went.
+export function dropLocalAssets(dir, manifest) {
+  let count = 0;
+  const publicDir = path.join(dir, "public");
+  for (const [hostDir, files] of Object.entries(manifest)) {
+    const folder = path.join(publicDir, ...hostDir.split("/").filter(Boolean));
+    for (const file of files) {
+      const target = path.join(folder, file);
+      if (!fs.existsSync(target)) continue;
+      fs.rmSync(target);
+      count += 1;
+    }
+    removeEmptyDirs(folder, publicDir);
+  }
+  return count;
+}
+
+function removeEmptyDirs(dir, stopAt) {
+  let current = dir;
+  while (current !== stopAt && current.startsWith(stopAt)) {
+    if (!fs.existsSync(current) || fs.readdirSync(current).length) return;
+    fs.rmdirSync(current);
+    current = path.dirname(current);
+  }
+}
+
+// Reads the manifest the renderer build wrote beside its game bundle
+// (`<renderer>/game/public/manifest.json`), or null when that build has
+// not run.
+export function readLocalAssetManifest(rendererDir) {
+  const file = path.join(rendererDir, "game", "public", "manifest.json");
+  if (!fs.existsSync(file)) return null;
+  return JSON.parse(fs.readFileSync(file, "utf8"));
 }

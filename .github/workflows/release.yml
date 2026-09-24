@@ -80,7 +80,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # The payload job already rebuilt the native module for Linux.
+          # The payload job already rebuilt the native module for Linux. Every
+  # platform then stages vendor/server as vendor/desktop
+  # (scripts/stage-desktop-payload.mjs) for electron-builder.
           - os: ubuntu-latest
             args: --linux
             rebuild: false
@@ -124,7 +126,9 @@ jobs:
           # No Apple identity yet: package unsigned instead of failing on
           # keychain discovery.
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: npm run build && npx electron-builder ${{ matrix.args }} --publish always
+        run: >
+          npm run build && node scripts/stage-desktop-payload.mjs &&
+          npx electron-builder ${{ matrix.args }} --publish always
 
   flatpak:
     needs: payload
@@ -161,7 +165,9 @@ jobs:
       - name: Build and publish the flatpak bundle
         env:
           GH_TOKEN: ${{ github.token }}
-        run: npm run build && npx electron-builder --linux flatpak --publish always
+        run: >
+          npm run build && node scripts/stage-desktop-payload.mjs &&
+          npx electron-builder --linux flatpak --publish always
 
   android:
     # Runs after a desktop job so the draft release already exists for the
@@ -211,12 +217,14 @@ jobs:
           gh release download "$CLOUDFLARED_ANDROID_RELEASE" --pattern '*.tar.gz' --dir mobile/runtime
           tar -C mobile/runtime -xzf "mobile/runtime/$CLOUDFLARED_ANDROID_RELEASE.tar.gz"
           ls mobile/runtime/node-android mobile/runtime/cloudflared-android
-      - name: Stage the server payload and runtime into the app
-        working-directory: mobile
-        run: npm run bundle-payload
+      # The web assets come first: the payload leaves out the art they
+      # already carry, so the bundler reads their manifest.
       - name: Build web assets and sync Capacitor
         working-directory: mobile
         run: npm run sync
+      - name: Stage the server payload and runtime into the app
+        working-directory: mobile
+        run: npm run bundle-payload
       - name: Decode the release keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -229,8 +237,10 @@ jobs:
           ODM_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         # --stacktrace: Gradle hides the cause of a packaging failure
         # otherwise, and the runner cannot be inspected after the fact.
-        # The APK is the GitHub download for sideloaders; Google Play only
-        # accepts the bundle (.aab), which it splits per ABI on install.
+        # The APK is the GitHub download for sideloaders, built for arm64
+        # only (app/build.gradle splits per ABI; the x86_64 one is for the
+        # emulator); Google Play only accepts the bundle (.aab), which it
+        # splits per device on install.
         run: |
           df -h . | tail -1
           free -m | head -2
@@ -247,7 +257,7 @@ jobs:
             echo "::error::package.json is $version but the tag is $GITHUB_REF_NAME"
             exit 1
           fi
-          cp mobile/android/app/build/outputs/apk/release/app-release.apk \
+          cp mobile/android/app/build/outputs/apk/release/app-arm64-v8a-release.apk \
             "open-dungeon-master-client-$version.apk"
           cp mobile/android/app/build/outputs/bundle/release/app-release.aab \
             "open-dungeon-master-client-$version.aab"

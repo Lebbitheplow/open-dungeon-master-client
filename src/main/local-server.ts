@@ -4,6 +4,7 @@ import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import type { LocalStatus } from "../shared/types";
+import { materializeRunTree } from "./run-tree";
 
 // Runs the bundled Open Dungeon Master server (a Next.js standalone build
 // produced by scripts/bundle-server.mjs) as a child process on localhost,
@@ -49,9 +50,12 @@ export class LocalServer {
   private error = "";
   private readonly listeners = new Set<() => void>();
 
+  // `rendererDir` is the shell's own bundle (dist/renderer): the art it
+  // carries is copied into the server tree rather than shipped twice.
   constructor(
     private readonly payloadDir: string,
     private readonly userDataDir: string,
+    private readonly rendererDir: string,
   ) {}
 
   private get runDir(): string {
@@ -112,7 +116,7 @@ export class LocalServer {
       }
     }
     fs.rmSync(this.runDir, { recursive: true, force: true });
-    fs.cpSync(this.payloadDir, this.runDir, { recursive: true });
+    materializeRunTree(this.payloadDir, this.runDir, this.rendererDir);
     if (fs.existsSync(keep)) {
       fs.cpSync(keep, this.runDir, { recursive: true, force: true });
       fs.rmSync(keep, { recursive: true, force: true });

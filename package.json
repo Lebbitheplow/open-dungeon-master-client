@@ -23,11 +23,12 @@
     "test": "npm run build && node --test \"tests/*.test.mjs\"",
     "lint": "eslint src scripts mobile/src mobile/scripts",
     "bundle-server": "node scripts/bundle-server.mjs",
+    "stage-desktop": "node scripts/stage-desktop-payload.mjs",
     "smoke-local": "node scripts/smoke-local-server.mjs",
     "smoke-relocate": "node scripts/smoke-relocate.mjs",
-    "dist:linux": "npm run build && electron-builder --linux",
-    "dist:win": "npm run build && electron-builder --win",
-    "dist:mac": "npm run build && electron-builder --mac"
+    "dist:linux": "npm run build && npm run stage-desktop && electron-builder --linux",
+    "dist:win": "npm run build && npm run stage-desktop && electron-builder --win",
+    "dist:mac": "npm run build && npm run stage-desktop && electron-builder --mac"
   },
   "devDependencies": {
     "@3d-dice/dice-box-threejs": "^0.0.12",

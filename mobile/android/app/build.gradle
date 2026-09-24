@@ -29,6 +29,21 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // One APK per ABI, and only the two the Node runtime exists for: the
+    // GitHub download is the arm64 one (phones), the x86_64 one runs on the
+    // emulator, and neither carries the other's runtime nor the 32-bit
+    // copies of the scanner's native library the plugins pull in. The Play
+    // bundle is unaffected (AGP forbids ndk.abiFilters beside splits);
+    // Play splits it per device, so a 32-bit phone still gets the
+    // connect-only app it always did.
+    splits {
+        abi {
+            enable true
+            reset()
+            include 'arm64-v8a', 'x86_64'
+            universalApk false
+        }
+    }
     // Release signing comes from the environment so the keystore never lives
     // in the repo: CI decodes it from a secret, local builds can export the
     // same variables. Without them the release build stays unsigned.
@@ -58,8 +73,12 @@ android {
             if (releaseKeystore) {
                 signingConfig signingConfigs.release
             }
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // R8 drops the code nothing reaches (a third of the dex is the
+            // scanner plugin's Compose UI) and the resources nothing names;
+            // proguard-rules.pro keeps the app's own classes readable.
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 }
@@ -77,6 +96,9 @@ dependencies {
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
     testImplementation "junit:junit:$junitVersion"
+    // The platform's org.json is a stub in local unit tests; the payload
+    // code reads its manifests with it.
+    testImplementation "org.json:json:20240303"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')
