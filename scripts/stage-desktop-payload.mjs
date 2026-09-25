@@ -93,6 +93,31 @@ export function pruneSqliteBuild(dir) {
 // sharp-linuxmusl-x64 and so on).
 const NATIVE_SUFFIX = /-(linux|linuxmusl|darwin|win32)-(x64|arm64|ia32|arm|s390x|ppc64)$/;
 
+// The OS/CPU pairs the release packages (.github/workflows/release.yml).
+export const DESKTOP_TARGETS = ["linux/x64", "win32/x64", "darwin/arm64", "darwin/x64"];
+
+// The server's standalone trace carries the embedding runtime's binding for
+// linux/x64 only, all its Docker image needs, so the Windows and Mac apps had
+// no binding to load and every embed failed there. This adds the binding of
+// each other desktop target from the full install the payload was built from;
+// pruneForeignBinaries then keeps the one each package can load. A target
+// onnxruntime ships no build for (darwin/x64) stays without, and the server
+// falls back to keyword search there. Returns the targets added, sorted.
+export function addEmbeddingBindings(vendorDir, installModules) {
+  const rel = path.join("onnxruntime-node", "bin", "napi-v6");
+  const from = path.join(installModules, rel);
+  if (!fs.existsSync(from)) throw new Error(`No onnxruntime-node bindings at ${from}.`);
+  const added = [];
+  for (const target of DESKTOP_TARGETS) {
+    const source = path.join(from, ...target.split("/"));
+    const dest = path.join(vendorDir, "node_modules", rel, ...target.split("/"));
+    if (!fs.existsSync(source) || fs.existsSync(dest)) continue;
+    fs.cpSync(source, dest, { recursive: true });
+    added.push(target);
+  }
+  return added.sort();
+}
+
 // The payload is built once, on Linux, and packaged on every desktop
 // platform; the binaries built for another OS or CPU (or for musl) cannot
 // load where this package will run, so they stay out of it: sharp's
