@@ -162,8 +162,8 @@ function worldsSection(): HTMLElement | null {
 }
 
 function homeSection(): HTMLElement {
-  const { card, body } = section("scroll", "Home screen", "");
-  body.append(row("Hide hosts that are offline", offlineToggle(() => renderSettings())));
+  const { card, body } = section("scroll", "Title screen", "");
+  body.append(row("Hide the save slots of hosts that are offline", offlineToggle(() => renderSettings())));
   return card;
 }
 
@@ -172,7 +172,7 @@ function helpSection(): HTMLElement {
   body.append(
     row("Where everything lives and how to get around", button("secondary", "User guide", () => renderHelp(), "book")),
     row(
-      "Walk through the home screen again",
+      "Walk through the title screen again",
       button("secondary", "Replay tour", () => void refresh().then(() => {
         renderHome();
         startAppTour();

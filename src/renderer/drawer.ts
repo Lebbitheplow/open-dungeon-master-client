@@ -15,7 +15,6 @@ import type { HomeHost, ServerSummary } from "../shared/types";
 const root = document.getElementById("app") as HTMLDivElement;
 const drawer = el("aside", "drawer");
 const scrim = el("div", "scrim");
-const WIDE = window.matchMedia("(min-width: 1100px)");
 
 export function createDrawer(): { drawer: HTMLElement; scrim: HTMLElement } {
   drawer.setAttribute("aria-label", "Navigation");
@@ -23,9 +22,6 @@ export function createDrawer(): { drawer: HTMLElement; scrim: HTMLElement } {
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeDrawer();
   });
-  // Crossing the rail breakpoint while open would leave a phone-sized
-  // drawer hanging over the page when the window shrinks again.
-  WIDE.addEventListener("change", () => closeDrawer());
   return { drawer, scrim };
 }
 
@@ -35,8 +31,10 @@ export function drawerElement(): HTMLElement {
   return drawer;
 }
 
+// The menu slides in from the edge on every width: the title screen owns
+// the whole window, so there is no rail beside it any more.
 export function isDrawerOpen(): boolean {
-  return !WIDE.matches && root.classList.contains("drawer-open");
+  return root.classList.contains("drawer-open");
 }
 
 export function openDrawer(): void {

@@ -227,6 +227,25 @@ export interface UpdateProgress {
 
 // One campaign as the home screen lists it, from any host. playingAs is the
 // player's character name there, null when they have none yet or run it.
+// The title screen's glance at a table (server 0.23.5 and up): the last
+// thing the Dungeon Master said, the open chapter, the newest painted
+// scene and the party's faces. Absent from hosts older than that.
+export interface HomeGlanceFace {
+  name: string;
+  // Absolute on the host: a portrait under /uploads (behind the login) or
+  // a public placeholder plate.
+  url: string;
+}
+
+export interface HomeGlance {
+  chapter: { index: number; title: string } | null;
+  recap: string;
+  recapAt: string | null;
+  // Absolute on the host, under /generated (behind the login), or null.
+  sceneImage: string | null;
+  faces: HomeGlanceFace[];
+}
+
 export interface HomeCampaign {
   id: string;
   title: string;
@@ -235,6 +254,18 @@ export interface HomeCampaign {
   maxPlayers: number;
   playingAs: string | null;
   coverUrl: string | null;
+  // What the title screen says under the name and on a save slot. All
+  // optional: entries cached before these existed keep their shape, and
+  // an older host never sends them.
+  genre?: string;
+  description?: string;
+  scene?: string;
+  startingLevel?: number;
+  difficulty?: string;
+  // True when this account holds the DM or assistant DM seat there. Known
+  // only when the host's list let the shell learn the account's id.
+  dmSeat?: boolean;
+  glance?: HomeGlance;
   // The plate the server's own home draws before anyone paints a cover:
   // one of three per genre, picked by the campaign id (the same rule as
   // the server's src/lib/placeholders.ts), served publicly from the host.

@@ -190,3 +190,162 @@ export function buildGroups(feed: HomeFeed, options: GroupOptions): HostGroup[] 
   }
   return groups;
 }
+
+// ---------- the title screen's words ----------
+//
+// Ports of the server's src/app/home/types.ts, so the app's title screen
+// says exactly what the website's says about the same table.
+
+// "2 days ago" for the recap and the save slots. Coarse on purpose: a
+// title screen is not a log.
+export function agoLabel(iso: string | null | undefined, now = Date.now()): string {
+  if (!iso) return "";
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) return "";
+  const minutes = Math.max(0, Math.round((now - then) / 60_000));
+  if (minutes < 2) return "just now";
+  if (minutes < 60) return `${minutes} minutes ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return hours === 1 ? "an hour ago" : `${hours} hours ago`;
+  const days = Math.round(hours / 24);
+  if (days < 7) return days === 1 ? "yesterday" : `${days} days ago`;
+  const weeks = Math.round(days / 7);
+  if (weeks < 5) return weeks === 1 ? "a week ago" : `${weeks} weeks ago`;
+  const months = Math.round(days / 30);
+  if (months < 12) return months <= 1 ? "a month ago" : `${months} months ago`;
+  const years = Math.round(days / 365);
+  return years <= 1 ? "a year ago" : `${years} years ago`;
+}
+
+// Roman numerals for chapter headings ("Chapter III").
+export function romanNumeral(value: number): string {
+  if (!Number.isInteger(value) || value < 1 || value > 3999) return String(value);
+  const table: Array<[number, string]> = [
+    [1000, "M"], [900, "CM"], [500, "D"], [400, "CD"], [100, "C"], [90, "XC"],
+    [50, "L"], [40, "XL"], [10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"],
+  ];
+  let rest = value;
+  let out = "";
+  for (const [num, glyph] of table) {
+    while (rest >= num) {
+      out += glyph;
+      rest -= num;
+    }
+  }
+  return out;
+}
+
+// The eyebrow over the table's name.
+export function titleEyebrow(campaign: HomeCampaign): string {
+  if (campaign.status === "ended") return "A finished tale";
+  if (campaign.status === "lobby") return "The table is set";
+  return "Continue your tale";
+}
+
+// The door in.
+export function enterLabel(campaign: HomeCampaign): string {
+  if (campaign.status === "ended") return "Revisit the world";
+  if (campaign.status === "lobby") return "Take your seat";
+  return "Enter the world";
+}
+
+// The chapter line: "Chapter III · The Drowned Lantern", or the scene when
+// the chapter has no name yet, or the campaign's own description. "" when
+// the host had none of those to give.
+export function chapterLine(campaign: HomeCampaign): string {
+  const chapter = campaign.glance?.chapter;
+  const scene = campaign.scene?.trim() || "";
+  if (chapter) {
+    const head = `Chapter ${romanNumeral(chapter.index)}`;
+    const title = chapter.title.trim();
+    if (title) return `${head} · ${title}`;
+    if (scene) return `${head} · ${scene}`;
+    return head;
+  }
+  if (scene) return scene;
+  return campaign.description?.trim() || "";
+}
+
+// One line under a table's name: who you are there and how full it is.
+export function seatLine(campaign: HomeCampaign): string {
+  const seats = `${campaign.playerCount} of ${campaign.maxPlayers} seats`;
+  if (campaign.status === "lobby") {
+    return `Lobby · ${campaign.playerCount} of ${campaign.maxPlayers} ready`;
+  }
+  const party = campaign.maxPlayers === 1 ? "solo" : seats;
+  if (campaign.playingAs) return `Playing as ${campaign.playingAs} · ${party}`;
+  if (campaign.dmSeat) return `Running the table · ${party}`;
+  return `No character yet · ${party}`;
+}
+
+// The save slot's one line: what state the table is in, in a few words.
+export function slotLine(campaign: HomeCampaign, now = Date.now()): string {
+  if (campaign.status === "lobby") return `${campaign.playerCount} of ${campaign.maxPlayers} ready`;
+  if (campaign.status === "ended") {
+    const ago = agoLabel(campaign.updatedAt, now);
+    return ago ? `Finished ${ago}` : "Finished";
+  }
+  if (campaign.dmSeat) return "Running the table";
+  const ago = agoLabel(campaign.glance?.recapAt ?? campaign.updatedAt, now);
+  return ago ? `Last played ${ago}` : "In play";
+}
+
+// The slot's small print: "Level 3 start · hard · solo", or "" when the
+// host did not say.
+export function slotMeta(campaign: HomeCampaign): string {
+  const bits: string[] = [];
+  if (campaign.startingLevel) bits.push(`Level ${campaign.startingLevel} start`);
+  if (campaign.difficulty) bits.push(campaign.difficulty);
+  if (campaign.maxPlayers === 1) bits.push("solo");
+  return bits.join(" · ");
+}
+
+// "When last we left": the recap, or the quiet line the server shows in
+// its place.
+export function recapText(campaign: HomeCampaign): { text: string; quiet: boolean } {
+  const recap = campaign.glance?.recap?.trim() || "";
+  if (recap) return { text: recap, quiet: false };
+  if (campaign.status === "lobby") {
+    return { text: "The table is set and the seats are filling. The tale begins when the party is gathered.", quiet: true };
+  }
+  if (campaign.status === "ended") {
+    return { text: "This tale has been told to its end. The chronicle keeps every page.", quiet: true };
+  }
+  return { text: "The Dungeon Master has not spoken yet. Step in and the first scene is yours.", quiet: true };
+}
+
+// The status line at the foot of the menu, the way a title screen shows
+// its build: the device world's state with a lamp for it, then the app's
+// version. "off" is an unlit lamp, "wait" a pulsing one, "awake" gold and
+// "dozing" ember.
+export type StatusTone = "off" | "wait" | "awake" | "dozing";
+
+export function deviceStatusLine(
+  local: LocalStatus,
+  appVersion: string,
+): { tone: StatusTone; text: string } {
+  let tone: StatusTone = "off";
+  let words: string;
+  switch (local.state) {
+    case "running":
+      tone = "awake";
+      words = local.serverVersion ? `Your world is awake · server ${local.serverVersion}` : "Your world is awake";
+      break;
+    case "starting":
+      tone = "wait";
+      words = "Waking your world";
+      break;
+    case "error":
+      tone = "dozing";
+      words = "Your world could not start";
+      break;
+    case "unavailable":
+      words = "No world on this device · play on a server";
+      break;
+    default:
+      words = local.firstRun ? "Your world has not begun" : "Your world is asleep";
+  }
+  const bits = [words];
+  if (appVersion) bits.push(`v${appVersion}`);
+  return { tone, text: bits.join(" · ") };
+}

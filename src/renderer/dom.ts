@@ -111,6 +111,17 @@ export function spinner(big = false): HTMLElement {
   return wrap;
 }
 
+// The app's mark: the closed book the title screen wears, the same
+// painting the server's pages use (it ships beside the game sheet as
+// game/ui-art/book-closed.webp).
+export function bookMark(big = false): HTMLImageElement {
+  const img = el("img", big ? "brand-book big" : "brand-book");
+  img.src = "./game/ui-art/book-closed.webp";
+  img.alt = "";
+  img.draggable = false;
+  return img;
+}
+
 export function tile(big = false): HTMLElement {
   const wrap = el("span", big ? "tile big twinkle" : "tile");
   const img = el("img");

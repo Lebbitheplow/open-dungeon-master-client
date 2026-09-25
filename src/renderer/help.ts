@@ -64,8 +64,8 @@ export function renderHelp(): void {
     section(
       "menu",
       "Getting around",
-      `The menu (the three lines, or the rail on a wide window) lists your hosts and every door: adding a server, invites, Story AI, Settings and this guide. Tap the wordmark on any screen to return home.`,
-      `Inside a world, open the account menu and choose App home to come back here. ${wayBack}`,
+      `The home screen is a title screen: the table you were last at fills it, the menu runs down the left, and your other tables sit as save slots on the right. The medallion in the corner opens the menu with your hosts and every door: adding a server, invites, Story AI, Settings and this guide. Tap the wordmark on any screen to return home.`,
+      `Inside a world the host's own pages fill the window, as they do in a browser. Open the account menu there and choose App home to come back here, App settings for the audio and dice controls, or App guide for this page. ${wayBack}`,
     ),
     section(
       "server",
@@ -90,7 +90,7 @@ export function renderHelp(): void {
     section(
       "wand",
       "Workshop, characters, campaigns",
-      `The quick tiles on the home screen open the pages you use most on whichever host you were last in. New campaign starts an adventure: pick a genre or a world pack, decide who narrates, and share the room code. Characters holds your adventurers and the creation wizard. The Workshop is the Dungeon Master's prep bench: maps, monsters, NPCs, lore and handouts.`,
+      `The title screen's menu opens the pages you use most on whichever host you were last in. New campaign starts an adventure: pick a genre or a world pack, decide who narrates, and share the room code. Characters holds your adventurers and the creation wizard. The Workshop is the Dungeon Master's prep bench: maps, monsters, NPCs, lore and handouts. Join with a code drops you into the sigil boxes at the foot of the screen.`,
     ),
     section(
       "play",
@@ -101,7 +101,7 @@ export function renderHelp(): void {
     section(
       "gear",
       "Settings",
-      `Settings gathers what belongs to the app itself: updates, sharing your world, Story AI, the hide-offline switch for the home screen, and the tour. Your account, avatar and password live on each server, under its own Settings page.`,
+      `Settings gathers what belongs to the app itself: the microphone, playback and dice, updates, sharing your world, Story AI, the hide-offline switch for the title screen's save slots, and the tour. Your account, avatar and password live on each server, under its own Settings page.`,
     ),
   );
 }

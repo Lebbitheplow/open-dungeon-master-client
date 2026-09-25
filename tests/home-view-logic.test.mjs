@@ -1,14 +1,24 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  agoLabel,
   buildGroups,
   campaignLine,
+  chapterLine,
+  deviceStatusLine,
+  enterLabel,
   heroLine,
   pickContinueCampaign,
   pickPrimaryHost,
+  recapText,
   reconcileLocal,
   relativeTime,
+  romanNumeral,
   rowAction,
+  seatLine,
+  slotLine,
+  slotMeta,
+  titleEyebrow,
 } from "../dist/shared/home-view-logic.js";
 
 const NOW = Date.parse("2026-09-04T12:00:00.000Z");
@@ -192,4 +202,92 @@ test("the device world's live state overrides what the cached feed remembers", (
   assert.equal(reconcileLocal(cached, { ...base, state: "running" }).hosts[0].username, "kaleb");
   assert.equal(reconcileLocal(cached, { ...base, state: "unavailable" }).hosts[0].status, "unavailable");
   assert.equal(reconcileLocal(cached, { ...base, state: "error" }).hosts[1].status, "online");
+});
+
+// ---------- the title screen's words, the server's own ----------
+
+test("agoLabel is coarse and reads like the website", () => {
+  const now = NOW;
+  const at = (ms) => new Date(now - ms).toISOString();
+  assert.equal(agoLabel(at(30_000), now), "just now");
+  assert.equal(agoLabel(at(5 * 60_000), now), "5 minutes ago");
+  assert.equal(agoLabel(at(60 * 60_000), now), "an hour ago");
+  assert.equal(agoLabel(at(3 * 3_600_000), now), "3 hours ago");
+  assert.equal(agoLabel(at(24 * 3_600_000), now), "yesterday");
+  assert.equal(agoLabel(at(3 * 86_400_000), now), "3 days ago");
+  assert.equal(agoLabel(at(7 * 86_400_000), now), "a week ago");
+  assert.equal(agoLabel(at(35 * 86_400_000), now), "a month ago");
+  assert.equal(agoLabel(at(70 * 86_400_000), now), "2 months ago");
+  assert.equal(agoLabel(at(400 * 86_400_000), now), "a year ago");
+  assert.equal(agoLabel(null, now), "");
+  assert.equal(agoLabel("garbage", now), "");
+});
+
+test("roman numerals for chapter headings", () => {
+  assert.equal(romanNumeral(1), "I");
+  assert.equal(romanNumeral(4), "IV");
+  assert.equal(romanNumeral(9), "IX");
+  assert.equal(romanNumeral(14), "XIV");
+  assert.equal(romanNumeral(0), "0");
+  assert.equal(romanNumeral(4000), "4000");
+});
+
+test("the title block's words follow the table's state", () => {
+  assert.equal(titleEyebrow(campaign()), "Continue your tale");
+  assert.equal(titleEyebrow(campaign({ status: "lobby" })), "The table is set");
+  assert.equal(titleEyebrow(campaign({ status: "ended" })), "A finished tale");
+  assert.equal(enterLabel(campaign()), "Enter the world");
+  assert.equal(enterLabel(campaign({ status: "lobby" })), "Take your seat");
+  assert.equal(enterLabel(campaign({ status: "ended" })), "Revisit the world");
+});
+
+test("the chapter line prefers the chapter, then the scene, then the description", () => {
+  const glance = (chapter) => ({ chapter, recap: "", recapAt: null, sceneImage: null, faces: [] });
+  assert.equal(chapterLine(campaign({ glance: glance({ index: 3, title: "The Drowned Lantern" }) })), "Chapter III · The Drowned Lantern");
+  assert.equal(chapterLine(campaign({ scene: "The gatehouse", glance: glance({ index: 1, title: " " }) })), "Chapter I · The gatehouse");
+  assert.equal(chapterLine(campaign({ glance: glance({ index: 2, title: "" }) })), "Chapter II");
+  assert.equal(chapterLine(campaign({ scene: "A cold road" })), "A cold road");
+  assert.equal(chapterLine(campaign({ description: "  Ash falls.  " })), "Ash falls.");
+  assert.equal(chapterLine(campaign()), "");
+});
+
+test("the seat line says who you are there and how full the table is", () => {
+  assert.equal(seatLine(campaign()), "Playing as Kaleb · 4 of 5 seats");
+  assert.equal(seatLine(campaign({ playingAs: null, dmSeat: true })), "Running the table · 4 of 5 seats");
+  assert.equal(seatLine(campaign({ playingAs: null })), "No character yet · 4 of 5 seats");
+  assert.equal(seatLine(campaign({ playingAs: null, maxPlayers: 1, playerCount: 1 })), "No character yet · solo");
+  assert.equal(seatLine(campaign({ status: "lobby", playerCount: 2 })), "Lobby · 2 of 5 ready");
+});
+
+test("the save slot's line and small print", () => {
+  const now = NOW;
+  const twoDays = new Date(now - 2 * 86_400_000).toISOString();
+  assert.equal(slotLine(campaign({ status: "lobby", playerCount: 2 }), now), "2 of 5 ready");
+  assert.equal(slotLine(campaign({ status: "ended", updatedAt: twoDays }), now), "Finished 2 days ago");
+  assert.equal(slotLine(campaign({ status: "ended", updatedAt: "" }), now), "Finished");
+  assert.equal(slotLine(campaign({ dmSeat: true }), now), "Running the table");
+  assert.equal(slotLine(campaign({ updatedAt: twoDays }), now), "Last played 2 days ago");
+  assert.equal(slotLine(campaign({ updatedAt: "", glance: { chapter: null, recap: "", recapAt: null, sceneImage: null, faces: [] } }), now), "In play");
+  assert.equal(slotMeta(campaign({ startingLevel: 3, difficulty: "hard" })), "Level 3 start · hard");
+  assert.equal(slotMeta(campaign({ startingLevel: 1, difficulty: "normal", maxPlayers: 1 })), "Level 1 start · normal · solo");
+  assert.equal(slotMeta(campaign()), "");
+});
+
+test("the recap panel shows the DM's last words or the quiet line for the table's state", () => {
+  const glance = { chapter: null, recap: "  The tide pulled back. ", recapAt: null, sceneImage: null, faces: [] };
+  assert.deepEqual(recapText(campaign({ glance })), { text: "The tide pulled back.", quiet: false });
+  assert.equal(recapText(campaign()).quiet, true);
+  assert.match(recapText(campaign({ status: "lobby" })).text, /seats are filling/);
+  assert.match(recapText(campaign({ status: "ended" })).text, /told to its end/);
+  assert.match(recapText(campaign()).text, /has not spoken yet/);
+});
+
+test("the status line lights its lamp for the device world and names the build", () => {
+  const base = { origin: "", firstRun: false, hasAccount: true, username: "k", serverVersion: "0.23.5", error: "", lanOrigin: "" };
+  assert.deepEqual(deviceStatusLine({ ...base, state: "running" }, "0.15.0"), { tone: "awake", text: "Your world is awake · server 0.23.5 · v0.15.0" });
+  assert.deepEqual(deviceStatusLine({ ...base, state: "starting" }, ""), { tone: "wait", text: "Waking your world" });
+  assert.deepEqual(deviceStatusLine({ ...base, state: "error" }, "1.0.0"), { tone: "dozing", text: "Your world could not start · v1.0.0" });
+  assert.deepEqual(deviceStatusLine({ ...base, state: "stopped" }, "1.0.0"), { tone: "off", text: "Your world is asleep · v1.0.0" });
+  assert.deepEqual(deviceStatusLine({ ...base, state: "stopped", firstRun: true }, ""), { tone: "off", text: "Your world has not begun" });
+  assert.deepEqual(deviceStatusLine({ ...base, state: "unavailable" }, "1.0.0"), { tone: "off", text: "No world on this device · play on a server · v1.0.0" });
 });

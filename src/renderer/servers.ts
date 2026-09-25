@@ -175,6 +175,36 @@ export async function scanInvite(btn: HTMLButtonElement, detail?: HTMLElement): 
   }
 }
 
+// Feeds typed text (a room code, an invite link, a server address) into
+// the same flow as a scanned or clicked invite. Resolves "" once the app
+// has taken the player somewhere (a known server opened, a sign-in shown),
+// else the sentence to show beside the field.
+export async function openTyped(raw: string): Promise<string> {
+  // A pasted invite link or server address takes the exact deep-link
+  // path: auto-connect on a known server (by address, or by the world's
+  // instanceId when it moved), or a join-request event that lands on
+  // that server's sign-in. A bare host without a scheme is probed first
+  // so the address that answered is the one the path sees; only a
+  // server that never answers stays here with the error.
+  if (await window.odm.openInviteLink(raw)) return "";
+  // A room code is an address in disguise, so there is nothing left to
+  // probe: the shell already expanded it and found no world there.
+  // Saying that beats "not a server address" for a code that was read
+  // out over a table and mistyped, or that expired when its host
+  // stopped sharing.
+  const typed = raw.trim();
+  if (CODE_SHAPE.test(typed.toUpperCase()) || parseRoomCode(typed)) {
+    return "No table is online with that code. A code only leads anywhere while its host is sharing, so ask them to open it and try again.";
+  }
+  const result = await window.odm.probeServer(raw);
+  if (result.ok && (await window.odm.openInviteLink(result.probe.origin))) return "";
+  if (result.ok) {
+    renderAuth(result.probe, "login", "");
+    return "";
+  }
+  return result.error;
+}
+
 export function renderAdd(prefill: string): void {
   state.screenName = "add";
   const form = el("form");
@@ -194,35 +224,12 @@ export function renderAdd(prefill: string): void {
     event.preventDefault();
     submit.disabled = true;
     error.textContent = "";
-    void (async () => {
-      // A pasted invite link or server address takes the exact deep-link
-      // path: auto-connect on a known server (by address, or by the world's
-      // instanceId when it moved), or a join-request event that lands on
-      // that server's sign-in. A bare host without a scheme is probed first
-      // so the address that answered is the one the path sees; only a
-      // server that never answers stays here with the error.
-      if (await window.odm.openInviteLink(originField.value)) return;
-      // A room code is an address in disguise, so there is nothing left to
-      // probe: the shell already expanded it and found no world there.
-      // Saying that beats "not a server address" for a code that was read
-      // out over a table and mistyped, or that expired when its host
-      // stopped sharing.
-      const typed = originField.value.trim();
-      if (CODE_SHAPE.test(typed.toUpperCase()) || parseRoomCode(typed)) {
+    void openTyped(originField.value).then((message) => {
+      if (message) {
         submit.disabled = false;
-        error.textContent =
-          "No table is online with that code. A code only leads anywhere while its host is sharing, so ask them to open it and try again.";
-        return;
+        error.textContent = message;
       }
-      const result = await window.odm.probeServer(originField.value);
-      if (result.ok && (await window.odm.openInviteLink(result.probe.origin))) return;
-      submit.disabled = false;
-      if (result.ok) {
-        renderAuth(result.probe, "login", "");
-      } else {
-        error.textContent = result.error;
-      }
-    })();
+    });
   });
   const hint = el(
     "p",

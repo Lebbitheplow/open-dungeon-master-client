@@ -1,5 +1,5 @@
 import { BROKER_HOST_SHAPE } from "./broker";
-import type { HomeCampaign, HomeFeed, HomeHost, LocalStatus, ShellEvent } from "./types";
+import type { HomeCampaign, HomeFeed, HomeGlance, HomeGlanceFace, HomeHost, LocalStatus, ShellEvent } from "./types";
 
 // The home screen's campaign feed: every host the player uses (the device
 // world, saved servers, friends' apps reached through a tunnel), each with
@@ -111,10 +111,11 @@ function absoluteUrl(raw: string, origin: string): string | null {
 }
 
 // Covers live behind the server's login (/uploads is player uploads, not a
-// public gallery), and the home page's image tags carry no session: the
-// shell fetches each cover with the host's bearer token and hands the page
-// a data URL. A cover is only ever asked of the host it was pinned to, and
-// only under /uploads, so the token goes nowhere else.
+// public gallery, and /generated is the painted scenes), and the home
+// page's image tags carry no session: the shell fetches each picture with
+// the host's bearer token and hands the page a data URL. A picture is only
+// ever asked of the host it was pinned to, and only under those two
+// folders, so the token goes nowhere else.
 export const COVER_MAX_BYTES = 4 * 1024 * 1024;
 
 export function coverRequestUrl(hostOrigin: string, url: string): string | null {
@@ -125,7 +126,8 @@ export function coverRequestUrl(hostOrigin: string, url: string): string | null 
   } catch {
     return null;
   }
-  if (parsed.origin !== hostOrigin || !parsed.pathname.startsWith("/uploads/")) return null;
+  if (parsed.origin !== hostOrigin) return null;
+  if (!parsed.pathname.startsWith("/uploads/") && !parsed.pathname.startsWith("/generated/")) return null;
   return parsed.href;
 }
 
@@ -172,9 +174,45 @@ export function campaignPlaceholderPath(genre: string, seed: string): string {
 // The server's GET /api/campaigns body. Returns null when the body is not a
 // campaign list at all; entries without an id are dropped rather than
 // failing the whole host. cover and playingAs are newer fields and optional.
+// The title screen's glance, when the host sends one (server 0.23.5 and
+// up). Pictures are pinned to the host the way covers are.
+function parseGlance(raw: unknown, origin: string): HomeGlance | null {
+  if (!raw || typeof raw !== "object") return null;
+  const glance = raw as Record<string, unknown>;
+  const chapter = glance.chapter as { index?: unknown; title?: unknown } | null | undefined;
+  const faces: HomeGlanceFace[] = [];
+  if (Array.isArray(glance.faces)) {
+    for (const face of glance.faces as Array<Record<string, unknown> | null>) {
+      const url = absoluteUrl(str(face?.url), origin);
+      if (url) faces.push({ name: str(face?.name), url });
+    }
+  }
+  return {
+    chapter:
+      chapter && typeof chapter === "object" && num(chapter.index) > 0
+        ? { index: num(chapter.index), title: str(chapter.title) }
+        : null,
+    recap: str(glance.recap),
+    recapAt: str(glance.recapAt) || null,
+    sceneImage: absoluteUrl(str(glance.sceneImage), origin),
+    faces,
+  };
+}
+
 export function parseCampaigns(body: unknown, origin: string): HomeCampaign[] | null {
   const list = (body as { campaigns?: unknown } | null)?.campaigns;
   if (!Array.isArray(list)) return null;
+  // The list never names the account it was fetched for, but a row this
+  // account owns does: its ownerUserId is the account's id. With that, the
+  // DM seat can be read off every row the way the server's own home does.
+  let me = "";
+  for (const raw of list) {
+    const entry = raw as Record<string, unknown> | null;
+    if (entry && entry.role === "owner" && str(entry.ownerUserId)) {
+      me = str(entry.ownerUserId);
+      break;
+    }
+  }
   const campaigns: HomeCampaign[] = [];
   for (const raw of list) {
     if (!raw || typeof raw !== "object") continue;
@@ -187,6 +225,9 @@ export function parseCampaigns(body: unknown, origin: string): HomeCampaign[] | 
       | undefined;
     const cover = entry.cover as { url?: unknown } | null | undefined;
     const code = str(entry.inviteCode).trim().toUpperCase();
+    const genre = str(entry.genre) || str(settings?.genre);
+    const glance = parseGlance(entry.glance, origin);
+    const level = num(entry.startingLevel);
     campaigns.push({
       id,
       title: str(entry.title) || "Untitled campaign",
@@ -195,13 +236,21 @@ export function parseCampaigns(body: unknown, origin: string): HomeCampaign[] | 
       maxPlayers: num(entry.maxPlayers),
       playingAs: str(entry.playingAs) || null,
       coverUrl: absoluteUrl(str(cover?.url), origin),
-      placeholderUrl: absoluteUrl(campaignPlaceholderPath(str(settings?.genre), id), origin),
+      placeholderUrl: absoluteUrl(campaignPlaceholderPath(genre, id), origin),
       updatedAt: str(entry.updatedAt),
       role: pick(entry.role, ["owner", "player"] as const, "player"),
       dmMode: pick(settings?.dmMode, ["ai", "assisted", "human"] as const, "ai"),
       // Only when the host actually sent one, so a campaign without a code
       // keeps the shape it has always had in the cache.
       ...(code ? { inviteCode: code } : {}),
+      // The title screen's words, only when the host had them to give.
+      ...(genre ? { genre } : {}),
+      ...(str(entry.description) ? { description: str(entry.description) } : {}),
+      ...(str(entry.scene) ? { scene: str(entry.scene) } : {}),
+      ...(level > 0 ? { startingLevel: level } : {}),
+      ...(str(entry.difficulty) ? { difficulty: str(entry.difficulty) } : {}),
+      ...(me ? { dmSeat: str(entry.dmUserId) === me || str(entry.assistantDmUserId) === me } : {}),
+      ...(glance ? { glance } : {}),
     });
   }
   return campaigns;

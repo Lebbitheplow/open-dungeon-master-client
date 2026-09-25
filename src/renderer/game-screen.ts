@@ -1,14 +1,18 @@
 // The shell's door into a host: the game screens drawn natively by the app
-// (src/renderer/game) inside the shell's own page column, under its
-// topbar and beside its menu. The game bundle is loaded on first use; a
-// host too old to serve the app's own origin, or a page the native
-// screens do not have, still opens in the web view as before.
+// (src/renderer/game), owning the whole window the way they do in a
+// browser: the host's pages bring their own header, and the app's doors
+// (App home, App settings, App guide) sit in that header's account menu.
+// The game bundle is loaded on first use; a host too old to serve the
+// app's own origin, or a page the native screens do not have, still opens
+// in the web view as before.
 import { landingPath } from "../shared/open-path.js";
 import { nativeEligible } from "../shared/portal-logic.js";
 import type { ShellShareStatus } from "../shared/types.js";
 import { show } from "./chrome.js";
 import { el } from "./dom.js";
+import { renderHelp } from "./help.js";
 import { renderHome } from "./home.js";
+import { renderSettings } from "./settings.js";
 import { connectAt, localPlayAt, refresh, state, tunnelWatchers } from "./state.js";
 
 interface GameMount {
@@ -55,6 +59,10 @@ interface ShellHostApi {
     reload(): void;
   };
   hostOrigin: string;
+  // The app's Settings (audio, dice, updates, sharing) and its guide, laid
+  // over the running world from the page's account menu.
+  openSettings(): void;
+  openHelp(): void;
 }
 
 const LOCAL = "local";
@@ -185,6 +193,8 @@ function shellHostApi(hostId: string, origin: string, current: () => GameMount |
       reload: () => current()?.router.refresh(),
     },
     hostOrigin: origin,
+    openSettings: () => renderSettings(),
+    openHelp: () => renderHelp(),
   };
   if (window.odm.shareLink) {
     const share = window.odm.shareLink;

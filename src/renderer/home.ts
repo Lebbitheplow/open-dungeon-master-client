@@ -1,23 +1,36 @@
-// The home base: continue where you left off, quick doors into the primary
-// host, every campaign grouped under the host it lives on with its live
-// status, the device world's sharing controls, and the footer. Decisions
+// The home is a title screen, the same composition the server's home
+// wears ("ODM World Concepts", round 3a, and src/app/home/Dashboard.tsx
+// there): the table you were last at fills the screen behind a Continue,
+// the menu runs down the left like a game's main menu, the recap and
+// your other tables sit as raised night panels and save slots on the
+// right, and the device world, the sigil boxes and the small print wait
+// below the fold. Every host the player uses is on it: the device world,
+// the saved servers, friends' apps reached through a tunnel. Decisions
 // about what to show come from src/shared/home-view-logic.ts; this file
 // only draws them.
 import {
   buildGroups,
-  heroLine,
+  chapterLine,
+  deviceStatusLine,
+  enterLabel,
   pickContinueCampaign,
   pickPrimaryHost,
   reconcileLocal,
+  recapText,
+  seatLine,
+  slotLine,
+  slotMeta,
+  titleEyebrow,
+  agoLabel,
 } from "../shared/home-view-logic.js";
 import type { CampaignRow, ContinuePick, HostGroup } from "../shared/home-view-logic.js";
 import type { HomeCampaign, HomeFeed, HomeHost, ServerSummary } from "../shared/types";
-import { footer, joinBanner, show } from "./chrome.js";
-import { badge, button, chip, el, icon, iconButton, spinner, statusDot, tile } from "./dom.js";
+import { footer, joinBanner, show, topbar } from "./chrome.js";
+import { badge, el, icon, iconButton, spinner, statusDot } from "./dom.js";
 import type { IconName } from "./dom.js";
 import { renderLocalAi } from "./local-ai.js";
 import { playLocal, shareRow } from "./local.js";
-import { connectServer, renderAdd, scanInvite, signInTo } from "./servers.js";
+import { connectServer, openTyped, renderAdd, scanInvite, signInTo } from "./servers.js";
 import {
   DEVICE,
   hideOffline,
@@ -29,19 +42,52 @@ import {
 
 const EMPTY_FEED: HomeFeed = { hosts: [], refreshedAt: "" };
 
+// The painted plates the host serves publicly (a genre cover before anyone
+// paints one, a placeholder face, the empty stage) ship inside the app too
+// (scripts/build-renderer.mjs copies the server's public/assets beside the
+// game sheet), so they are drawn from disk: no round trip, and they show
+// for a host that is offline.
+const EMPTY_STAGE = "./game/public/assets/placeholders/misc/empty.webp";
+
+function localPlate(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    const pathname = new URL(url).pathname;
+    if (pathname.startsWith("/assets/") && !pathname.startsWith("/assets/icons/") && !pathname.startsWith("/assets/ui/")) {
+      return `./game/public${pathname}`;
+    }
+  } catch {
+    // Not an address; nothing to map.
+  }
+  return null;
+}
+
+function glyph(key: string): HTMLImageElement {
+  const img = el("img", "tt-menu-glyph-img");
+  img.src = `./game/icons/glyph/${key}.webp`;
+  img.alt = "";
+  img.draggable = false;
+  return img;
+}
+
 function hostIcon(host: HomeHost): IconName {
   if (host.kind === "local") return isAndroid ? "globe" : "monitor";
   return host.kind === "tunnel" ? "link" : "server";
 }
 
-// The scheme is noise on a hero card; the host (and port, for LAN servers)
-// is what a player recognizes.
+// The scheme is noise on a title screen; the host (and port, for LAN
+// servers) is what a player recognizes.
 function hostOf(origin: string): string {
   try {
     return new URL(origin).host;
   } catch {
     return origin;
   }
+}
+
+function hostName(host: HomeHost): string {
+  if (host.kind === "local") return DEVICE;
+  return host.name || hostOf(host.origin);
 }
 
 // Every door into a host goes through here: the device world starts if it
@@ -66,246 +112,492 @@ function openCampaign(host: HomeHost, campaignId: string, btn: HTMLButtonElement
   openHost(host, `/campaigns/${encodeURIComponent(campaignId)}`, btn);
 }
 
-// ---------- heroes ----------
+// ---------- pictures ----------
 
-function sourceChip(host: HomeHost, label: string): HTMLElement {
-  const wrap = el("span", "source-chip");
-  wrap.append(icon(hostIcon(host)), document.createTextNode(label), statusDot(host.status));
-  return wrap;
-}
+// Covers and painted scenes sit behind each host's login, so the bridge
+// fetches them with the host's session and answers with a data URL; the
+// page cannot load them by address. Answers are kept for the session so a
+// re-render is free, and a miss (host offline, session lapsed) is asked
+// again on the next paint. The answers are base64 pictures, so the ring
+// is small: the least recently drawn picture goes once more than
+// PICTURE_CAP distinct ones have been seen.
+const PICTURE_CAP = 64;
+const pictures = new Map<string, Promise<string>>();
 
-// Covers sit behind each host's login, so the bridge fetches them with the
-// host's session and answers with a data URL; the page cannot load them by
-// address. Answers are kept for the session so a re-render is free, and a
-// miss (host offline, session lapsed) is asked again on the next paint.
-// The answers are base64 pictures, so the ring is small: the least recently
-// drawn cover goes once more than COVER_CAP distinct covers have been seen.
-const COVER_CAP = 64;
-const covers = new Map<string, Promise<string>>();
-
-function loadCover(hostId: string, url: string): Promise<string> {
+function loadPicture(hostId: string, url: string): Promise<string> {
   const key = `${hostId} ${url}`;
-  let pending = covers.get(key);
+  let pending = pictures.get(key);
   if (pending) {
     // Re-inserting moves the key to the newest end of the map's order.
-    covers.delete(key);
-    covers.set(key, pending);
+    pictures.delete(key);
+    pictures.set(key, pending);
     return pending;
   }
   pending = window.odm.coverImage(hostId, url).catch(() => "");
-  covers.set(key, pending);
+  pictures.set(key, pending);
   void pending.then((data) => {
-    if (!data) covers.delete(key);
+    if (!data) pictures.delete(key);
   });
-  for (const oldest of covers.keys()) {
-    if (covers.size <= COVER_CAP) break;
-    covers.delete(oldest);
+  for (const oldest of pictures.keys()) {
+    if (pictures.size <= PICTURE_CAP) break;
+    pictures.delete(oldest);
   }
   return pending;
 }
 
-// Swaps the placeholder tile for a picture once one loads; a picture that
-// fails to load leaves the tile alone (or tries the next source).
-function swapIn(holder: HTMLElement, className: string, src: string, onFail?: () => void): void {
-  const img = el("img", className);
-  img.alt = "";
-  img.addEventListener("load", () => {
-    if (holder.isConnected) holder.replaceWith(img);
-  });
-  if (onFail) img.addEventListener("error", onFail);
-  img.src = src;
+// Where a campaign's picture comes from, best first: the newest painted
+// scene (the title screen's painting only), the cover fetched with the
+// host's session, the same cover by address (a phone's shared cookie jar
+// may carry the session already), and the genre plate from disk.
+interface PictureSource {
+  kind: "bridge" | "plain";
+  url: string;
 }
 
-// The picture for a campaign, best source first: the painted cover fetched
-// with the host's session; the same cover by address (a phone's shared
-// cookie jar may carry the session already); and the genre plate the host
-// serves publicly, which is what its own home shows before a cover exists.
-function coverArt(host: HomeHost, campaign: HomeCampaign, className: string): HTMLElement {
-  const holder = el("span", `${className} placeholder`);
-  holder.append(tile(className === "cont-art"));
-  const plate = (): void => {
-    if (campaign.placeholderUrl) swapIn(holder, className, campaign.placeholderUrl);
+function pictureSources(campaign: HomeCampaign, scene: boolean): PictureSource[] {
+  const out: PictureSource[] = [];
+  if (scene && campaign.glance?.sceneImage) out.push({ kind: "bridge", url: campaign.glance.sceneImage });
+  if (campaign.coverUrl) out.push({ kind: "bridge", url: campaign.coverUrl }, { kind: "plain", url: campaign.coverUrl });
+  const plate = localPlate(campaign.placeholderUrl);
+  if (plate) out.push({ kind: "plain", url: plate });
+  else if (campaign.placeholderUrl) out.push({ kind: "plain", url: campaign.placeholderUrl });
+  return out;
+}
+
+// Tries a picture's sources in order and hands the first that loads to
+// `paint`; a source that fails to load falls through to the next.
+function resolvePicture(hostId: string, sources: PictureSource[], paint: (src: string) => void): void {
+  const tryFrom = (index: number): void => {
+    const source = sources[index];
+    if (!source) return;
+    const attempt = (src: string): void => {
+      const probe = new Image();
+      probe.addEventListener("load", () => paint(src));
+      probe.addEventListener("error", () => tryFrom(index + 1));
+      probe.src = src;
+    };
+    if (source.kind === "plain") {
+      attempt(source.url);
+      return;
+    }
+    void loadPicture(hostId, source.url).then((data) => {
+      if (data) attempt(data);
+      else tryFrom(index + 1);
+    });
   };
-  const url = campaign.coverUrl;
-  if (!url) {
-    plate();
-    return holder;
-  }
-  void loadCover(host.id, url).then((data) => {
-    if (!holder.isConnected) return;
-    if (data) swapIn(holder, className, data, () => swapIn(holder, className, url, plate));
-    else swapIn(holder, className, url, plate);
-  });
-  return holder;
+  tryFrom(0);
 }
 
-function continueHero(pick: ContinuePick): HTMLElement {
-  const { host, campaign } = pick;
-  const wrap = el("section", "cont panel ornate");
-  wrap.dataset.tour = "hero";
-  const cover = el("button", "cont-cover");
-  cover.type = "button";
-  cover.append(coverArt(host, campaign, "cont-art"));
-  cover.append(sourceChip(host, host.kind === "local" ? "This device" : host.name || hostOf(host.origin)));
-  const caption = el("span", "cont-caption");
-  caption.append(el("span", "cont-title", campaign.title), el("span", "cont-line", heroLine(campaign)));
-  cover.append(caption);
-  cover.addEventListener("click", () => openCampaign(host, campaign.id, null));
-  const actions = el("div", "cont-actions");
-  actions.append(
-    button("primary", "Enter world", (btn) => openCampaign(host, campaign.id, btn), "play"),
-  );
-  wrap.append(cover, actions);
+// A slot's art: the plate from disk at once, upgraded to the cover when
+// the host answers.
+function slotArt(host: HomeHost, campaign: HomeCampaign): HTMLElement {
+  const art = el("span", "tt-slot-art");
+  const img = el("img");
+  img.alt = "";
+  img.draggable = false;
+  const plate = localPlate(campaign.placeholderUrl);
+  if (plate) img.src = plate;
+  art.append(img);
+  resolvePicture(host.id, pictureSources(campaign, false), (src) => {
+    if (img.isConnected && img.src !== src) img.src = src;
+  });
+  return art;
+}
+
+// ---------- the painting ----------
+
+// The painting drifts for 48 seconds and back; a re-render (a feed event
+// landing) rebuilds the screen, so the same painting picks its drift up
+// where it was rather than starting again, and only a new painting fades
+// in.
+let shownArt = { key: "", src: "", since: 0 };
+
+function backdrop(pick: ContinuePick | null): HTMLElement {
+  const wrap = el("div", "tt-backdrop");
+  wrap.setAttribute("aria-hidden", "true");
+  const art = el("img", "tt-art");
+  art.alt = "";
+  art.draggable = false;
+  const key = pick ? `${pick.host.id} ${pick.campaign.id}` : "";
+  const paint = (src: string): void => {
+    const now = Date.now();
+    if (src !== shownArt.src || key !== shownArt.key) {
+      shownArt = { key, src, since: now };
+      art.classList.add("tt-art-in");
+    }
+    art.style.animationDelay = `-${now - shownArt.since}ms, 0ms`;
+    art.src = src;
+  };
+  if (pick) {
+    // The same table again keeps its painting from the last paint; a new
+    // one starts on its genre plate and gets its cover or newest scene
+    // once the host answers.
+    const plate = localPlate(pick.campaign.placeholderUrl) ?? EMPTY_STAGE;
+    paint(shownArt.key === key && shownArt.src ? shownArt.src : plate);
+    resolvePicture(pick.host.id, pictureSources(pick.campaign, true), (src) => {
+      if (art.isConnected && art.src !== src) paint(src);
+    });
+  } else {
+    paint(EMPTY_STAGE);
+  }
+  wrap.append(art, el("div", "tt-scrim tt-scrim-side"), el("div", "tt-scrim tt-scrim-floor"), el("div", "tt-stars"));
   return wrap;
+}
+
+function corners(): HTMLElement[] {
+  return ["tl", "tr", "bl", "br"].map((where) => {
+    const corner = el("span", `tt-corner tt-corner-${where}`);
+    corner.setAttribute("aria-hidden", "true");
+    return corner;
+  });
+}
+
+function reveal<T extends HTMLElement>(node: T, delayMs: number): T {
+  node.classList.add("tt-reveal");
+  node.style.animationDelay = `${delayMs}ms`;
+  return node;
+}
+
+function brackets(): HTMLElement[] {
+  return ["tl", "br"].map((where) => {
+    const bracket = el("span", `tt-bracket tt-bracket-${where}`);
+    bracket.setAttribute("aria-hidden", "true");
+    return bracket;
+  });
+}
+
+// ---------- the title block ----------
+
+function goldTitle(text: string, small = false): HTMLElement {
+  const heading = el("h1", small ? "tt-title tt-title-sm" : "tt-title");
+  heading.append(el("span", "tt-title-face", text));
+  return heading;
+}
+
+function eyebrow(text: string): HTMLElement {
+  return el("span", "tt-eyebrow", text);
+}
+
+function chapter(text: string): HTMLElement {
+  const line = el("p", "tt-chapter");
+  line.append(el("span", "tt-rule"), el("span", "tt-chapter-text", text), el("span", "tt-rule tt-rule-end"));
+  return line;
+}
+
+// The gold door in: the banner's gold, lit from within, a sheen that
+// crosses once and a glow that breathes while the screen waits.
+function enterButton(label: string, onClick: (btn: HTMLButtonElement) => void, leading: IconName = "play"): HTMLButtonElement {
+  const btn = el("button", "tt-enter");
+  btn.type = "button";
+  const sheen = el("span", "tt-enter-sheen");
+  sheen.setAttribute("aria-hidden", "true");
+  btn.append(sheen, icon(leading), document.createTextNode(label));
+  btn.addEventListener("click", () => onClick(btn));
+  return btn;
+}
+
+// The quiet door: a hairline of gold over the night.
+function ghostButton(label: string, onClick: (btn: HTMLButtonElement) => void, leading?: IconName): HTMLButtonElement {
+  const btn = el("button", "tt-ghost");
+  btn.type = "button";
+  if (leading) btn.append(icon(leading));
+  btn.append(document.createTextNode(label));
+  btn.addEventListener("click", () => onClick(btn));
+  return btn;
+}
+
+// Where the table lives: the host's name with its live dot.
+function sourceLine(host: HomeHost): HTMLElement {
+  const line = el("span", "tt-source");
+  line.append(icon(hostIcon(host)), document.createTextNode(hostName(host)), statusDot(host.status));
+  line.title = host.kind === "local" ? "Hosted on this device" : host.origin;
+  return line;
+}
+
+function partyFaces(host: HomeHost, campaign: HomeCampaign): HTMLElement | null {
+  const faces = campaign.glance?.faces ?? [];
+  if (faces.length === 0) return null;
+  const wrap = el("span", "tt-faces");
+  wrap.setAttribute("aria-hidden", "true");
+  faces.slice(0, 5).forEach((face, index) => {
+    const img = el("img", "tt-face");
+    img.alt = "";
+    img.title = face.name;
+    img.draggable = false;
+    img.style.animationDelay = `${540 + index * 60}ms`;
+    const plate = localPlate(face.url);
+    if (plate) img.src = plate;
+    else {
+      resolvePicture(host.id, [{ kind: "bridge", url: face.url }, { kind: "plain", url: face.url }], (src) => {
+        if (img.isConnected) img.src = src;
+      });
+    }
+    wrap.append(img);
+  });
+  return wrap;
+}
+
+function continueBlock(pick: ContinuePick): HTMLElement {
+  const { host, campaign } = pick;
+  const block = el("div", "tt-title-block");
+  block.dataset.tour = "hero";
+  block.append(reveal(eyebrow(titleEyebrow(campaign)), 140), reveal(goldTitle(campaign.title), 220));
+  const line = chapterLine(campaign);
+  if (line) block.append(reveal(chapter(line), 420));
+  const party = el("div", "tt-party");
+  const faces = partyFaces(host, campaign);
+  if (faces) party.append(faces);
+  party.append(el("span", "tt-seat-line", seatLine(campaign)), sourceLine(host));
+  block.append(reveal(party, 520));
+  const actions = el("div", "tt-actions");
+  actions.append(enterButton(enterLabel(campaign), (btn) => openCampaign(host, campaign.id, btn)));
+  block.append(reveal(actions, 640));
+  return block;
 }
 
 // The device world before it has a campaign to continue: first run,
 // starting, a crash, or simply ready.
-function localHero(): HTMLElement {
+function localBlock(): HTMLElement {
   const local = state.local;
-  const hero = el("div", "panel ornate grain hero");
-  hero.dataset.tour = "hero";
-  hero.append(chip(isAndroid ? "globe" : "monitor"));
-  const body = el("div", "hero-body");
-  const actions = el("div", "hero-actions");
-  const who = el("p", "who");
-
+  const block = el("div", "tt-title-block");
+  block.dataset.tour = "hero";
+  const actions = el("div", "tt-actions");
+  const device = isAndroid ? "device" : "computer";
   if (local.state === "error") {
-    body.append(el("h2", "", DEVICE));
-    who.textContent = local.error || "The offline world could not start.";
-    body.append(who);
-    actions.append(button("primary", "Try again", (btn) => void playLocal(btn), "play"));
-    hero.append(body, actions);
-    return hero;
-  }
-
-  if (local.firstRun) {
-    body.append(el("h2", "", "Begin your world"));
-    who.textContent = `No server needed. Your world lives on this ${isAndroid ? "device" : "computer"}, and friends can join from anywhere once you invite them.`;
-    body.append(who);
-    if (local.state === "starting") actions.append(spinner(), badge("Starting"));
-    else actions.append(button("primary", "Start playing", (btn) => void playLocal(btn), "play"));
-    hero.append(body, actions);
-    return hero;
-  }
-
-  body.append(el("h2", "", DEVICE));
-  if (local.username) {
-    who.append(document.createTextNode("Playing as "), el("strong", "", local.username));
-    who.append(
-      document.createTextNode(
-        local.serverVersion ? `. Offline world ready, server ${local.serverVersion}.` : ".",
+    block.append(reveal(eyebrow("The road is dark"), 140), reveal(goldTitle(DEVICE, true), 220));
+    block.append(reveal(el("p", "tt-lede", local.error || "The offline world could not start."), 420));
+    actions.append(enterButton("Try again", (btn) => void playLocal(btn)));
+  } else if (local.firstRun) {
+    block.append(reveal(eyebrow("Your first tale"), 140), reveal(goldTitle("Begin your world", true), 220));
+    block.append(
+      reveal(
+        el(
+          "p",
+          "tt-lede",
+          `No server needed. Your world lives on this ${device}, and friends can join from anywhere once you invite them.`,
+        ),
+        420,
       ),
     );
+    if (local.state === "starting") actions.append(spinner(), badge("Starting"));
+    else actions.append(enterButton("Start playing", (btn) => void playLocal(btn)));
   } else {
-    who.textContent = "Offline world ready.";
+    block.append(reveal(eyebrow(`Your world on this ${device}`), 140), reveal(goldTitle(DEVICE, true), 220));
+    const who = el("p", "tt-lede");
+    if (local.username) {
+      who.append(document.createTextNode("Playing as "), el("strong", "", local.username));
+      who.append(document.createTextNode(local.serverVersion ? `. Offline world ready, server ${local.serverVersion}.` : "."));
+    } else {
+      who.textContent = "Offline world ready.";
+    }
+    block.append(reveal(who, 420));
+    if (local.state === "starting") actions.append(spinner(), badge("Starting"));
+    else actions.append(enterButton("Enter your world", (btn) => void playLocal(btn)));
   }
-  body.append(who);
-  if (local.state === "starting") actions.append(spinner(), badge("Starting"));
-  else actions.append(button("primary", "Enter your world", (btn) => void playLocal(btn), "play"));
-  hero.append(body, actions);
-  return hero;
+  block.append(reveal(actions, 640));
+  return block;
 }
 
-// No device world in this build: the most recent server takes the hero
-// spot so one tap continues where the player left off.
-function serverHero(server: ServerSummary): HTMLElement {
-  const hero = el("div", "panel ornate grain hero");
-  hero.dataset.tour = "hero";
-  hero.append(chip("server"));
-  const body = el("div", "hero-body");
-  body.append(el("h2", "", server.name || server.origin));
-  const who = el("p", "who");
-  who.append(document.createTextNode("Continue as "), el("strong", "", server.username));
-  body.append(who, el("div", "origin", hostOf(server.origin)));
-  const actions = el("div", "hero-actions");
-  actions.append(button("primary", "Enter", (btn) => void connectServer(server, btn), "play"));
-  hero.append(body, actions);
-  return hero;
+// No device world in this build: the most recent server takes the title
+// block so one tap continues where the player left off.
+function serverBlock(server: ServerSummary): HTMLElement {
+  const block = el("div", "tt-title-block");
+  block.dataset.tour = "hero";
+  block.append(
+    reveal(eyebrow(`Continue as ${server.username}`), 140),
+    reveal(goldTitle(server.name || hostOf(server.origin), true), 220),
+    reveal(chapter(hostOf(server.origin)), 420),
+  );
+  const actions = el("div", "tt-actions");
+  actions.append(enterButton("Enter", (btn) => void connectServer(server, btn)));
+  block.append(reveal(actions, 640));
+  return block;
 }
 
-function welcomeHero(): HTMLElement {
-  const hero = el("div", "panel ornate grain hero");
-  hero.dataset.tour = "hero";
-  hero.append(chip("globe"));
-  const body = el("div", "hero-body");
-  body.append(
-    el("h2", "", "Gather your party"),
-    el(
-      "p",
-      "who",
-      window.odm.scanInvite
-        ? "Connect to a self-hosted Open Dungeon Master, or scan or type an invite a friend sent you."
-        : "Connect to a self-hosted Open Dungeon Master, or paste the room code or invite link a friend sent you.",
+function welcomeBlock(): HTMLElement {
+  const block = el("div", "tt-title-block");
+  block.dataset.tour = "hero";
+  block.append(
+    reveal(eyebrow("Gather your party"), 140),
+    reveal(goldTitle("Every adventure starts with a table.", true), 220),
+    reveal(
+      el(
+        "p",
+        "tt-lede",
+        window.odm.scanInvite
+          ? "Connect to a self-hosted Open Dungeon Master, or scan or type an invite a friend sent you."
+          : "Connect to a self-hosted Open Dungeon Master, or paste the room code or invite link a friend sent you.",
+      ),
+      420,
     ),
   );
-  const actions = el("div", "hero-actions");
-  if (window.odm.scanInvite) {
-    actions.append(button("secondary", "Scan invite", (btn) => void scanInvite(btn), "qr"));
-  } else {
-    actions.append(
-      button("secondary", "Paste invite", () => renderAdd(state.joinIntent?.origin ?? ""), "link"),
-    );
-  }
-  actions.append(button("primary", "Add a server", () => renderAdd(state.joinIntent?.origin ?? ""), "plus"));
-  hero.append(body, actions);
-  return hero;
+  const actions = el("div", "tt-actions");
+  actions.append(enterButton("Add a server", () => renderAdd(state.joinIntent?.origin ?? ""), "plus"));
+  if (window.odm.scanInvite) actions.append(ghostButton("Scan invite", (btn) => void scanInvite(btn), "qr"));
+  else actions.append(ghostButton("Paste invite", () => renderAdd(state.joinIntent?.origin ?? ""), "link"));
+  block.append(reveal(actions, 640));
+  return block;
 }
 
-// Joining a friend's table is the most common thing a guest does, so the
-// door is on the home screen itself rather than behind the menu: type the
-// room code (or paste a link), and on a phone scan the QR the host shows.
-function inviteRow(): HTMLElement {
-  const row = el("div", "panel invite-row");
-  row.dataset.tour = "home-invite";
-  row.append(
-    chip("link"),
-    el("span", "invite-line", "Have an invite from a friend?"),
-  );
-  const actions = el("div", "invite-actions");
-  actions.append(
-    button("primary", "Enter room code", () => renderAdd(state.joinIntent?.origin ?? ""), "link"),
-  );
-  if (window.odm.scanInvite) {
-    actions.append(button("secondary", "Scan invite QR", (btn) => void scanInvite(btn), "qr"));
-  }
-  row.append(actions);
-  return row;
-}
-
-function hero(pick: ContinuePick | null): HTMLElement[] {
-  if (pick) return [el("h2", "eyebrow", "Continue"), continueHero(pick)];
+function titleBlock(pick: ContinuePick | null): HTMLElement {
+  if (pick) return continueBlock(pick);
   if (state.local.state === "unavailable") {
     const [latest] = state.servers;
-    return [latest ? serverHero(latest) : welcomeHero()];
+    return latest ? serverBlock(latest) : welcomeBlock();
   }
-  return [localHero()];
+  return localBlock();
 }
 
-// ---------- quick tiles ----------
+// ---------- the menu ----------
 
-function quickTiles(primary: HomeHost | null): HTMLElement | null {
-  // A world that has never started has no pages to open yet; its hero's
-  // "Start playing" is the only door until then.
-  if (!primary || (primary.kind === "local" && state.local.firstRun)) return null;
-  const grid = el("div", "tiles");
-  const add = (name: IconName, label: string, path: string, tour: string): void => {
-    const btn = el("button", "quick-tile panel");
+interface MenuItem {
+  label: string;
+  glyph: string;
+  tour: string;
+  onClick: (btn: HTMLButtonElement) => void;
+}
+
+// A game's main menu: diamond bullets, Cinzel, the painted glyph rising
+// beside the line under the pointer. The primary host's doors come first
+// (a world that has never started has no pages to open yet, so they wait
+// for its first run); the shell's own doors follow.
+function menu(primary: HomeHost | null, focusJoin: () => void): HTMLElement {
+  const nav = el("nav", "tt-menu");
+  nav.setAttribute("aria-label", "Main menu");
+  const items: MenuItem[] = [];
+  if (primary && !(primary.kind === "local" && state.local.firstRun)) {
+    items.push(
+      { label: "New campaign", glyph: "tab-campaigns", tour: "tile-new-campaign", onClick: (btn) => openHost(primary, "/?new=1", btn) },
+      { label: "Characters", glyph: "tab-characters", tour: "tile-characters", onClick: (btn) => openHost(primary, "/characters", btn) },
+      { label: "Workshop", glyph: "system-homebrew", tour: "tile-workshop", onClick: (btn) => openHost(primary, "/workshop", btn) },
+    );
+  }
+  items.push({ label: "Join with a code", glyph: "tab-handout", tour: "tile-join", onClick: focusJoin });
+  items.push({ label: "Add a server", glyph: "system-share", tour: "tile-add-server", onClick: () => renderAdd(state.joinIntent?.origin ?? "") });
+  // Story AI is chosen on the world's first run; the door only makes sense
+  // once that world exists.
+  if (state.local.state !== "unavailable" && !state.local.firstRun) {
+    items.push({ label: "Story AI", glyph: "tab-story", tour: "tile-story-ai", onClick: () => renderLocalAi(true) });
+  }
+  items.forEach((item, index) => {
+    const btn = el("button", "tt-menu-item");
     btn.type = "button";
-    btn.dataset.tour = tour;
-    btn.append(chip(name), el("span", "", label));
-    btn.addEventListener("click", () => openHost(primary, path, btn));
-    grid.append(btn);
-  };
-  add("scroll", "New campaign", "/?new=1", "tile-new-campaign");
-  add("user", "Characters", "/characters", "tile-characters");
-  add("wand", "Workshop", "/workshop", "tile-workshop");
-  return grid;
+    btn.dataset.tour = item.tour;
+    const diamond = el("span", "tt-menu-diamond");
+    diamond.setAttribute("aria-hidden", "true");
+    const glyphWrap = el("span", "tt-menu-glyph");
+    glyphWrap.setAttribute("aria-hidden", "true");
+    glyphWrap.append(glyph(item.glyph));
+    btn.append(diamond, el("span", "tt-menu-label", item.label), glyphWrap);
+    btn.addEventListener("click", () => item.onClick(btn));
+    nav.append(reveal(btn, 800 + index * 55));
+  });
+  return nav;
 }
 
-// ---------- campaigns by host ----------
+// "Your world is awake · server 0.23.5 · v0.15.0": one mono line at the
+// foot of the menu, the way a title screen shows its build. The lamp is
+// lit gold while the device world runs, ember when it could not start,
+// pulsing while it wakes, unlit while it sleeps.
+function statusLine(): HTMLElement {
+  const { tone, text } = deviceStatusLine(state.local, state.appInfo?.version ?? "");
+  const line = el("p", `tt-status tt-status-${tone}`);
+  line.setAttribute("aria-live", "polite");
+  const lamp = el("span", "tt-lamp");
+  lamp.setAttribute("aria-hidden", "true");
+  line.append(lamp, document.createTextNode(text));
+  return reveal(line, 1200);
+}
 
-// The hide-offline switch, on the home screen and in Settings; rerender
+// ---------- the recap ----------
+
+// "When last we left": the last thing the Dungeon Master said at that
+// table, with the drop cap, and a mono line saying when.
+function recapPanel(pick: ContinuePick): HTMLElement {
+  const { campaign } = pick;
+  const panel = el("aside", "tt-recap tt-panel");
+  panel.setAttribute("aria-label", "When last we left");
+  panel.append(...brackets(), el("span", "tt-panel-eyebrow", "When last we left"));
+  const { text, quiet } = recapText(campaign);
+  const body = el("p", quiet ? "tt-recap-text tt-recap-quiet" : "tt-recap-text");
+  if (quiet) body.textContent = text;
+  else body.append(el("span", "tt-dropcap", text.charAt(0)), document.createTextNode(text.slice(1)));
+  panel.append(body);
+  const ago = agoLabel(campaign.glance?.recapAt ?? campaign.updatedAt);
+  if (ago) panel.append(el("span", "tt-mono", ago));
+  return reveal(panel, 720);
+}
+
+// ---------- save slots: the other tables, by host ----------
+
+function slot(group: HostGroup, row: CampaignRow): HTMLElement {
+  const { host } = group;
+  const { campaign } = row;
+  const cell = el("li", "tt-slot-cell");
+  const ended = campaign.status === "ended";
+  const door = el("button", ended ? "tt-slot tt-slot-ended" : "tt-slot");
+  door.type = "button";
+  if (host.stale) door.classList.add("tt-slot-stale");
+  const art = slotArt(host, campaign);
+  const status = el("span", `tt-slot-badge tt-slot-badge-${campaign.status}`, campaign.status);
+  art.append(status);
+  door.append(art, el("span", "tt-slot-title", campaign.title));
+  if (row.action === "blocked") {
+    door.classList.add("tt-slot-blocked");
+    door.disabled = true;
+    door.append(el("span", "tt-slot-line", row.reason));
+  } else {
+    door.append(el("span", "tt-slot-line", slotLine(campaign)));
+    door.addEventListener("click", () => {
+      if (row.action === "signIn") void signInTo(host.origin, host.username);
+      else openCampaign(host, campaign.id, door);
+    });
+  }
+  const meta = slotMeta(campaign);
+  door.append(el("span", "tt-slot-meta", meta || hostName(host)));
+  door.title = `${campaign.title} on ${hostName(host)}`;
+  cell.append(door);
+  return cell;
+}
+
+// A dashed slot at the end of the primary host's row forges a new world.
+function forgeSlot(host: HomeHost): HTMLElement {
+  const cell = el("li", "tt-slot-cell");
+  const btn = el("button", "tt-slot tt-slot-new");
+  btn.type = "button";
+  const plus = el("span", "tt-slot-new-plus");
+  plus.setAttribute("aria-hidden", "true");
+  plus.append(icon("plus"));
+  btn.append(plus, el("span", "tt-slot-title", "Forge a new world"));
+  btn.addEventListener("click", () => openHost(host, "/?new=1", btn));
+  cell.append(btn);
+  return cell;
+}
+
+function slotGroup(group: HostGroup, skipId: string, primary: HomeHost | null): HTMLElement | null {
+  const { host } = group;
+  const rows = group.rows.filter((row) => row.campaign.id !== skipId);
+  const forge = primary?.id === host.id && !(host.kind === "local" && state.local.firstRun);
+  if (rows.length === 0 && !forge) return null;
+  const wrap = el("div", `tt-slot-group ${host.status}`);
+  const head = el("div", "tt-slot-host");
+  head.append(icon(hostIcon(host)), el("span", "tt-slot-host-name", group.label));
+  const status = el("span", `tt-slot-host-status ${host.status}`);
+  status.append(statusDot(host.status), document.createTextNode(group.statusLabel));
+  head.append(status);
+  if (group.lastSeen) head.append(el("span", "tt-slot-host-seen", group.lastSeen));
+  if (host.status === "needsLogin") {
+    head.append(ghostButton("Sign in", () => void signInTo(host.origin, host.username), "logIn"));
+  }
+  wrap.append(head);
+  const row = el("ul", "tt-slot-row");
+  for (const entry of rows) row.append(slot(group, entry));
+  if (forge) row.append(forgeSlot(host));
+  wrap.append(row);
+  return wrap;
+}
+
+// The hide-offline switch, on the title screen and in Settings; rerender
 // repaints whichever screen holds it.
 export function offlineToggle(rerender: () => void = renderHome): HTMLElement {
   const on = hideOffline();
@@ -333,106 +625,58 @@ function refreshButton(): HTMLElement {
   return btn;
 }
 
-function campaignRow(group: HostGroup, row: CampaignRow): HTMLElement {
-  const { host } = group;
-  const btn = el("button", "camp-row");
-  btn.type = "button";
-  if (row.action === "blocked") btn.classList.add("blocked");
-  if (host.stale) btn.classList.add("stale");
-  btn.append(coverArt(host, row.campaign, "camp-thumb"));
-  const text = el("span", "grow");
-  text.append(
-    el("span", "camp-title", row.campaign.title),
-    el("span", "camp-line", row.reason || row.line),
-  );
-  btn.append(text);
-  if (row.action === "blocked") {
-    btn.disabled = true;
-    btn.append(el("span", "tag", "can't continue"));
-    return btn;
-  }
-  btn.append(icon("chevronRight"));
-  btn.addEventListener("click", () => {
-    if (row.action === "signIn") void signInTo(host.origin, host.username);
-    else openCampaign(host, row.campaign.id, btn);
-  });
-  return btn;
-}
-
-function hostGroup(group: HostGroup): HTMLElement {
-  const { host } = group;
-  const wrap = el("section", `host-group ${host.status}`);
-  const head = el("div", "host-head");
-  head.append(icon(hostIcon(host)), el("span", "host-name", group.label));
-  const status = el("span", `host-status ${host.status}`);
-  status.append(statusDot(host.status), document.createTextNode(group.statusLabel));
-  head.append(status);
-  if (group.lastSeen) head.append(el("span", "host-seen", group.lastSeen));
-  head.append(el("span", "rule"));
-  if (host.status === "needsLogin") {
-    const signIn = button("secondary", "Sign in", () => void signInTo(host.origin, host.username), "logIn");
-    signIn.classList.add("small");
-    head.append(signIn);
-  }
-  wrap.append(head);
-  const grid = el("div", "camp-grid");
-  if (group.rows.length === 0) {
-    grid.append(
-      el(
-        "p",
-        "camp-empty",
-        host.kind !== "local"
-          ? "No campaigns on this host yet."
-          : state.local.firstRun
-            ? "Your first campaign appears here once your world begins."
-            : "No campaigns here yet. Start one with New campaign above.",
-      ),
-    );
-  }
-  for (const row of group.rows) grid.append(campaignRow(group, row));
-  wrap.append(grid);
-  return wrap;
-}
-
-function campaigns(feed: HomeFeed): HTMLElement[] {
-  const head = el("div", "eyebrow-row");
-  head.append(el("h2", "eyebrow", "Campaigns"));
-  const controls = el("div", "controls");
+function slots(feed: HomeFeed, pick: ContinuePick | null, primary: HomeHost | null): HTMLElement {
+  const section = el("section", "tt-slots");
+  section.setAttribute("aria-label", "Your other tables");
+  const head = el("div", "tt-slots-head");
+  const groups = buildGroups(feed, { hideOffline: hideOffline(), deviceName: DEVICE, now: Date.now() });
+  const others = groups.reduce((count, group) => count + group.rows.filter((row) => row.campaign.id !== pick?.campaign.id).length, 0);
+  head.append(el("h2", "tt-slots-eyebrow", others === 1 ? "Your other table" : "Your other tables"));
+  const controls = el("div", "tt-slots-controls");
   controls.append(offlineToggle(), refreshButton());
   head.append(controls);
-  const nodes: HTMLElement[] = [head];
-  const groups = buildGroups(feed, { hideOffline: hideOffline(), deviceName: DEVICE, now: Date.now() });
-  if (groups.length === 0) {
-    const empty = el("div", "panel camp-none");
-    if (!state.feed) empty.append(spinner(), el("span", "", "Looking for your campaigns..."));
-    else if (feed.hosts.length === 0) empty.append(el("span", "", "Add a server or begin your world, and your campaigns gather here."));
-    else empty.append(el("span", "", "Every remote host is offline right now. Turn off Hide offline to see them."));
-    nodes.push(empty);
-    return nodes;
+  section.append(head);
+  let drawn = 0;
+  for (const group of groups) {
+    const node = slotGroup(group, pick?.campaign.id ?? "", primary);
+    if (!node) continue;
+    section.append(node);
+    drawn += 1;
   }
-  for (const group of groups) nodes.push(hostGroup(group));
+  if (drawn === 0) {
+    const empty = el("p", "tt-slots-empty");
+    if (!state.feed) empty.append(spinner(), document.createTextNode(" Looking for your tables..."));
+    else if (feed.hosts.length === 0) empty.textContent = "Add a server or begin your world, and your tables gather here.";
+    else if (groups.length === 0) empty.textContent = "Every remote host is offline right now. Turn off Hide offline to see them.";
+    else empty.textContent = "No other tables yet.";
+    section.append(empty);
+  }
   if (feed.hosts.some((host) => host.kind === "tunnel" && host.status === "offline")) {
-    nodes.push(
+    section.append(
       el(
         "p",
-        "hint",
-        "Campaigns hosted on another player's device only appear playable while that app is online. You'll be able to rejoin the moment their host comes back.",
+        "tt-slots-note",
+        "Tables hosted on another player's device only open while that app is online. You can rejoin the moment their host comes back.",
       ),
     );
   }
-  return nodes;
+  return reveal(section, 900);
 }
 
-// ---------- the device world's own controls ----------
+// ---------- below the fold ----------
 
-function deviceBlock(localIsHero: boolean): HTMLElement[] {
+// The device world's own panel: who plays there, whether it is awake, the
+// storyteller and the sharing switch.
+function deviceBlock(localIsHero: boolean): HTMLElement | null {
   const local = state.local;
-  if (local.state === "unavailable" || local.firstRun) return [];
-  const block = el("div", "panel ornate grain device-block");
-  const head = el("div", "device-head");
-  head.append(chip(isAndroid ? "globe" : "monitor"));
-  const grow = el("div", "grow");
-  grow.append(el("div", "name", local.username ? `Playing as ${local.username}` : DEVICE));
+  if (local.state === "unavailable" || local.firstRun) return null;
+  const panel = el("section", "tt-device tt-panel");
+  panel.setAttribute("aria-label", DEVICE);
+  panel.append(...brackets());
+  const head = el("div", "tt-device-head");
+  const text = el("div", "tt-device-text");
+  text.append(el("h2", "tt-below-eyebrow", `Your world on this ${isAndroid ? "device" : "computer"}`));
+  text.append(el("p", "tt-device-name", local.username ? `Playing as ${local.username}` : DEVICE));
   const detail =
     local.state === "running"
       ? local.serverVersion
@@ -443,21 +687,96 @@ function deviceBlock(localIsHero: boolean): HTMLElement[] {
         : local.state === "error"
           ? local.error || "The offline world could not start."
           : "Asleep until you enter it. Friends can join once it is awake and shared.";
-  grow.append(el("div", "detail", detail));
-  head.append(grow);
-  const actions = el("div", "actions");
+  text.append(el("p", "tt-below-lede", detail));
+  head.append(text);
+  const actions = el("div", "tt-device-actions");
   if (local.state !== "starting") {
-    const storyAi = button("secondary", "Story AI", () => renderLocalAi(true), "sparkles");
+    const storyAi = ghostButton("Story AI", () => renderLocalAi(true), "sparkles");
     storyAi.dataset.tour = "story-ai";
     actions.append(storyAi);
-    if (!localIsHero) {
-      actions.append(button("primary", "Enter your world", (btn) => void playLocal(btn), "play"));
-    }
+    if (!localIsHero) actions.append(ghostButton("Enter your world", (btn) => void playLocal(btn), "play"));
   }
   head.append(actions);
-  block.append(head);
-  if (local.state === "running") block.append(shareRow());
-  return [el("h2", "eyebrow", DEVICE), block];
+  panel.append(head);
+  if (local.state === "running") panel.append(shareRow());
+  return panel;
+}
+
+// Joining someone else's table by its invite code: "join by sigil". One
+// real field does the typing, the pasting and the submitting; the boxes
+// over it are only how the code is shown. A link or a server address
+// pasted here works too, the same as in Add a server.
+function joinPanel(): { panel: HTMLElement; focus: () => void } {
+  const panel = el("section", "tt-join tt-panel");
+  panel.id = "join";
+  panel.dataset.tour = "home-invite";
+  panel.setAttribute("aria-label", "Join with a room code");
+  panel.append(
+    ...brackets(),
+    el("h2", "tt-below-eyebrow", "Join by sigil"),
+    el("p", "tt-below-lede", "A friend running a table gives you an eight-letter room code. An invite link or a server address works here too."),
+  );
+  const form = el("form", "tt-join-form");
+  const sigil = el("label", "tt-sigil");
+  sigil.setAttribute("aria-label", "Room code");
+  const field = el("input", "tt-sigil-input");
+  field.type = "text";
+  field.autocapitalize = "characters";
+  field.autocomplete = "off";
+  field.spellcheck = false;
+  field.required = true;
+  field.setAttribute("enterkeyhint", "go");
+  const boxes = el("span", "tt-sigil-boxes");
+  boxes.setAttribute("aria-hidden", "true");
+  const paint = (): void => {
+    const value = field.value.trim();
+    // A pasted link or address is longer than any code and has no boxes
+    // to fill; it shows as one line instead.
+    const link = /[./:]/.test(value);
+    boxes.classList.toggle("tt-sigil-link", link);
+    boxes.replaceChildren();
+    if (link) {
+      boxes.append(el("span", "tt-sigil-text", value));
+      return;
+    }
+    const count = Math.max(8, value.length);
+    for (let index = 0; index < count; index += 1) {
+      const ch = value[index]?.toUpperCase() ?? "";
+      const box = el("span", ch ? "tt-sigil-box tt-sigil-box-lit" : "tt-sigil-box", ch);
+      if (index === value.length) box.classList.add("tt-sigil-box-next");
+      boxes.append(box);
+    }
+  };
+  field.addEventListener("input", paint);
+  field.addEventListener("focus", () => boxes.classList.add("tt-sigil-focus"));
+  field.addEventListener("blur", () => boxes.classList.remove("tt-sigil-focus"));
+  paint();
+  sigil.append(field, boxes);
+  const error = el("p", "tt-error");
+  const join = ghostButton("Join", () => form.requestSubmit());
+  join.type = "submit";
+  form.append(sigil, join);
+  if (window.odm.scanInvite) form.append(ghostButton("Scan a QR code", (btn) => void scanInvite(btn, error), "qr"));
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    join.disabled = true;
+    error.textContent = "";
+    void openTyped(field.value).then((message) => {
+      join.disabled = false;
+      if (message) {
+        error.textContent = message;
+        sigil.classList.remove("tt-shake");
+        void sigil.offsetWidth;
+        sigil.classList.add("tt-shake");
+      }
+    });
+  });
+  panel.append(form, error);
+  const focus = (): void => {
+    panel.scrollIntoView({ behavior: "smooth", block: "center" });
+    field.focus({ preventScroll: true });
+  };
+  return { panel, focus };
 }
 
 export function renderHome(): void {
@@ -466,14 +785,28 @@ export function renderHome(): void {
   const pick = pickContinueCampaign(feed);
   const primary = pickPrimaryHost(feed, pick);
   const localIsHero = !pick && state.local.state !== "unavailable";
-  show(
-    "wide",
-    joinBanner(),
-    ...hero(pick),
-    inviteRow(),
-    quickTiles(primary),
-    ...campaigns(feed),
-    ...deviceBlock(localIsHero),
-    footer(),
-  );
+  const join = joinPanel();
+
+  const page = el("div", "tt-page");
+  const header = topbar();
+  header.classList.add("tt-header");
+  page.append(header);
+  const banner = joinBanner();
+  if (banner) page.append(banner);
+
+  const stage = el("section", "tt-stage");
+  stage.setAttribute("aria-label", "Title screen");
+  const left = el("div", "tt-stage-left");
+  left.append(titleBlock(pick), menu(primary, join.focus), statusLine());
+  const right = el("div", "tt-stage-right");
+  if (pick) right.append(recapPanel(pick));
+  right.append(slots(feed, pick, primary));
+  stage.append(left, right);
+  page.append(stage);
+
+  const below = el("section", "tt-below");
+  below.append(...[deviceBlock(localIsHero), join.panel, footer()].filter((node): node is HTMLElement => node !== null));
+  page.append(below);
+
+  show("title", backdrop(pick), ...corners(), page);
 }

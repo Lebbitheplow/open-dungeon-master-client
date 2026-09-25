@@ -74,6 +74,8 @@ function campaign(overrides = {}) {
     updatedAt: "2026-09-03T12:00:00.000Z",
     role: "owner",
     dmMode: "assisted",
+    // The genre rides along for the title screen's plates and words.
+    genre: "Dark Fantasy",
     ...overrides,
   };
 }
@@ -97,21 +99,21 @@ test("a campaign list is parsed, covers pinned to the host, new fields optional"
     { campaigns: [{ id: "c2", title: "Bare", status: "lobby", role: "player" }] },
     origin,
   );
-  assert.deepEqual(bare, [
-    campaign({
-      id: "c2",
-      title: "Bare",
-      status: "lobby",
-      playerCount: 0,
-      maxPlayers: 0,
-      playingAs: null,
-      coverUrl: null,
-      placeholderUrl: `${origin}/assets/placeholders/campaign/custom-${1 + (fnv("c2") % 3)}.webp`,
-      updatedAt: "",
-      role: "player",
-      dmMode: "ai",
-    }),
-  ]);
+  const expectedBare = campaign({
+    id: "c2",
+    title: "Bare",
+    status: "lobby",
+    playerCount: 0,
+    maxPlayers: 0,
+    playingAs: null,
+    coverUrl: null,
+    placeholderUrl: `${origin}/assets/placeholders/campaign/custom-${1 + (fnv("c2") % 3)}.webp`,
+    updatedAt: "",
+    role: "player",
+    dmMode: "ai",
+  });
+  delete expectedBare.genre;
+  assert.deepEqual(bare, [expectedBare]);
   // Absolute covers pass through; entries without an id are dropped.
   const mixed = parseCampaigns(
     { campaigns: [{ ...rawCampaign, cover: { url: "https://cdn.example/x.png" } }, { title: "no id" }, null] },
@@ -122,6 +124,56 @@ test("a campaign list is parsed, covers pinned to the host, new fields optional"
   // Not a list at all: null, so the caller knows to fall back to its cache.
   assert.equal(parseCampaigns({ error: "nope" }, origin), null);
   assert.equal(parseCampaigns(null, origin), null);
+});
+
+test("the title screen's glance rides the list: pictures pinned to the host, the DM seat read off an owned row", () => {
+  const me = "user-1";
+  const list = {
+    campaigns: [
+      {
+        ...rawCampaign,
+        ownerUserId: me,
+        dmUserId: me,
+        description: "A keep under the waves.",
+        scene: "The gatehouse",
+        startingLevel: 3,
+        difficulty: "hard",
+        glance: {
+          chapter: { index: 2, title: "The Drowned Stair" },
+          recap: "The tide pulled back.",
+          recapAt: "2026-09-03T11:00:00.000Z",
+          sceneImage: "/generated/scene.webp",
+          faces: [{ name: "Ser Vell", url: "/uploads/vell.png" }, { name: "Mara", url: "/assets/placeholders/character/elf.webp" }, { url: 5 }],
+        },
+      },
+      { id: "c3", title: "Theirs", status: "active", role: "player", ownerUserId: "someone", dmUserId: "someone", assistantDmUserId: me },
+      { id: "c4", title: "Bare glance", status: "lobby", role: "player", ownerUserId: "someone", glance: { chapter: { index: 0 }, faces: "no" } },
+    ],
+  };
+  const parsed = parseCampaigns(list, origin);
+  assert.equal(parsed[0].dmSeat, true);
+  assert.equal(parsed[0].description, "A keep under the waves.");
+  assert.equal(parsed[0].scene, "The gatehouse");
+  assert.equal(parsed[0].startingLevel, 3);
+  assert.equal(parsed[0].difficulty, "hard");
+  assert.deepEqual(parsed[0].glance, {
+    chapter: { index: 2, title: "The Drowned Stair" },
+    recap: "The tide pulled back.",
+    recapAt: "2026-09-03T11:00:00.000Z",
+    sceneImage: `${origin}/generated/scene.webp`,
+    faces: [
+      { name: "Ser Vell", url: `${origin}/uploads/vell.png` },
+      { name: "Mara", url: `${origin}/assets/placeholders/character/elf.webp` },
+    ],
+  });
+  // The assistant DM seat counts; a plain player does not hold it.
+  assert.equal(parsed[1].dmSeat, true);
+  assert.equal(parsed[2].dmSeat, false);
+  // A glance with nothing in it still has its shape.
+  assert.deepEqual(parsed[2].glance, { chapter: null, recap: "", recapAt: null, sceneImage: null, faces: [] });
+  // No owned row: the seat is unknown and left out rather than guessed.
+  const guest = parseCampaigns({ campaigns: [{ id: "g", title: "Guest", status: "active", role: "player", dmUserId: "x" }] }, origin);
+  assert.equal("dmSeat" in guest[0], false);
 });
 
 test("responses classify: 401/403 need login, failures are offline, 2xx is online", () => {
@@ -345,6 +397,9 @@ test("a cover is only requested from its own host, under /uploads", () => {
   assert.equal(coverRequestUrl(host, "https://evil.example/uploads/keep.png"), null);
   assert.equal(coverRequestUrl(host, `${host}/api/admin/settings`), null);
   assert.equal(coverRequestUrl(host, `${host}/uploadsx/keep.png`), null);
+  // The painted scenes live under /generated, behind the same login.
+  assert.equal(coverRequestUrl(host, `${host}/generated/scene.webp`), `${host}/generated/scene.webp`);
+  assert.equal(coverRequestUrl(host, `${host}/generatedx/scene.webp`), null);
   assert.equal(coverRequestUrl("", `${host}/uploads/keep.png`), null);
   assert.equal(coverRequestUrl(host, "/uploads/keep.png"), null);
   assert.equal(coverRequestUrl(host, ""), null);

@@ -141,6 +141,12 @@ void window.odm
     rerenderHome();
   })
   .catch(() => undefined);
+// Escape closes a shell screen laid over a world (the drawer's own
+// listener closes the drawer the same way).
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && closeOverlay()) event.preventDefault();
+});
+
 // The screens' theme reaches the shell's own chrome through the same
 // attribute the server sets on <html> (docs/vtt-parity-implementation-plan.md
 // 18.2, phase 29); the OS frame follows through the bridge.

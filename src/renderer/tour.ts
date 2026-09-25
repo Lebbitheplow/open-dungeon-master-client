@@ -35,8 +35,8 @@ export const APP_TOUR_STEPS: TourStep[] = [
   {
     id: "add-server",
     title: "Join a friend's table, or add a server",
-    body: "Have an invite? Type the room code the host read out, paste the link, or scan its QR code where the app has a camera. The menu also connects to a self-hosted server by address.",
-    anchors: ["home-invite", "add-server", "invite"],
+    body: "Have an invite? Type the room code the host read out into the sigil boxes below, paste the link, or scan its QR code where the app has a camera. The menu also connects to a self-hosted server by address.",
+    anchors: ["tile-join", "home-invite", "tile-add-server", "add-server", "invite"],
   },
   {
     id: "hosts",
@@ -48,7 +48,7 @@ export const APP_TOUR_STEPS: TourStep[] = [
     id: "story-ai",
     title: "Enable an AI Dungeon Master",
     body: `Story AI chooses who narrates the world on this device: a human at the table, an AI billed to your OpenAI API key${localModels}. To play with AI on someone else's server, connect to an AI-enabled server.`,
-    anchors: ["drawer-story-ai", "hero"],
+    anchors: ["tile-story-ai", "drawer-story-ai", "hero"],
     fallbackBody: `Begin your world and Story AI appears in the menu. It chooses who narrates: a human at the table, an AI billed to your OpenAI API key${localModels}. Or connect to an AI-enabled server and play there.`,
   },
   {
@@ -57,7 +57,7 @@ export const APP_TOUR_STEPS: TourStep[] = [
     body: "The Workshop is where a Dungeon Master preps: maps, monsters, NPCs, lore and handouts, ready to drop into any campaign.",
     anchors: ["tile-workshop", "hero"],
     fallbackBody:
-      "Once you have entered a world, a Workshop tile appears here: the Dungeon Master's prep bench for maps, monsters, NPCs, lore and handouts.",
+      "Once you have entered a world, a Workshop line appears in this menu: the Dungeon Master's prep bench for maps, monsters, NPCs, lore and handouts.",
   },
   {
     id: "characters",
@@ -65,7 +65,7 @@ export const APP_TOUR_STEPS: TourStep[] = [
     body: "Build a character in the wizard, or keep a library of them to bring into any campaign.",
     anchors: ["tile-characters", "hero"],
     fallbackBody:
-      "Once you have entered a world, a Characters tile appears here for building your adventurers and keeping a library of them.",
+      "Once you have entered a world, a Characters line appears in this menu for building your adventurers and keeping a library of them.",
   },
   {
     id: "campaign",
@@ -73,23 +73,22 @@ export const APP_TOUR_STEPS: TourStep[] = [
     body: "Start a new campaign here: pick a genre or a world pack, decide who narrates, and invite friends with a room code.",
     anchors: ["tile-new-campaign", "hero"],
     fallbackBody:
-      "Begin your world here. Once it is running, a New campaign tile appears for starting adventures and inviting friends with a room code.",
+      "Begin your world here. Once it is running, a New campaign line appears in this menu for starting adventures and inviting friends with a room code.",
   },
   {
     id: "tools",
-    title: "Settings and help",
-    body: "Updates, sharing your world online, Story AI and this tour live under the gear. The question mark opens the user guide.",
+    title: "Settings, help and the menu",
+    body: "Updates, sharing your world online, Story AI and this tour live under the gear. The question mark opens the user guide, and the medallion opens the menu with your hosts and invites.",
     anchors: ["topbar-tools"],
   },
   {
     id: "back",
     title: "Finding your way back",
-    body: `From inside any world, the account menu's App home item brings you back to this screen. ${wayBack} Tap the wordmark on any screen here to return home.`,
+    body: `From inside any world, the account menu's App home item brings you back to this screen, and its App settings and App guide items open those over the table. ${wayBack} Tap the wordmark on any screen here to return home.`,
     anchors: ["brand"],
   },
 ];
 
-const WIDE = window.matchMedia("(min-width: 1100px)");
 const SPOT_PAD = 6;
 
 interface ActiveTour {
@@ -221,11 +220,11 @@ function fillCard(tour: ActiveTour): void {
 
 function showStep(tour: ActiveTour): void {
   const target = currentTarget(tour);
-  // Drawer items need the drawer open on a phone; anything else needs it
-  // closed so it does not sit over the page under the spotlight.
+  // Drawer items need the drawer open; anything else needs it closed so it
+  // does not sit over the page under the spotlight.
   const inDrawer = Boolean(target && drawerElement().contains(target));
-  if (inDrawer && !WIDE.matches) openDrawer();
-  else if (!inDrawer && isDrawerOpen()) closeDrawer();
+  if (inDrawer) openDrawer();
+  else if (isDrawerOpen()) closeDrawer();
   target?.scrollIntoView({ block: "center", inline: "nearest" });
   fillCard(tour);
   position();
@@ -273,7 +272,7 @@ export function endTour(): void {
   tour.spot.remove();
   tour.dim.remove();
   tour.card.remove();
-  if (!WIDE.matches) closeDrawer();
+  closeDrawer();
 }
 
 export function startTour(id: string, steps: readonly TourStep[]): void {

@@ -23,56 +23,61 @@ button:where(:not(.game-root *)) {
 button:where(:not(.game-root *)):disabled { cursor: default; }
 button:where(:not(.game-root *)):focus-visible { outline: 2px solid rgba(212, 171, 58, 0.6); outline-offset: 2px; }
 
+/* The two doors of the title screen: the gold one lit from within, and the
+   quiet hairline of gold over the night. */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  height: 42px;
-  padding: 0 1.1rem;
-  border-radius: 0.6rem;
+  height: 44px;
+  padding: 0 1.2rem;
+  border-radius: 8px;
   font-family: var(--font-display);
-  font-size: 0.82rem;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   white-space: nowrap;
   transition:
-    transform 150ms var(--ease-snap),
-    box-shadow 150ms var(--ease-snap),
-    border-color 150ms var(--ease-snap),
-    background-color 150ms var(--ease-snap),
-    color 150ms var(--ease-snap),
-    opacity 150ms var(--ease-snap);
+    transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 180ms var(--ease-snap),
+    border-color 180ms var(--ease-snap),
+    background-color 180ms var(--ease-snap),
+    color 180ms var(--ease-snap),
+    opacity 180ms var(--ease-snap);
 }
 .btn svg { width: 16px; height: 16px; }
 .btn.block { width: 100%; }
 .btn:disabled { opacity: 0.5; transform: none !important; box-shadow: none !important; }
 
 .btn.primary {
-  background: linear-gradient(180deg, var(--gold-100), var(--gold-200) 50%, var(--gold-400));
-  color: var(--gold-950);
-  box-shadow: 0 1px 0 rgba(253, 247, 231, 0.6) inset, 0 2px 8px rgba(4, 2, 12, 0.5);
+  background: linear-gradient(180deg, #f9ecc8, #e3c15c 55%, #b8922a);
+  border: 1px solid #f4e0a6;
+  color: #2b2008;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  box-shadow: 0 0 14px rgba(212, 171, 58, 0.35), 0 0 40px rgba(212, 171, 58, 0.12), 0 8px 20px rgba(4, 2, 12, 0.6);
 }
-.btn.primary:hover:not(:disabled) {
+.btn.primary:hover:not(:disabled),
+.btn.primary:focus-visible:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 1px 0 rgba(253, 247, 231, 0.6) inset, 0 4px 16px rgba(212, 171, 58, 0.35);
+  box-shadow: 0 0 24px rgba(212, 171, 58, 0.6), 0 0 64px rgba(212, 171, 58, 0.22), 0 10px 24px rgba(4, 2, 12, 0.6);
 }
-.btn.primary:active:not(:disabled) { transform: scale(0.98); box-shadow: none; }
+.btn.primary:active:not(:disabled) { transform: scale(0.97); }
 
 .btn.secondary {
-  border: 1px solid rgba(212, 171, 58, 0.25);
-  background: rgba(21, 18, 41, 0.5);
-  color: var(--ink-200);
-  box-shadow: 0 1px 0 rgba(233, 230, 244, 0.06) inset, 0 2px 6px rgba(4, 2, 12, 0.4);
+  border: 1px solid rgba(212, 171, 58, 0.45);
+  background: rgba(21, 18, 41, 0.6);
+  color: var(--gold-200);
 }
 .btn.secondary:hover:not(:disabled) {
-  border-color: rgba(212, 171, 58, 0.5);
-  background: rgba(33, 27, 58, 0.7);
+  border-color: rgba(212, 171, 58, 0.8);
+  background: rgba(33, 27, 58, 0.8);
   color: var(--gold-100);
-  box-shadow: var(--glow-gold);
+  box-shadow: 0 0 18px rgba(212, 171, 58, 0.2);
 }
-.btn.secondary:active:not(:disabled) { transform: scale(0.98); }
+.btn.secondary:active:not(:disabled) { transform: scale(0.97); }
 
 .btn.quiet {
   height: 36px;
@@ -212,9 +217,9 @@ select:where(:not(.game-root *)):focus {
 }
 .tabs button:hover { color: var(--ink-200); }
 .tabs button.active {
-  color: var(--gold-950);
-  background: linear-gradient(180deg, var(--gold-100), var(--gold-400));
-  box-shadow: 0 1px 0 rgba(253, 247, 231, 0.5) inset;
+  color: #2b2008;
+  background: linear-gradient(180deg, #f9ecc8, #e3c15c 55%, #b8922a);
+  box-shadow: 0 0 14px rgba(212, 171, 58, 0.3);
 }
 
 .choices { display: flex; flex-direction: column; gap: 0.7rem; }

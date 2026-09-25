@@ -2,7 +2,7 @@
 // the page column screens render into, the back link, intro block and form
 // card, the invite banner, and the footer with the updater controls.
 import type { UpdateStatus } from "../shared/types";
-import { button, chip, el, icon, iconButton, spinner, tile } from "./dom.js";
+import { bookMark, button, chip, el, icon, iconButton, spinner } from "./dom.js";
 import { renderDrawer, toggleDrawer } from "./drawer.js";
 import { unmountGame } from "./game-screen.js";
 import { renderHelp } from "./help.js";
@@ -45,26 +45,24 @@ function goHome(): void {
   void refresh().then(() => renderHome());
 }
 
-// The frame's constant row: menu and wordmark on the left; on the right,
-// Home (off the home screen), the user guide and Settings, so no screen is
-// ever more than one tap from any of them.
-function topbar(): HTMLElement {
+// The frame's constant row, the same one the title screen wears: the
+// closed book and the spaced-caps wordmark on the left; on the right the
+// instruments, Home (off the home screen), the user guide, Settings, and
+// the medallion that opens the menu (the device profile, the hosts, the
+// invites), so no screen is ever more than one tap from any of them.
+export function topbar(): HTMLElement {
   const bar = el("header", "topbar");
-  const lead = el("div", "lead");
-  const menu = iconButton("menu", "Menu", () => toggleDrawer(), "hamburger");
-  menu.dataset.tour = "topbar-menu";
-  lead.append(menu);
   const atHome = state.screenName === "home";
   const brand = el("button", atHome ? "brand" : "brand link");
   brand.type = "button";
   brand.dataset.tour = "brand";
-  brand.append(tile(), el("span", "wordmark", "Open Dungeon Master"));
+  brand.append(bookMark(), el("span", "wordmark", "Open Dungeon Master"));
+  brand.setAttribute("aria-label", atHome ? "Open Dungeon Master" : "Back home");
   if (!atHome) {
     brand.addEventListener("click", goHome);
     brand.title = "Back home";
   }
-  lead.append(brand);
-  bar.append(lead);
+  bar.append(brand);
   const tools = el("div", "meta tools");
   tools.dataset.tour = "topbar-tools";
   if (!atHome) tools.append(iconButton("home", "Home", goHome));
@@ -86,12 +84,25 @@ function topbar(): HTMLElement {
     gear.classList.toggle("active", settingsOpen);
     tools.append(gear);
   }
+  // The title screen's portrait medallion: the device profile's initial,
+  // or the menu glyph where this build has no device world. It opens the
+  // menu on every width; the rail is gone with the old dashboard.
+  const menu = el("button", "tt-medallion hamburger");
+  menu.type = "button";
+  menu.dataset.tour = "topbar-menu";
+  menu.title = "Menu";
+  menu.setAttribute("aria-label", "Menu");
+  const name = state.local.state === "unavailable" ? "" : state.local.username;
+  if (name) menu.append(el("span", "initial", name.slice(0, 1).toUpperCase()));
+  else menu.append(icon("menu"));
+  menu.addEventListener("click", () => toggleDrawer());
+  tools.append(menu);
   bar.append(tools);
   return bar;
 }
 
 function refreshTopbar(): void {
-  page.querySelector(":scope > .topbar")?.replaceWith(topbar());
+  page.querySelector(".topbar")?.replaceWith(topbar());
 }
 
 export function isOverlayOpen(): boolean {
@@ -134,7 +145,12 @@ export function closeOverlay(): boolean {
   return true;
 }
 
-export type Layout = "wide" | "narrow" | "mid" | "game";
+// "title" is the home screen: it fills the window and carries the frame's
+// row inside its own header (home.ts), the way the server's title screen
+// does. "game" is a world: the host's pages own the whole window, header
+// and all, exactly as they do in a browser; the app's doors are in the
+// page's account menu and behind the keyboard and the back gesture.
+export type Layout = "wide" | "narrow" | "mid" | "game" | "title";
 
 // A screen re-rendering itself (a status event landing while it shows)
 // keeps its scroll position and skips the entrance animation; only moving
@@ -152,7 +168,10 @@ export function show(layout: Layout, ...nodes: (HTMLElement | null)[]): void {
   if (same) screen.classList.add("still");
   screen.append(...nodes.filter((node): node is HTMLElement => node !== null));
   page.classList.toggle("game", layout === "game");
-  page.replaceChildren(topbar(), screen);
+  page.classList.toggle("title", layout === "title");
+  root.classList.toggle("immersive", layout === "game");
+  if (layout === "game" || layout === "title") page.replaceChildren(screen);
+  else page.replaceChildren(topbar(), screen);
   renderDrawer();
   // The backdrop breathes behind every shell screen; under a running
   // world it holds its last frame, so the table has the frame budget.
@@ -169,13 +188,16 @@ export function backLink(label: string, target: () => void): HTMLButtonElement {
   return btn;
 }
 
-// Title block for the focused screens: the twinkling story tile over an
-// engraved heading, exactly how the game greets a signed-out visitor.
+// Title block for the focused screens: the closed book over a heading in
+// the title screen's extruded gold, the way the server's pages greet a
+// visitor.
 export function intro(title: string, subtitle: string): HTMLElement {
   const wrap = el("div", "intro");
-  wrap.append(tile(true));
+  wrap.append(bookMark(true));
   const text = el("div");
-  text.append(el("h1", "", title));
+  const heading = el("h1");
+  heading.append(el("span", "gold-face", title));
+  text.append(heading);
   if (subtitle) text.append(el("p", "sub", subtitle));
   wrap.append(text);
   return wrap;
@@ -346,15 +368,36 @@ export function repaintUpdatePopup(): void {
   if (updatePopup) updatePopupPaint?.();
 }
 
-// Version, update state and the way home, in one quiet line at the bottom.
+// The legal links and the source, the same three the server's home ends
+// on. Both hosts hand an off-origin link to the system browser.
+export function legalLinks(): HTMLElement[] {
+  const links: HTMLElement[] = [];
+  for (const [label, href] of [
+    ["Privacy policy", "https://opendungeonmaster.com/privacy/"],
+    ["Terms of service", "https://opendungeonmaster.com/terms/"],
+    ["GitHub", "https://github.com/Lebbitheplow/open-dungeon-master-client"],
+  ] as const) {
+    const link = el("a", "foot-link", label);
+    link.href = href;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    links.push(link);
+  }
+  return links;
+}
+
+// Version, update state, the way home and the small print, in one quiet
+// row at the bottom.
 export function footer(): HTMLElement {
   const foot = el("footer", "foot");
   const version = state.appInfo?.version
     ? `Open Dungeon Master ${state.appInfo.version}`
     : "Open Dungeon Master";
   foot.append(el("span", "", state.updateNote || version));
-  if (isAndroid) return foot;
-  foot.append(updateControls(rerenderHome));
-  foot.append(el("span", "", "Ctrl+M brings you back here from any world."));
+  if (!isAndroid) {
+    foot.append(updateControls(rerenderHome));
+    foot.append(el("span", "", "Ctrl+M brings you back here from any world."));
+  }
+  foot.append(...legalLinks());
   return foot;
 }
