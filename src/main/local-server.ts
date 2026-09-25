@@ -50,13 +50,25 @@ export class LocalServer {
   private error = "";
   private readonly listeners = new Set<() => void>();
 
+  // The settings `extraEnv` handed the running server, so a caller can tell
+  // whether a changed setting is live yet.
+  private startedEnv: Record<string, string> = {};
+
   // `rendererDir` is the shell's own bundle (dist/renderer): the art it
   // carries is copied into the server tree rather than shipped twice.
+  // `extraEnv` is read at every start: settings the shell keeps for its
+  // world (the story memory model) that the server only reads at boot.
   constructor(
     private readonly payloadDir: string,
     private readonly userDataDir: string,
     private readonly rendererDir: string,
+    private readonly extraEnv: () => Record<string, string> = () => ({}),
   ) {}
+
+  // What the running server was started with; empty when it is not running.
+  runningEnv(): Record<string, string> {
+    return this.state === "running" ? { ...this.startedEnv } : {};
+  }
 
   private get runDir(): string {
     return path.join(this.userDataDir, "local-server");
@@ -201,6 +213,8 @@ export class LocalServer {
       fs.mkdirSync(this.dataDir, { recursive: true });
       this.port = await this.pickPort();
       const log = fs.openSync(path.join(this.userDataDir, "local-server.log"), "a");
+      const extra = this.extraEnv();
+      this.startedEnv = extra;
       const child = spawn(process.execPath, [path.join(this.runDir, "server.js")], {
         cwd: this.runDir,
         env: {
@@ -219,6 +233,7 @@ export class LocalServer {
           // Tells the server it is the shell's own world, so its admin panel
           // hides what the shell manages (address, sign-ups, voice, Discord).
           ODM_DEVICE_WORLD: "1",
+          ...extra,
         },
         stdio: ["ignore", log, log],
       });
@@ -237,6 +252,13 @@ export class LocalServer {
       this.setState("error", err instanceof Error ? err.message : String(err));
       throw err;
     }
+  }
+
+  // Stops and starts again on the same port when it is still free (see
+  // pickPort), so an open page and a share tunnel find the world where it was.
+  async restart(): Promise<void> {
+    await this.stop();
+    await this.start();
   }
 
   async stop(): Promise<void> {

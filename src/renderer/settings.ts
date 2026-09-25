@@ -12,6 +12,7 @@ import { GUIDE_URL, renderHelp } from "./help.js";
 import { openLocal, shareRow } from "./local.js";
 import { renderLocalAi } from "./local-ai.js";
 import { DEVICE, isAndroid, refresh, state } from "./state.js";
+import type { StoryMemory, StoryMemoryStatus } from "../shared/story-memory.js";
 import { startAppTour } from "./tour.js";
 
 function section(iconName: IconName, title: string, detail: string): {
@@ -161,6 +162,184 @@ function worldsSection(): HTMLElement | null {
   return card;
 }
 
+// Story memory (src/shared/story-memory.ts): which model the device world
+// searches its story with. Built once per paint and then updated in place,
+// so the chosen card's edge and lift travel through the .choice transitions
+// instead of a re-render swapping the cards. Absent on the phone and null
+// where the package has no embedding runtime: then the card leaves.
+const MEMORY_CHOICES: { id: StoryMemory; icon: IconName; title: string; desc: string }[] = [
+  {
+    id: "english",
+    icon: "book",
+    title: "English",
+    desc: "Light and quick, and the best fit when your table plays in English. About 90 MB, downloaded once.",
+  },
+  {
+    id: "multilingual",
+    icon: "globe",
+    title: "Many languages",
+    desc: "Italian, Spanish, French, German, Portuguese and about 45 more, and still sound in English. About 135 MB, downloaded once.",
+  },
+];
+
+// What the card says below the choices. Kept outside the card: the screen
+// repaints itself on every status event of the device world (a restart
+// sends three), and the line must outlive those repaints.
+type MemoryNote =
+  | { kind: "none" }
+  | { kind: "working" }
+  | { kind: "rereading" }
+  | { kind: "later" }
+  | { kind: "offer"; why: string }
+  | { kind: "error"; message: string };
+
+const memory: {
+  current: StoryMemoryStatus | null;
+  busy: boolean;
+  note: MemoryNote;
+  repaint: (() => void) | null;
+  // The note last laid on screen: a rebuilt card lays it again settled, so
+  // only a new note rises in.
+  shown: MemoryNote | null;
+} = { current: null, busy: false, note: { kind: "none" }, repaint: null, shown: null };
+
+function memoryNote(note: MemoryNote, apply: () => void): HTMLElement[] {
+  switch (note.kind) {
+    case "none":
+      return [];
+    case "working": {
+      const line = el("p", "hint memory-working");
+      line.append(spinner(), document.createTextNode(" Restarting your world with its new memory..."));
+      return [line];
+    }
+    case "rereading":
+      return [el("p", "hint", "Your world is re-reading its story in the background. Until it finishes, search finds things by keyword, so play on.")];
+    case "later":
+      return [el("p", "hint", "Saved. Your world uses it the next time it wakes, and re-reads its story then.")];
+    case "offer":
+      return [
+        el("p", "hint", `Saved. ${note.why ? `${note.why} ` : ""}It takes effect the next time your world starts.`),
+        row("Switch now instead", button("secondary", "Restart now", apply, "refresh")),
+        el("p", "hint", "Anyone at the table reconnects after a few seconds; a turn in progress is lost."),
+      ];
+    case "error":
+      return [el("p", "error", `Your world did not restart: ${note.message}`)];
+  }
+}
+
+async function applyMemory(): Promise<void> {
+  const bridge = window.odm;
+  if (!bridge.applyStoryMemory || memory.busy) return;
+  memory.busy = true;
+  memory.note = { kind: "working" };
+  memory.repaint?.();
+  const result = await bridge.applyStoryMemory();
+  memory.busy = false;
+  if (result.ok) {
+    memory.current = result.status;
+    memory.note = { kind: "rereading" };
+    memory.repaint?.();
+    return;
+  }
+  // A world that did not come back changes the rest of the screen too.
+  memory.note = { kind: "error", message: result.error };
+  if (isGameShowing() ? state.overlayName === "settings" : state.screenName === "settings") renderSettings();
+}
+
+async function chooseMemory(id: StoryMemory): Promise<void> {
+  const bridge = window.odm;
+  if (!bridge.setStoryMemory || memory.busy || !memory.current || memory.current.choice === id) return;
+  memory.current = { ...memory.current, choice: id };
+  memory.repaint?.();
+  const status = await bridge.setStoryMemory(id);
+  memory.current = status;
+  if (!status.pendingRestart) {
+    // Back to the model the world already runs, or a world asleep.
+    memory.note = state.local.state === "running" ? { kind: "none" } : { kind: "later" };
+    memory.repaint?.();
+    return;
+  }
+  if (isGameShowing()) memory.note = { kind: "offer", why: "A table is open in your world." };
+  else if (status.worldInUse) {
+    memory.note = {
+      kind: "offer",
+      why: state.tunnel.state === "running" ? "Your world is shared online." : "Your world is open in this window.",
+    };
+  } else {
+    await applyMemory();
+    return;
+  }
+  memory.repaint?.();
+}
+
+function memorySection(): HTMLElement | null {
+  const bridge = window.odm;
+  if (!bridge.storyMemory || !bridge.setStoryMemory || !bridge.applyStoryMemory) return null;
+  if (state.local.state === "unavailable" || state.local.firstRun) return null;
+  const { card, body } = section(
+    "scroll",
+    "Story memory",
+    "How your world finds earlier scenes, lore and notes when the story calls back to them. Pick the language your table plays in.",
+  );
+  const group = el("div", "choices memory-choices");
+  group.setAttribute("role", "radiogroup");
+  group.setAttribute("aria-label", "Story memory language");
+  const status = el("div", "memory-status");
+  status.setAttribute("aria-live", "polite");
+  body.append(group, status);
+
+  const cards = new Map<StoryMemory, HTMLButtonElement>();
+  for (const option of MEMORY_CHOICES) {
+    const btn = el("button", "panel ornate choice");
+    btn.type = "button";
+    btn.setAttribute("role", "radio");
+    btn.append(chip(option.icon));
+    const text = el("span", "text");
+    text.append(el("span", "title", option.title), el("span", "desc", option.desc));
+    btn.append(text);
+    btn.addEventListener("click", () => void chooseMemory(option.id));
+    cards.set(option.id, btn);
+    group.append(btn);
+  }
+
+  // In place: the chosen card's edge and lift ride the .choice transitions,
+  // and only a changed note lays a new line (whose fade-up then plays).
+  let shownNote: MemoryNote | null = null;
+  const paint = (): void => {
+    for (const [id, btn] of cards) {
+      btn.setAttribute("aria-checked", String(memory.current?.choice === id));
+      btn.disabled = memory.busy || !memory.current;
+    }
+    if (shownNote === memory.note) return;
+    shownNote = memory.note;
+    const nodes = memoryNote(memory.note, () => void applyMemory());
+    const line = el("div", memory.shown === memory.note ? "memory-line settled" : "memory-line");
+    memory.shown = memory.note;
+    line.append(...nodes);
+    status.replaceChildren(...(nodes.length ? [line] : []));
+  };
+  memory.repaint = () => {
+    if (card.isConnected) paint();
+  };
+  paint();
+
+  if (!memory.busy) {
+    void bridge.storyMemory().then((answer) => {
+      if (!answer) {
+        card.remove();
+        return;
+      }
+      if (memory.busy) return;
+      memory.current = answer;
+      if (answer.pendingRestart && memory.note.kind === "none") {
+        memory.note = { kind: "offer", why: answer.worldInUse || isGameShowing() ? "Your world is in use." : "" };
+      }
+      memory.repaint?.();
+    });
+  }
+  return card;
+}
+
 function homeSection(): HTMLElement {
   const { card, body } = section("scroll", "Title screen", "");
   body.append(row("Hide the save slots of hosts that are offline", offlineToggle(() => renderSettings())));
@@ -211,11 +390,21 @@ function legalSection(): HTMLElement {
 }
 
 export function renderSettings(): void {
+  // A status event repainting this screen keeps the story memory note; a
+  // fresh visit starts without one (unless a restart is still running).
+  const again = isGameShowing() ? state.overlayName === "settings" : state.screenName === "settings";
+  // A story memory restart sends the world's status three times (stopped,
+  // starting, running). Rebuilding for each would swap the cards out under
+  // their transitions; the restart ends where the screen already stands
+  // (running), so those repaints are skipped and applyMemory settles it.
+  if (again && memory.busy) return;
+  if (!again && !memory.busy) memory.note = { kind: "none" };
   const sections = (): (HTMLElement | null)[] => [
     intro("Settings", "The app, your device world, and the way home."),
     audioSection(),
     appSection(),
     deviceSection(),
+    memorySection(),
     worldsSection(),
     homeSection(),
     helpSection(),

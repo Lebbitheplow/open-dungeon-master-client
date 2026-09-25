@@ -2,6 +2,8 @@
 // process. Pure declarations only: this file is shared by the CommonJS main
 // build and the browser renderer build, so it must stay runtime-free.
 
+import type { StoryMemory, StoryMemoryStatus } from "./story-memory";
+
 export type SignupMode = "open" | "invite" | "closed";
 
 export type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
@@ -390,6 +392,14 @@ export interface OdmBridge {
   // On by default; a host too old for it opens its own pages regardless.
   portalMode(): Promise<boolean>;
   setPortalMode(on: boolean): Promise<void>;
+  // Story memory (src/shared/story-memory.ts): the embedding model the
+  // device world searches its story with. Desktop only; null on a desktop
+  // whose package carries no embedding runtime (Intel Macs), absent on the
+  // phone, so the setting is withheld rather than dead. Setting it saves
+  // the choice; applying restarts the world so the server picks it up.
+  storyMemory?(): Promise<StoryMemoryStatus | null>;
+  setStoryMemory?(choice: StoryMemory): Promise<StoryMemoryStatus>;
+  applyStoryMemory?(): Promise<Result<{ status: StoryMemoryStatus }>>;
   // The shell's native game screens call a host's API themselves. This
   // hands them the host's address and the live bearer token for it (the
   // device world included, by its host id), or null without a session.

@@ -101,7 +101,7 @@ export function renderHelp(): void {
     section(
       "gear",
       "Settings",
-      `Settings gathers what belongs to the app itself: the microphone, playback and dice, updates, sharing your world, Story AI, the hide-offline switch for the title screen's save slots, and the tour. Your account, avatar and password live on each server, under its own Settings page.`,
+      `Settings gathers what belongs to the app itself: the microphone, playback and dice, updates, sharing your world, Story AI,${isAndroid ? "" : " the language your world's story memory reads (pick Many languages when your table plays in Italian, Spanish or another language),"} the hide-offline switch for the title screen's save slots, and the tour. Your account, avatar and password live on each server, under its own Settings page.`,
     ),
   );
 }
