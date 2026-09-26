@@ -153,7 +153,7 @@ test("stop releases the broker session with its secret and clears the public add
   const status = await h.tunnel.stop();
   assert.equal(status.state, "stopped");
   assert.ok(h.calls.includes("stop"));
-  assert.ok(h.calls.some((call) => call === `DELETE https://odm-tunnel-broker.tunnel-broker.workers.dev/session/ABCD1234`));
+  assert.ok(h.calls.some((call) => call === `DELETE https://broker.opendungeonmaster.com/session/ABCD1234`));
   assert.deepEqual(h.published, ["https://play-abcd1234.opendungeonmaster.com", ""]);
 });
 
