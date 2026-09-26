@@ -240,7 +240,7 @@ export interface HomeGlanceFace {
 }
 
 export interface HomeGlance {
-  // act and actTitle arrive from server 0.24 and up (the arc's acts are
+  // act and actTitle arrive from server 0.23.7 and up (the arc's acts are
   // announced to the table); older hosts send neither.
   chapter: { index: number; title: string; act: number | null; actTitle: string } | null;
   recap: string;

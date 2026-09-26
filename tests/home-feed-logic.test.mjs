@@ -172,7 +172,7 @@ test("the title screen's glance rides the list: pictures pinned to the host, the
   assert.equal(parsed[2].dmSeat, false);
   // A glance with nothing in it still has its shape.
   assert.deepEqual(parsed[2].glance, { chapter: null, recap: "", recapAt: null, sceneImage: null, faces: [] });
-  // A host that announces acts (server 0.24 and up) names the act the chapter is in.
+  // A host that announces acts (server 0.23.7 and up) names the act the chapter is in.
   const withAct = parseCampaigns(
     { campaigns: [{ id: "c5", title: "Acts", status: "active", role: "player", ownerUserId: "someone", glance: { chapter: { index: 3, title: "", act: 2, actTitle: "The Drowned Hymn" } } }] },
     origin,
