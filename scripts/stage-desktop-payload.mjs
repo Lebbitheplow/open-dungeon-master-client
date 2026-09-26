@@ -97,9 +97,10 @@ const NATIVE_SUFFIX = /-(linux|linuxmusl|darwin|win32)-(x64|arm64|ia32|arm|s390x
 export const DESKTOP_TARGETS = ["linux/x64", "win32/x64", "darwin/arm64", "darwin/x64"];
 
 // The server's standalone trace carries the embedding runtime's binding for
-// linux/x64 only, all its Docker image needs, so the Windows and Mac apps had
-// no binding to load and every embed failed there. This adds the binding of
-// each other desktop target from the full install the payload was built from;
+// the host it builds on only (linux/x64 on the release runner), all its Docker
+// image needs, so the Windows and Mac apps had no binding to load and every
+// embed failed there. This adds the binding of each other desktop target from
+// the full install the payload was built from;
 // pruneForeignBinaries then keeps the one each package can load. A target
 // onnxruntime ships no build for (darwin/x64) stays without, and the server
 // falls back to keyword search there. Returns the targets added, sorted.
