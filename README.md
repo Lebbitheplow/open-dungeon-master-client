@@ -9,8 +9,17 @@
 [![Hosts its own world](https://img.shields.io/badge/server-built%20in-d4ab3a?labelColor=151229&style=flat-square)](#a-world-on-your-device)
 [![Latest release](https://img.shields.io/github/v/release/Lebbitheplow/open-dungeon-master-client?color=d4ab3a&labelColor=151229&style=flat-square)](https://github.com/Lebbitheplow/open-dungeon-master-client/releases/latest)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-e0703a?labelColor=151229&style=flat-square)](#building-from-source)
+[![Main codebase](https://img.shields.io/badge/main%20codebase-open--dungeon--master-d4ab3a?labelColor=151229&style=flat-square&logo=github)](https://github.com/Lebbitheplow/open-dungeon-master)
 
 </div>
+
+> [!IMPORTANT]
+> **The main codebase is
+> [Lebbitheplow/open-dungeon-master](https://github.com/Lebbitheplow/open-dungeon-master).**
+> The game itself (rules engines, the AI Dungeon Master, the game screens and the
+> server) lives there, and so do most issues and contributions. This repository only
+> packages that server into the desktop and Android apps. If you are looking to run a
+> server, change how the game plays, or report a bug at the table, start there.
 
 These are the **desktop and Android apps for
 [Open Dungeon Master](https://github.com/Lebbitheplow/open-dungeon-master)**, the
