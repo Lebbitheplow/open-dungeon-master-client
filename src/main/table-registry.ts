@@ -7,7 +7,12 @@
 //
 // Publishing is best effort throughout. A world that cannot reach the
 // broker is still perfectly playable over its link and its QR code.
-import { DEFAULT_BROKER_URL, parseTableReply, tableEndpoint } from "../shared/broker";
+import {
+  createPublishLedger,
+  DEFAULT_BROKER_URL,
+  parseTableReply,
+  tableEndpoint,
+} from "../shared/broker";
 import { CODE_SHAPE } from "../shared/deep-link";
 
 const TIMEOUT_MS = 8000;
@@ -44,20 +49,27 @@ export async function ownedTableCodes(origin: string, token: string): Promise<st
   return codes;
 }
 
-// Points each code at the address the world is reachable at now.
+// Points each code at the address the world is reachable at now. Called
+// every minute while sharing; only codes the registry has not heard at this
+// address (or not for hours) go over the wire, the rest count as published.
+const ledger = createPublishLedger();
+
 export async function publishTables(input: {
   codes: readonly string[];
   url: string;
   secretFor: (code: string) => string;
 }): Promise<string[]> {
-  const published: string[] = [];
-  for (const code of input.codes) {
+  const due = ledger.due(input.codes, input.url);
+  const published = input.codes.filter((code) => !due.includes(code));
+  for (const code of due) {
     const response = await send(tableEndpoint(brokerBase(), code), {
       method: "PUT",
       headers: { "content-type": "application/json", "x-table-secret": input.secretFor(code) },
       body: JSON.stringify({ url: input.url }),
     });
-    if (response?.ok) published.push(code);
+    if (!response?.ok) continue;
+    published.push(code);
+    ledger.sent([code], input.url);
   }
   return published;
 }
@@ -69,6 +81,7 @@ export async function dropTables(input: {
   codes: readonly string[];
   secretFor: (code: string) => string;
 }): Promise<void> {
+  ledger.clear();
   for (const code of input.codes) {
     await send(tableEndpoint(brokerBase(), code), {
       method: "DELETE",

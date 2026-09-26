@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseBrokerSession } from "../dist/shared/broker.js";
+import { createPublishLedger, parseBrokerSession } from "../dist/shared/broker.js";
 
 const good = {
   code: "ABCD1234",
@@ -60,4 +60,25 @@ test("replies missing any credential field are rejected", () => {
   }
   assert.equal(parseBrokerSession(null, true), null);
   assert.equal(parseBrokerSession("nope", true), null);
+});
+
+test("the publish ledger sends a code once per address, then only as a refresh", () => {
+  const ledger = createPublishLedger(1000);
+  const url = "https://play-abcd1234.opendungeonmaster.com";
+  assert.deepEqual(ledger.due(["AAAA2222", "BBBB3333"], url, 0), ["AAAA2222", "BBBB3333"]);
+  ledger.sent(["AAAA2222"], url, 0);
+  // The one the broker refused stays owed; the one it took does not.
+  assert.deepEqual(ledger.due(["AAAA2222", "BBBB3333"], url, 60), ["BBBB3333"]);
+  ledger.sent(["BBBB3333"], url, 60);
+  assert.deepEqual(ledger.due(["AAAA2222", "BBBB3333"], url, 120), []);
+  // A campaign made mid-session is owed straight away.
+  assert.deepEqual(ledger.due(["AAAA2222", "BBBB3333", "CCCC4444"], url, 180), ["CCCC4444"]);
+  // A new address owes everything again.
+  const moved = "https://play-wxyz9876.opendungeonmaster.com";
+  assert.deepEqual(ledger.due(["AAAA2222", "BBBB3333"], moved, 200), ["AAAA2222", "BBBB3333"]);
+  // And so does age, so the registry's 45-day claim keeps sliding.
+  assert.deepEqual(ledger.due(["AAAA2222"], url, 1000), ["AAAA2222"]);
+  assert.deepEqual(ledger.due(["BBBB3333"], url, 1000), []);
+  ledger.clear();
+  assert.deepEqual(ledger.due(["BBBB3333"], url, 1001), ["BBBB3333"]);
 });

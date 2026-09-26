@@ -286,7 +286,7 @@ The honest headline is that the developer runs almost no infrastructure, but
 
 | Recipient | Trigger | What is sent |
 | --- | --- | --- |
-| Cloudflare (`odm-tunnel-broker.tunnel-broker.workers.dev`, developer-operated Worker) | User taps Share to publish their world | The local port number, plus the IP address Cloudflare attaches to the request. The Worker keeps a per-address rate-limit counter in KV keyed by a salted SHA-256 of the address (24 hour TTL), never the address itself, plus a session record. See finding B-6. |
+| Cloudflare (`broker.opendungeonmaster.com`, developer-operated Worker; older builds use `odm-tunnel-broker.tunnel-broker.workers.dev`, the same Worker) | User taps Share to publish their world | The local port number, plus the IP address Cloudflare attaches to the request. The Worker keeps a per-address rate-limit counter in its own SQLite store keyed by a salted SHA-256 of the address (24 hour TTL), never the address itself, plus a session record. See finding B-6. |
 | Cloudflare (tunnel edge, `trycloudflare.com` or `play-CODE.opendungeonmaster.com`) | same | All game traffic between remote players and the phone transits the tunnel. |
 | Cloudflare DoH (`cloudflare-dns.com/dns-query`) | same | A DNS lookup for the new tunnel hostname, to confirm it resolved. |
 | The same Worker, at `/turn` | **A table starts voice chat**, not only on Share | The host asks for short-lived Cloudflare Realtime TURN credentials and caches them for 30 minutes. The request carries no game content; Cloudflare sees the asking address. An operator can set `ODM_ICE_BROKER_URL=off` to opt out, and a phone-hosted world asks for itself. |

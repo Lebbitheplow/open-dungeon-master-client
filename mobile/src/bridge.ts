@@ -37,6 +37,7 @@ import {
   type JoinLink,
 } from "../../src/shared/deep-link";
 import {
+  createPublishLedger,
   DEFAULT_BROKER_URL,
   parseTableReply,
   tableEndpoint,
@@ -729,6 +730,9 @@ async function fetchJson(
 // reach the broker still shares by link and QR.
 const TABLE_SECRET_PREFIX = "odm-table-secret:";
 let publishedCodes: string[] = [];
+// Which codes the registry already holds at the current address, so the
+// minute-by-minute republish only sends what changed.
+const publishLedger = createPublishLedger();
 
 async function tableSecretFor(code: string): Promise<string> {
   const key = `${TABLE_SECRET_PREFIX}${code}`;
@@ -779,14 +783,17 @@ async function publishRoomCodes(url: string): Promise<void> {
   const status = await localWorld.status();
   if (!profile?.token || !status.origin || !url) return;
   const codes = await ownedRoomCodes(status.origin, profile.token);
-  const published: string[] = [];
-  for (const code of codes) {
+  const due = publishLedger.due(codes, url);
+  const published = codes.filter((code) => !due.includes(code));
+  for (const code of due) {
     const reply = await fetchJson(tableEndpoint(DEFAULT_BROKER_URL, code), {
       method: "PUT",
       headers: { "x-table-secret": await tableSecretFor(code) },
       body: { url },
     }).catch(() => null);
-    if (reply && reply.status >= 200 && reply.status < 300) published.push(code);
+    if (!reply || reply.status < 200 || reply.status >= 300) continue;
+    published.push(code);
+    publishLedger.sent([code], url);
   }
   // A code the registry refused (claimed from another device) stays listed
   // so it is at least dropped with the rest later.
@@ -798,6 +805,7 @@ async function publishRoomCodes(url: string): Promise<void> {
 async function unpublishRoomCodes(): Promise<void> {
   const codes = [...new Set([...publishedCodes, ...(await loadPublishedCodes())])];
   publishedCodes = [];
+  publishLedger.clear();
   await savePublishedCodes([]);
   for (const code of codes) {
     await fetchJson(tableEndpoint(DEFAULT_BROKER_URL, code), {

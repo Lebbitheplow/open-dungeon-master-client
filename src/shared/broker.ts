@@ -4,8 +4,12 @@
 // named tunnel with a play-CODE.opendungeonmaster.com hostname; when it
 // cannot help (offline, rate limited, not configured) hosting falls back to
 // an anonymous quick tunnel on trycloudflare.com.
+//
+// The broker answers on its own hostname under the zone from client 0.14.7
+// on (the zone's protections sit in front of it there); builds before that
+// keep using the workers.dev address, which serves the same Worker.
 
-export const DEFAULT_BROKER_URL = "https://odm-tunnel-broker.tunnel-broker.workers.dev";
+export const DEFAULT_BROKER_URL = "https://broker.opendungeonmaster.com";
 
 // Named sessions from the default broker are play-CODE one label under the
 // official zone (one level so the free Universal SSL wildcard covers them);
@@ -38,6 +42,43 @@ export function parseTableReply(body: unknown): string {
   } catch {
     return "";
   }
+}
+
+// What a host has already told the registry. Both shells re-run their
+// publish every minute for as long as they share (a campaign made mid-session
+// gets its code out, a broker that was down gets retried), but the registry
+// does not need to hear the same code at the same address again: a claim
+// lives 45 days. So a code is sent once per address and then only as a
+// refresh a few hours apart, which keeps the broker's KV write quota (the
+// free tier's 1,000 a day) for the codes that actually moved. The ledger is
+// per process: a restart just publishes once more, which is fine.
+export const PUBLISH_REFRESH_MS = 6 * 60 * 60 * 1000;
+
+export interface PublishLedger {
+  // Codes still owed to the registry for this address right now.
+  due(codes: readonly string[], url: string, now?: number): string[];
+  // The registry took these codes at this address.
+  sent(codes: readonly string[], url: string, now?: number): void;
+  // Sharing stopped, or the codes were dropped: everything is owed again.
+  clear(): void;
+}
+
+export function createPublishLedger(refreshMs = PUBLISH_REFRESH_MS): PublishLedger {
+  const entries = new Map<string, { url: string; at: number }>();
+  return {
+    due(codes, url, now = Date.now()) {
+      return codes.filter((code) => {
+        const entry = entries.get(code);
+        return !entry || entry.url !== url || now - entry.at >= refreshMs;
+      });
+    },
+    sent(codes, url, now = Date.now()) {
+      for (const code of codes) entries.set(code, { url, at: now });
+    },
+    clear() {
+      entries.clear();
+    },
+  };
 }
 
 export interface BrokerSession {
