@@ -7,6 +7,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { ALIASES_FILE, MODULES_DIR } from "../dist/main/run-tree.js";
 import {
+  addEmbeddingBindings,
   collectModuleAliases,
   pruneSqliteBuild,
   stageDesktopPayload,
@@ -189,6 +190,58 @@ test("a mac or windows package leaves every Linux binary behind", async () => {
     assert.ok(left.includes(`${MODULES_DIR}/@img/colour/index.js`));
     assert.ok(left.includes(`${MODULES_DIR}/onnxruntime-node/bin/napi-v6/darwin/arm64/libonnxruntime.dylib`));
     assert.ok(!left.some((file) => file.includes("linux")));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the embedding runtime reaches every desktop package, not only Linux", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "odm-stage-"));
+  const vendorDir = path.join(dir, "server");
+  const install = path.join(dir, "install", "node_modules");
+  const rendererDir = path.join(dir, "renderer");
+  const outDir = path.join(dir, "desktop");
+  const NAPI = "onnxruntime-node/bin/napi-v6";
+  // What the server's standalone trace ships: the linux/x64 binding alone.
+  stage(vendorDir, {
+    "server.js": "x",
+    "package.json": "{}",
+    "odm-payload.json": JSON.stringify({ serverVersion: "1.0.0", builtAt: "now" }),
+    "node_modules/onnxruntime-node/package.json": "{}",
+    "node_modules/onnxruntime-node/dist/index.js": "x",
+    [`node_modules/${NAPI}/linux/x64/onnxruntime_binding.node`]: "traced",
+  });
+  // The full install the payload is built from carries every platform.
+  stage(install, {
+    [`${NAPI}/linux/x64/onnxruntime_binding.node`]: "install",
+    [`${NAPI}/linux/arm64/onnxruntime_binding.node`]: "x",
+    [`${NAPI}/win32/x64/onnxruntime_binding.node`]: "win",
+    [`${NAPI}/win32/x64/onnxruntime.dll`]: "win",
+    [`${NAPI}/win32/arm64/onnxruntime_binding.node`]: "x",
+    [`${NAPI}/darwin/arm64/onnxruntime_binding.node`]: "mac",
+  });
+  stage(rendererDir, { "game/public/manifest.json": "{}" });
+  try {
+    assert.deepEqual(addEmbeddingBindings(vendorDir, install), ["darwin/arm64", "win32/x64"]);
+    // Only packaged targets are added, and the traced binding is kept as is.
+    const vendored = listFiles(path.join(vendorDir, "node_modules", NAPI));
+    assert.deepEqual(vendored, [
+      "darwin/arm64/onnxruntime_binding.node",
+      "linux/x64/onnxruntime_binding.node",
+      "win32/x64/onnxruntime.dll",
+      "win32/x64/onnxruntime_binding.node",
+    ]);
+    assert.equal(fs.readFileSync(path.join(vendorDir, "node_modules", NAPI, "linux/x64/onnxruntime_binding.node"), "utf8"), "traced");
+    // A second run adds nothing.
+    assert.deepEqual(addEmbeddingBindings(vendorDir, install), []);
+
+    await stageDesktopPayload({ vendorDir, rendererDir, outDir, platform: "win32", arch: "x64" });
+    const left = listFiles(outDir).filter((file) => file.includes("napi-v6"));
+    assert.deepEqual(left, [
+      `${MODULES_DIR}/${NAPI}/win32/x64/onnxruntime.dll`,
+      `${MODULES_DIR}/${NAPI}/win32/x64/onnxruntime_binding.node`,
+    ]);
+    assert.throws(() => addEmbeddingBindings(vendorDir, path.join(dir, "nowhere")), /No onnxruntime-node bindings/);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

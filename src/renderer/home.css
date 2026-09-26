@@ -1334,6 +1334,18 @@ html[data-theme="light"] .tt-page > .topbar.tt-header .wordmark { color: var(--t
 .settings-share { padding-top: 0.75rem; border-top: 1px solid rgba(107, 99, 148, 0.2); }
 .settings-share .share-row { margin-top: 0.5rem; }
 .settings-label { font-size: 0.9rem; color: var(--ink-300); }
+/* Story memory: the two choice cards carry their own motion (controls.css);
+   every new status line rises in, so a saved, restarting or re-reading
+   state never just swaps text. */
+.memory-status:empty { display: none; }
+.memory-line { animation: fade-up 240ms var(--ease-snap) both; }
+.memory-line.settled { animation: none; }
+.memory-line p { margin: 0; }
+.memory-line > * + * { margin-top: 0.6rem; }
+.memory-working { display: flex; align-items: center; gap: 0.5rem; }
+@media (prefers-reduced-motion: reduce) {
+  .memory-line { animation: none; }
+}
 .settings-link {
   display: flex;
   align-items: center;

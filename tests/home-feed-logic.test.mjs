@@ -157,7 +157,8 @@ test("the title screen's glance rides the list: pictures pinned to the host, the
   assert.equal(parsed[0].startingLevel, 3);
   assert.equal(parsed[0].difficulty, "hard");
   assert.deepEqual(parsed[0].glance, {
-    chapter: { index: 2, title: "The Drowned Stair" },
+    // A host from before acts were announced sends no act: the line stays a chapter.
+    chapter: { index: 2, title: "The Drowned Stair", act: null, actTitle: "" },
     recap: "The tide pulled back.",
     recapAt: "2026-09-03T11:00:00.000Z",
     sceneImage: `${origin}/generated/scene.webp`,
@@ -171,6 +172,12 @@ test("the title screen's glance rides the list: pictures pinned to the host, the
   assert.equal(parsed[2].dmSeat, false);
   // A glance with nothing in it still has its shape.
   assert.deepEqual(parsed[2].glance, { chapter: null, recap: "", recapAt: null, sceneImage: null, faces: [] });
+  // A host that announces acts (server 0.23.7 and up) names the act the chapter is in.
+  const withAct = parseCampaigns(
+    { campaigns: [{ id: "c5", title: "Acts", status: "active", role: "player", ownerUserId: "someone", glance: { chapter: { index: 3, title: "", act: 2, actTitle: "The Drowned Hymn" } } }] },
+    origin,
+  );
+  assert.deepEqual(withAct[0].glance.chapter, { index: 3, title: "", act: 2, actTitle: "The Drowned Hymn" });
   // No owned row: the seat is unknown and left out rather than guessed.
   const guest = parseCampaigns({ campaigns: [{ id: "g", title: "Guest", status: "active", role: "player", dmUserId: "x" }] }, origin);
   assert.equal("dmSeat" in guest[0], false);

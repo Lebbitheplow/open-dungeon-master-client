@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { HomeCache } from "../shared/home-feed-logic";
+import { parseStoryMemory, type StoryMemory } from "../shared/story-memory";
 import type { ServerSummary } from "../shared/types";
 
 // The reserved id for the bundled offline server's account entry. Its origin
@@ -48,6 +49,9 @@ interface RegistryFile {
   homeCache?: HomeCache;
   // Portal mode off by choice; absent means on.
   portalOff?: boolean;
+  // The device world's story memory (src/shared/story-memory.ts); absent
+  // means the server's English default.
+  storyMemory?: StoryMemory;
   // Per room code, the secret that claims it in the broker's table
   // registry. Kept so the same code can be pointed at next session's
   // address; nobody else can move a table this shell claimed.
@@ -248,6 +252,17 @@ export class ServerStore {
     const registry = this.load();
     if (on) delete registry.portalOff;
     else registry.portalOff = true;
+    this.save(registry);
+  }
+
+  storyMemory(): StoryMemory {
+    return parseStoryMemory(this.load().storyMemory);
+  }
+
+  setStoryMemory(choice: StoryMemory): void {
+    const registry = this.load();
+    if (choice === "english") delete registry.storyMemory;
+    else registry.storyMemory = choice;
     this.save(registry);
   }
 

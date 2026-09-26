@@ -15,6 +15,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
 import { pruneServerPayload } from "./prune-server-payload.mjs";
+import { addEmbeddingBindings } from "./stage-desktop-payload.mjs";
 
 const repo = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const serverDir = path.resolve(
@@ -91,6 +92,8 @@ try {
     recursive: true,
   });
   fs.cpSync(path.join(buildDir, "public"), path.join(vendorDir, "public"), { recursive: true });
+  const bindings = addEmbeddingBindings(vendorDir, path.join(buildDir, "node_modules"));
+  console.log(`Embedding runtime bindings added for ${bindings.join(", ") || "no other target"}`);
 
   // The content pack: spells, items, monsters and feats, which every picker
   // in the character builder and the workshop searches. It is a build

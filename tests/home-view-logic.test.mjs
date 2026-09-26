@@ -246,6 +246,10 @@ test("the chapter line prefers the chapter, then the scene, then the description
   assert.equal(chapterLine(campaign({ glance: glance({ index: 3, title: "The Drowned Lantern" }) })), "Chapter III · The Drowned Lantern");
   assert.equal(chapterLine(campaign({ scene: "The gatehouse", glance: glance({ index: 1, title: " " }) })), "Chapter I · The gatehouse");
   assert.equal(chapterLine(campaign({ glance: glance({ index: 2, title: "" }) })), "Chapter II");
+  // Hosts that announce acts: the act leads, and an unnamed chapter borrows the act's name.
+  assert.equal(chapterLine(campaign({ glance: glance({ index: 3, title: "The Drowned Lantern", act: 2, actTitle: "The Drowned Hymn" }) })), "Act II, Chapter III · The Drowned Lantern");
+  assert.equal(chapterLine(campaign({ scene: "The nave", glance: glance({ index: 3, title: "", act: 2, actTitle: "The Drowned Hymn" }) })), "Act II, Chapter III · The Drowned Hymn");
+  assert.equal(chapterLine(campaign({ glance: glance({ index: 3, title: "", act: 2, actTitle: "" }) })), "Act II, Chapter III");
   assert.equal(chapterLine(campaign({ scene: "A cold road" })), "A cold road");
   assert.equal(chapterLine(campaign({ description: "  Ash falls.  " })), "Ash falls.");
   assert.equal(chapterLine(campaign()), "");

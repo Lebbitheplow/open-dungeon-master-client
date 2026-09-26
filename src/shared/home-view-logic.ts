@@ -249,16 +249,20 @@ export function enterLabel(campaign: HomeCampaign): string {
   return "Enter the world";
 }
 
-// The chapter line: "Chapter III · The Drowned Lantern", or the scene when
-// the chapter has no name yet, or the campaign's own description. "" when
-// the host had none of those to give.
+// The chapter line: "Act II, Chapter III · The Drowned Lantern" (or just
+// the chapter on a host without acts), the act's name when the chapter has
+// none yet, the scene after that, or the campaign's own description. ""
+// when the host had none of those to give.
 export function chapterLine(campaign: HomeCampaign): string {
   const chapter = campaign.glance?.chapter;
   const scene = campaign.scene?.trim() || "";
   if (chapter) {
-    const head = `Chapter ${romanNumeral(chapter.index)}`;
+    const act = chapter.act ? `Act ${romanNumeral(chapter.act)}, ` : "";
+    const head = `${act}Chapter ${romanNumeral(chapter.index)}`;
     const title = chapter.title.trim();
     if (title) return `${head} · ${title}`;
+    const actTitle = chapter.actTitle?.trim() || "";
+    if (actTitle) return `${head} · ${actTitle}`;
     if (scene) return `${head} · ${scene}`;
     return head;
   }

@@ -233,7 +233,8 @@ select:where(:not(.game-root *)):focus {
   transition:
     transform 200ms var(--ease-snap),
     border-color 200ms var(--ease-snap),
-    box-shadow 200ms var(--ease-snap);
+    box-shadow 200ms var(--ease-snap),
+    opacity 200ms var(--ease-snap);
 }
 .choice:hover:not(:disabled) {
   transform: translateY(-2px);

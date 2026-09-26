@@ -179,7 +179,10 @@ export function campaignPlaceholderPath(genre: string, seed: string): string {
 function parseGlance(raw: unknown, origin: string): HomeGlance | null {
   if (!raw || typeof raw !== "object") return null;
   const glance = raw as Record<string, unknown>;
-  const chapter = glance.chapter as { index?: unknown; title?: unknown } | null | undefined;
+  const chapter = glance.chapter as
+    | { index?: unknown; title?: unknown; act?: unknown; actTitle?: unknown }
+    | null
+    | undefined;
   const faces: HomeGlanceFace[] = [];
   if (Array.isArray(glance.faces)) {
     for (const face of glance.faces as Array<Record<string, unknown> | null>) {
@@ -190,7 +193,12 @@ function parseGlance(raw: unknown, origin: string): HomeGlance | null {
   return {
     chapter:
       chapter && typeof chapter === "object" && num(chapter.index) > 0
-        ? { index: num(chapter.index), title: str(chapter.title) }
+        ? {
+            index: num(chapter.index),
+            title: str(chapter.title),
+            act: num(chapter.act) > 0 ? num(chapter.act) : null,
+            actTitle: str(chapter.actTitle),
+          }
         : null,
     recap: str(glance.recap),
     recapAt: str(glance.recapAt) || null,

@@ -33,8 +33,8 @@ export const KEEP_IN_SRC = path.join("lib", "worlds", "bundled");
 
 // GPU execution providers the embedding runtime would load if a CUDA or
 // TensorRT install were present. Embeddings run on the CPU in the apps
-// (next.config.ts ships only the linux/x64 binding for that reason), and
-// the CUDA provider alone is over 300 MB, so they go on every platform.
+// (next.config.ts ships only the build host's Linux binding for that reason),
+// and the CUDA provider alone is over 300 MB, so they go on every platform.
 const GPU_PROVIDER = /^libonnxruntime_providers_(cuda|tensorrt)\.(so|dll|dylib)(\.\d+)*$/;
 
 // Removes everything outside the keep-list from `dir`, then the build
