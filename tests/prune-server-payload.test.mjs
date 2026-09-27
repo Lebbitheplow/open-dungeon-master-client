@@ -29,7 +29,7 @@ test("everything outside the keep-list goes, and the bundled worlds survive", ()
     "LICENSE",
     "docs/workshop-parity-audit.md",
     "docs/ROADMAP.md",
-    "scripts/test-all.mjs",
+    "scripts/test-dice.mjs",
     "workers/j-redirector/index.js",
     "src/lib/worlds/bundled/high-fantasy.json",
     "src/lib/db/core.ts",
