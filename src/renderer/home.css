@@ -607,7 +607,7 @@
 .tt-status-dozing .tt-lamp { background: var(--tt-ember); box-shadow: 0 0 8px var(--tt-ember); }
 .tt-status-wait .tt-lamp { animation: tt-lamp 1.2s ease-in-out infinite; }
 
-/* ---- save slots: the other tables along the bottom edge, by host ---- */
+/* ---- save slots: your tables along the bottom edge, by host ---- */
 
 .tt-slots {
   display: flex;
@@ -701,6 +701,7 @@
   scrollbar-color: rgba(107, 99, 148, 0.4) transparent;
 }
 .tt-slot-cell {
+  position: relative;
   flex: 0 0 176px;
   scroll-snap-align: end;
 }
@@ -708,6 +709,55 @@
    not: a margin on the first cell instead of justify-content, which would
    clip the start of an overflowing row. */
 .tt-slot-cell:first-child { margin-left: auto; }
+/* The owner's Delete, in the slot's corner like the website's
+   .ts-slot-actions: it fades in with the hover, rides the door's lift, and
+   stays shown where there is no hover to find it. */
+.tt-slot-actions {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: rgba(13, 11, 28, 0.85);
+  border: 1px solid rgba(107, 99, 148, 0.3);
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity var(--dur-quick) var(--ease-snap),
+    transform 320ms var(--ease-spring);
+}
+.tt-slot-cell:hover .tt-slot-actions,
+.tt-slot-cell:focus-within .tt-slot-actions {
+  opacity: 1;
+  transform: none;
+}
+.tt-slot:hover:not(:disabled) + .tt-slot-actions,
+.tt-slot:focus-visible + .tt-slot-actions { transform: translateY(-3px); }
+@media (hover: none) {
+  .tt-slot-actions { opacity: 1; transform: none; }
+}
+.tt-slot-actions .icon-btn {
+  width: 28px;
+  height: 28px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--tt-ink-dim);
+  transition:
+    color var(--dur-quick) var(--ease-snap),
+    background var(--dur-quick) var(--ease-snap),
+    transform var(--dur-quick) var(--ease-snap);
+}
+.tt-slot-actions .icon-btn svg { width: 14px; height: 14px; }
+.tt-slot-actions .tt-slot-delete:hover:not(:disabled),
+.tt-slot-actions .tt-slot-delete:focus-visible {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.12);
+}
+.tt-slot-actions .icon-btn:active:not(:disabled) { transform: scale(0.9); }
+.tt-slot-actions .icon-btn:disabled { opacity: 0.5; cursor: progress; }
+.tt-slots-error { text-align: right; }
 .tt-slot {
   position: relative;
   display: flex;
@@ -1016,7 +1066,7 @@
 
 @media (max-width: 1023px) {
   /* One column, in reading order: the title and its door, what happened
-     last, the other tables, then the menu and the status line. The two
+     last, your tables, then the menu and the status line. The two
      column wrappers dissolve so their children can be ordered together. */
   .tt-stage {
     display: flex;

@@ -2,7 +2,7 @@
 // wears ("ODM World Concepts", round 3a, and src/app/home/Dashboard.tsx
 // there): the table you were last at fills the screen behind a Continue,
 // the menu runs down the left like a game's main menu, the recap and
-// your other tables sit as raised night panels and save slots on the
+// your tables sit as raised night panels and save slots on the
 // right, and the device world, the sigil boxes and the small print wait
 // below the fold. Every host the player uses is on it: the device world,
 // the saved servers, friends' apps reached through a tunnel. Decisions
@@ -10,6 +10,7 @@
 // only draws them.
 import {
   buildGroups,
+  canDeleteFromHome,
   chapterLine,
   deviceStatusLine,
   enterLabel,
@@ -25,6 +26,7 @@ import {
 } from "../shared/home-view-logic.js";
 import type { CampaignRow, ContinuePick, HostGroup } from "../shared/home-view-logic.js";
 import type { HomeCampaign, HomeFeed, HomeHost, ServerSummary } from "../shared/types";
+import { hostClient } from "./api/host.js";
 import { footer, joinBanner, show, topbar } from "./chrome.js";
 import { badge, el, icon, iconButton, spinner, statusDot } from "./dom.js";
 import type { IconName } from "./dom.js";
@@ -528,7 +530,35 @@ function recapPanel(pick: ContinuePick): HTMLElement {
   return reveal(panel, 720);
 }
 
-// ---------- save slots: the other tables, by host ----------
+// ---------- save slots: your tables, by host ----------
+
+// What the last Delete from a slot answered when it failed, shown above the
+// slots until the next one is tried.
+let slotError = "";
+
+// Delete from a save slot: the same call and the same warning as the
+// website's home, made with this host's session. The table on the title
+// screen has a slot too, so it can be deleted from here like any other.
+async function deleteFromSlot(host: HomeHost, campaign: HomeCampaign, btn: HTMLButtonElement): Promise<void> {
+  if (
+    !confirm(
+      `Delete "${campaign.title}" for everyone? All characters, messages, and story progress are lost. This cannot be undone.`,
+    )
+  ) {
+    return;
+  }
+  btn.disabled = true;
+  slotError = "";
+  try {
+    const client = await hostClient(host.id);
+    if (!client) throw new Error(`Sign in to ${hostName(host)} again to delete "${campaign.title}".`);
+    await client.json(`/api/campaigns/${encodeURIComponent(campaign.id)}`, { method: "DELETE" });
+  } catch (error) {
+    slotError = error instanceof Error && error.message ? error.message : `Could not delete "${campaign.title}".`;
+  }
+  await refreshFeed();
+  if (state.screenName === "home") renderHome();
+}
 
 function slot(group: HostGroup, row: CampaignRow): HTMLElement {
   const { host } = group;
@@ -557,6 +587,12 @@ function slot(group: HostGroup, row: CampaignRow): HTMLElement {
   door.append(el("span", "tt-slot-meta", meta || hostName(host)));
   door.title = `${campaign.title} on ${hostName(host)}`;
   cell.append(door);
+  if (canDeleteFromHome(host, campaign)) {
+    // Beside the door, not inside it: a button cannot hold a button.
+    const actions = el("span", "tt-slot-actions");
+    actions.append(iconButton("trash", "Delete this campaign", (btn) => void deleteFromSlot(host, campaign, btn), "tt-slot-action tt-slot-delete"));
+    cell.append(actions);
+  }
   return cell;
 }
 
@@ -574,9 +610,8 @@ function forgeSlot(host: HomeHost): HTMLElement {
   return cell;
 }
 
-function slotGroup(group: HostGroup, skipId: string, primary: HomeHost | null): HTMLElement | null {
-  const { host } = group;
-  const rows = group.rows.filter((row) => row.campaign.id !== skipId);
+function slotGroup(group: HostGroup, primary: HomeHost | null): HTMLElement | null {
+  const { host, rows } = group;
   const forge = primary?.id === host.id && !(host.kind === "local" && state.local.firstRun);
   if (rows.length === 0 && !forge) return null;
   const wrap = el("div", `tt-slot-group ${host.status}`);
@@ -625,20 +660,23 @@ function refreshButton(): HTMLElement {
   return btn;
 }
 
-function slots(feed: HomeFeed, pick: ContinuePick | null, primary: HomeHost | null): HTMLElement {
+// Every table, the one on the title screen included: its slot is where it
+// is deleted, the same as on the website's home.
+function slots(feed: HomeFeed, primary: HomeHost | null): HTMLElement {
   const section = el("section", "tt-slots");
-  section.setAttribute("aria-label", "Your other tables");
+  section.setAttribute("aria-label", "Your tables");
   const head = el("div", "tt-slots-head");
   const groups = buildGroups(feed, { hideOffline: hideOffline(), deviceName: DEVICE, now: Date.now() });
-  const others = groups.reduce((count, group) => count + group.rows.filter((row) => row.campaign.id !== pick?.campaign.id).length, 0);
-  head.append(el("h2", "tt-slots-eyebrow", others === 1 ? "Your other table" : "Your other tables"));
+  const count = groups.reduce((total, group) => total + group.rows.length, 0);
+  head.append(el("h2", "tt-slots-eyebrow", count === 1 ? "Your table" : "Your tables"));
   const controls = el("div", "tt-slots-controls");
   controls.append(offlineToggle(), refreshButton());
   head.append(controls);
   section.append(head);
+  if (slotError) section.append(el("p", "tt-error tt-shake tt-slots-error", slotError));
   let drawn = 0;
   for (const group of groups) {
-    const node = slotGroup(group, pick?.campaign.id ?? "", primary);
+    const node = slotGroup(group, primary);
     if (!node) continue;
     section.append(node);
     drawn += 1;
@@ -648,7 +686,7 @@ function slots(feed: HomeFeed, pick: ContinuePick | null, primary: HomeHost | nu
     if (!state.feed) empty.append(spinner(), document.createTextNode(" Looking for your tables..."));
     else if (feed.hosts.length === 0) empty.textContent = "Add a server or begin your world, and your tables gather here.";
     else if (groups.length === 0) empty.textContent = "Every remote host is offline right now. Turn off Hide offline to see them.";
-    else empty.textContent = "No other tables yet.";
+    else empty.textContent = "No tables yet.";
     section.append(empty);
   }
   if (feed.hosts.some((host) => host.kind === "tunnel" && host.status === "offline")) {
@@ -800,7 +838,7 @@ export function renderHome(): void {
   left.append(titleBlock(pick), menu(primary, join.focus), statusLine());
   const right = el("div", "tt-stage-right");
   if (pick) right.append(recapPanel(pick));
-  right.append(slots(feed, pick, primary));
+  right.append(slots(feed, primary));
   stage.append(left, right);
   page.append(stage);
 

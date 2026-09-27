@@ -64,7 +64,7 @@ export function renderHelp(): void {
     section(
       "menu",
       "Getting around",
-      `The home screen is a title screen: the table you were last at fills it, the menu runs down the left, and your other tables sit as save slots on the right. The medallion in the corner opens the menu with your hosts and every door: adding a server, invites, Story AI, Settings and this guide. Tap the wordmark on any screen to return home.`,
+      `The home screen is a title screen: the table you were last at fills it, the menu runs down the left, and your tables sit as save slots on the right, where an owner can delete one. The medallion in the corner opens the menu with your hosts and every door: adding a server, invites, Story AI, Settings and this guide. Tap the wordmark on any screen to return home.`,
       `Inside a world the host's own pages fill the window, as they do in a browser. Open the account menu there and choose App home to come back here, App settings for the audio and dice controls, or App guide for this page. ${wayBack}`,
     ),
     section(
