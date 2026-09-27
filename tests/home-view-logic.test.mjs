@@ -4,6 +4,7 @@ import {
   agoLabel,
   buildGroups,
   campaignLine,
+  canDeleteFromHome,
   chapterLine,
   deviceStatusLine,
   enterLabel,
@@ -136,6 +137,17 @@ test("rows act by host: open, wake the device, sign in, or nothing", () => {
   assert.equal(rowAction(host({ status: "needsLogin" })), "signIn");
   assert.equal(rowAction(host({ status: "offline" })), "blocked");
   assert.equal(rowAction(host({ kind: "tunnel", status: "offline" })), "blocked");
+});
+
+test("a slot offers Delete to the owner alone, and only on a host that answers", () => {
+  const owned = campaign({ role: "owner" });
+  assert.equal(canDeleteFromHome(host(), owned), true);
+  assert.equal(canDeleteFromHome(local({ status: "online" }), owned), true);
+  assert.equal(canDeleteFromHome(host(), campaign({ role: "player" })), false);
+  assert.equal(canDeleteFromHome(host({ stale: true }), owned), false);
+  assert.equal(canDeleteFromHome(host({ status: "offline" }), owned), false);
+  assert.equal(canDeleteFromHome(host({ status: "needsLogin" }), owned), false);
+  assert.equal(canDeleteFromHome(local({ status: "offline" }), owned), false);
 });
 
 test("groups follow the feed, sort rows, label status and explain what cannot continue", () => {

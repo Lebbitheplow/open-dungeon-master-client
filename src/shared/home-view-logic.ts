@@ -142,6 +142,13 @@ export function rowAction(host: HomeHost): RowAction {
   return "blocked";
 }
 
+// Whether a save slot offers Delete: the owner's alone, as on the website,
+// and only while the host answers with a fresh list, so the call has
+// somewhere to go and the slot is not a memory of a table already gone.
+export function canDeleteFromHome(host: HomeHost, campaign: HomeCampaign): boolean {
+  return campaign.role === "owner" && rowAction(host) === "open" && !host.stale;
+}
+
 // "3h ago" style, coarse on purpose: the point is whether it was today.
 export function relativeTime(iso: string | null, now: number): string {
   if (!iso) return "";
