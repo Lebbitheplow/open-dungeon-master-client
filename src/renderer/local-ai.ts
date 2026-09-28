@@ -9,7 +9,8 @@ import { playLocal } from "./local.js";
 import { renderError } from "./servers.js";
 import { isAndroid, state } from "./state.js";
 import { renderHarnessPicker } from "./harness-ai.js";
-import type { AiSetup, HardwareInfo, LocalAiStatus, LocalAiTier, SavedAi } from "../shared/types";
+import { speechSummary } from "../shared/speech.js";
+import type { AiSetup, HardwareInfo, LocalAiStatus, LocalAiTier, LocalSpeechStatus, SavedAi } from "../shared/types";
 
 // The live progress bar of an install in flight, for the progress events to
 // fill; null when nothing is downloading.
@@ -86,7 +87,63 @@ export function renderLocalAi(fromHome = false, aiStatus: LocalAiStatus | null =
     ),
     localAiStatusCard(aiStatus),
     choices,
+    speechCard(),
   );
+}
+
+// Speech-to-text for the device world: a human DM speaks summaries and
+// notes instead of typing them. The world's server downloads Whisper and
+// runs it on this computer (Admin > Speech in the game); this card is the
+// same switch where a player looks for AI setup. Desktop only: the phone
+// dictates with its own recognizer.
+function speechCard(): HTMLElement | null {
+  const odm = window.odm;
+  if (isAndroid || !odm.localSpeechStatus || !odm.localSpeechInstall) return null;
+  const card = el("div", "panel card speech-card");
+  const head = el("div", "head");
+  head.append(chip("mic"));
+  const grow = el("div", "grow");
+  const detail = el("div", "detail", "Checking this world's speech-to-text...");
+  grow.append(el("div", "name", "Speech to text"), detail);
+  head.append(grow);
+  const actions = el("div", "actions");
+  const bar = el("div", "progress");
+  const fill = el("div", "progress-fill");
+  bar.append(fill);
+  bar.hidden = true;
+  card.append(head, bar, actions);
+  card.style.marginTop = "1.25rem";
+
+  let timer = 0;
+  const paint = (speech: LocalSpeechStatus): void => {
+    detail.textContent = speechSummary(speech);
+    const installing = speech.status === "installing";
+    bar.hidden = !installing;
+    fill.style.width = `${Math.max(3, Math.round(speech.progress * 100))}%`;
+    actions.replaceChildren();
+    if (!installing && speech.active !== "builtin" && speech.active !== "whisper") {
+      actions.append(
+        button("secondary", speech.status === "error" ? "Try again" : "Install speech to text", (btn) => {
+          btn.disabled = true;
+          void odm.localSpeechInstall?.().then(apply);
+        }, "download"),
+      );
+    }
+    window.clearTimeout(timer);
+    // Poll while the download runs; the card stops once the screen changes.
+    if (installing) {
+      timer = window.setTimeout(() => {
+        if (state.screenName === "local-ai" && card.isConnected) void odm.localSpeechStatus?.().then(apply);
+      }, 1000);
+    }
+  };
+  const apply = (result: Awaited<ReturnType<NonNullable<typeof odm.localSpeechStatus>>>): void => {
+    if (!card.isConnected && state.screenName !== "local-ai") return;
+    if (result.ok) paint(result.speech);
+    else detail.textContent = result.error;
+  };
+  void odm.localSpeechStatus().then(apply);
+  return card;
 }
 
 // What is installed on this machine right now, with per-component removal.

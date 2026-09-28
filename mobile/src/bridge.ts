@@ -14,6 +14,7 @@ import { createWebBluetooth } from "./ble-polyfill-core";
 import { createBleRelay } from "./ble-relay";
 import { createDownloadRelay } from "./download-relay";
 import { createDownloadShim, DOWNLOAD_URL_MESSAGE, noticeText } from "./download-shim-core";
+import { offerNativeDictation } from "./dictation";
 import { createAndroidHomeFeed, HOME_CACHE_KEY } from "./home-feed";
 import { fetchCover, fetchIncoming, OdmDownload, renameIncoming, sweepCovers } from "./native-download";
 import { createShortCache, createTransitionDebounce } from "./throttle";
@@ -1731,6 +1732,10 @@ const bridge: OdmBridge = {
 };
 
 window.odm = bridge;
+
+// The phone's speech recognizer, for dictating on a server with no
+// speech-to-text (the world this phone hosts, above all).
+offerNativeDictation();
 
 // Closing the server webview lands back on the manager; closing it in the
 // middle of a Discord sign-in is a cancel.

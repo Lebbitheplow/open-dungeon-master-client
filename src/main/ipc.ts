@@ -24,6 +24,7 @@ import {
   type JoinLink,
 } from "../shared/deep-link";
 import { NO_SAVED_AI, harnessPatch, openAiPatch, savedAiFrom } from "../shared/ai-setup";
+import { speechStatusFrom } from "../shared/speech";
 import { coverRequestUrl, type HostInput } from "../shared/home-feed-logic";
 import { landingPath, safeInnerPath } from "../shared/open-path";
 import { createDesktopHomeFeed, fetchCoverImage } from "./home-feed";
@@ -39,6 +40,7 @@ import {
   probeServer,
   registerAccount,
   sessionState,
+  speechEngine,
   tokenIsValid,
   type TokenGrant,
   whoAmI,
@@ -876,6 +878,23 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
       return fail(err);
     }
   });
+
+  // Speech-to-text for dictation in the device world: the server's built-in
+  // Whisper, downloaded on request. Starts the world if it is not running,
+  // as the harness status does; the server does the download and reports
+  // its progress on each status read.
+  const speech = async (install: boolean) => {
+    try {
+      if (!local.origin) await local.start();
+      const token = store.token(LOCAL_SERVER_ID);
+      if (!token || !local.origin) return fail(new Error("Set up the local account first."));
+      return { ok: true as const, speech: speechStatusFrom(await speechEngine(local.origin, token, install)) };
+    } catch (err) {
+      return fail(err);
+    }
+  };
+  ipcMain.handle("local:speech-status", () => speech(false));
+  ipcMain.handle("local:speech-install", () => speech(true));
 
   // What the OpenAI form shows as already saved on this device. Never
   // throws: a world that is not up yet simply has nothing saved to show.

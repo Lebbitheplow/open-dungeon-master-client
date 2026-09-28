@@ -174,6 +174,19 @@ export interface LocalAiStatus {
   };
 }
 
+// The device world's built-in speech-to-text (the server's Admin > Speech),
+// as the desktop's Local AI screen shows it.
+export interface LocalSpeechStatus {
+  installed: boolean;
+  status: "idle" | "installing" | "ready" | "error";
+  // 0 to 1 while the model downloads.
+  progress: number;
+  error: string;
+  downloadMb: number;
+  // Which engine the world's dictation uses right now.
+  active: "whisper" | "builtin" | "openai" | "none";
+}
+
 // How this build reached the machine; decides whether the app may replace
 // itself ("appimage", "nsis") or must point at the real update channel.
 export type InstallKind =
@@ -444,6 +457,10 @@ export interface OdmBridge {
   localAiInstallComfy(): Promise<Result<{ status: LocalAiStatus; warning: string }>>;
   localAiUninstall(component: "text" | "images"): Promise<Result<{ status: LocalAiStatus }>>;
   localAiStatus(): Promise<LocalAiStatus>;
+  // Speech-to-text for dictation in the device world. Desktop only: the
+  // phone dictates with its own recognizer, so it leaves these out.
+  localSpeechStatus?(): Promise<Result<{ speech: LocalSpeechStatus }>>;
+  localSpeechInstall?(): Promise<Result<{ speech: LocalSpeechStatus }>>;
   appInfo(): Promise<AppInfo>;
   updateCheck(): Promise<Result<{ update: UpdateStatus }>>;
   updateInstall(): Promise<Result>;
