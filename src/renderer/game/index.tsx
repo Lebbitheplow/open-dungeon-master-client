@@ -48,6 +48,8 @@ const ROUTES: Route[] = [
   { pattern: "/friends", load: () => import("@/app/friends/page"), skeleton: "list" },
   { pattern: "/admin", load: () => import("@/app/admin/page") },
   { pattern: "/reference", load: () => import("@/app/reference/page"), skeleton: "list" },
+  // The rulebook: the whole SRD 5.1 as a book.
+  { pattern: "/rulebook", load: () => import("@/app/rulebook/page") },
   { pattern: "/join/:code", load: () => import("@/app/join/[code]/page") },
 ];
 

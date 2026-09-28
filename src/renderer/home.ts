@@ -472,6 +472,7 @@ function menu(primary: HomeHost | null, focusJoin: () => void): HTMLElement {
       { label: "New campaign", glyph: "tab-campaigns", tour: "tile-new-campaign", onClick: (btn) => openHost(primary, "/?new=1", btn) },
       { label: "Characters", glyph: "tab-characters", tour: "tile-characters", onClick: (btn) => openHost(primary, "/characters", btn) },
       { label: "Workshop", glyph: "system-homebrew", tour: "tile-workshop", onClick: (btn) => openHost(primary, "/workshop", btn) },
+      { label: "Rulebook", glyph: "system-rules", tour: "tile-rulebook", onClick: (btn) => openHost(primary, "/rulebook", btn) },
     );
   }
   items.push({ label: "Join with a code", glyph: "tab-handout", tour: "tile-join", onClick: focusJoin });
