@@ -46,6 +46,8 @@ const bridge: OdmBridge = {
   localAiUninstall: (component: "text" | "images") =>
     ipcRenderer.invoke("local-ai:uninstall", component),
   localAiStatus: () => ipcRenderer.invoke("local-ai:status"),
+  localSpeechStatus: () => ipcRenderer.invoke("local:speech-status"),
+  localSpeechInstall: () => ipcRenderer.invoke("local:speech-install"),
   appInfo: () => ipcRenderer.invoke("app:info"),
   updateCheck: () => ipcRenderer.invoke("update:check"),
   updateInstall: () => ipcRenderer.invoke("update:install"),

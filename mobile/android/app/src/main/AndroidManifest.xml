@@ -88,7 +88,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <!-- Friends on the same Wi-Fi reach the phone's world by its LAN address. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <!-- Voice chat and push-to-talk speech-to-text inside the server webview -->
+    <!-- Voice chat, push-to-talk and dictation (the phone's own recognizer,
+         DictationPlugin, when the server has no speech-to-text) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <!-- Session reminders and turn alerts; Android 13+ also needs the
@@ -98,6 +99,14 @@
          required, so camera-less devices can still install the app. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- Android 11+ hides other apps' services unless declared: without this
+         the phone's speech recognizer (a RecognitionService in another
+         package) reads as missing and dictation never offers it. -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
     <!-- Pixels dice pairing. The BLE plugin's manifest brings the Bluetooth
          permissions; this override only marks scanning as never used for
          location, so Android 12+ skips the location prompt entirely. -->

@@ -177,6 +177,19 @@ export async function getHarnessStatus(origin: string, token: string, refresh: b
   return res.json();
 }
 
+// The world's built-in speech engine (the server's Admin > Speech): its
+// state, or, with install, the download started. Raw body; the caller reads
+// it with speechStatusFrom.
+export async function speechEngine(origin: string, token: string, install: boolean): Promise<unknown> {
+  const res = await api(origin, "/api/admin/speech", {
+    method: install ? "POST" : "GET",
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (res.status === 404) throw new ApiError("This world's server is too old for built-in speech; update the app.");
+  if (!res.ok) throw await errorFrom(res, "Reading the speech engine failed.");
+  return res.json();
+}
+
 // The masked admin settings: every field, with each key reduced to whether
 // one is set.
 export async function getAdminSettings(origin: string, token: string): Promise<unknown> {
