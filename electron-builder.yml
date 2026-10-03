@@ -58,6 +58,13 @@ mac:
   # server-side, which broke electron-builder's upload conflict handling,
   # and the two mac arch jobs must not collide on asset names.
   artifactName: ${name}-${version}-${arch}-mac.${ext}
+  # No Apple Developer identity yet, so sign ad hoc. An unsigned bundle has
+  # no sealed resources, and macOS calls a downloaded copy "damaged" with no
+  # way to open it; an ad hoc one gets the "Open Anyway" path instead. The
+  # hardened runtime is off because ad hoc signatures carry no team id, so
+  # library validation would refuse the bundled server's native modules.
+  identity: "-"
+  hardenedRuntime: false
 # NSIS installer only; a portable exe would double the Windows downloads and
 # the installer is what latest.yml / the in-app updater track.
 win:

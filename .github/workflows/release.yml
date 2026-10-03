@@ -1,9 +1,12 @@
 # Builds and publishes every release artifact to the GitHub release for the
 # pushed tag: Linux (AppImage, deb, rpm, tar.gz), Windows (NSIS installer),
-# macOS (dmg, zip; unsigned until we have an Apple Developer
+# macOS (dmg, zip; signed ad hoc until we have an Apple Developer
 # identity, so Gatekeeper warns and auto-update stays off there), a flatpak
 # bundle, and the signed Android APK. The in-app updater reads latest.yml
 # (NSIS) and latest-linux.yml (AppImage) straight from the release assets.
+#
+# Run by hand on a branch (workflow_dispatch) it is a dry run: everything
+# builds and the Mac checks run, but nothing is uploaded to a release.
 #
 # The server payload is built once from the sibling server repo and shared
 # as an artifact; each desktop platform then rebuilds the native
@@ -123,12 +126,23 @@ jobs:
       - name: Build and publish
         env:
           GH_TOKEN: ${{ github.token }}
-          # No Apple identity yet: package unsigned instead of failing on
-          # keychain discovery.
+          # No Apple identity yet: electron-builder.yml signs ad hoc, and a
+          # stray keychain identity on the runner must not be picked up.
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: >
           npm run build && node scripts/stage-desktop-payload.mjs &&
-          npx electron-builder ${{ matrix.args }} --publish always
+          npx electron-builder ${{ matrix.args }}
+          --publish ${{ startsWith(github.ref, 'refs/tags/v') && 'always' || 'never' }}
+      # 0.15.1 and earlier shipped with no signature at all and would not open
+      # once downloaded. A failure here leaves the release a draft.
+      - name: Check the Mac app is signed and starts
+        if: runner.os == 'macOS'
+        run: |
+          app=$(ls -d release/mac*/*.app)
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign -dv "$app" 2>&1 | grep -E '^(Signature|CodeDirectory)'
+          ELECTRON_RUN_AS_NODE=1 "$app/Contents/MacOS/Open Dungeon Master" \
+            -e 'console.log("electron", process.versions.electron, process.arch)'
 
   flatpak:
     needs: payload
@@ -167,7 +181,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: >
           npm run build && node scripts/stage-desktop-payload.mjs &&
-          npx electron-builder --linux flatpak --publish always
+          npx electron-builder --linux flatpak
+          --publish ${{ startsWith(github.ref, 'refs/tags/v') && 'always' || 'never' }}
 
   android:
     # Runs after a desktop job so the draft release already exists for the
@@ -246,6 +261,7 @@ jobs:
           free -m | head -2
           ./gradlew assembleRelease bundleRelease --stacktrace
       - name: Upload the APK and app bundle to the release
+        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
