@@ -31,8 +31,9 @@ When you do have a server, the app connects to it (or to any number of them) as 
 The rules engines, the AI Dungeon Master and the game screens all come from the
 [server repository](https://github.com/Lebbitheplow/open-dungeon-master); this
 repository is the shell around them. It runs the bundled server on your machine or
-phone, opens a public address for it when you share, installs a local AI if your
-computer can carry one, and draws the game screens natively for whichever host you
+phone, opens a public address for it when you share, runs the AI Dungeon Master on
+whatever you already have (a local model it installs for you, an API key, or a CLI
+agent subscription like Claude Code or Codex), and draws the game screens natively for whichever host you
 play on.
 
 <div align="center">
@@ -89,7 +90,7 @@ More help, and the full player guide, live at
 <td width="50%" valign="top" align="center">
 <img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/text-model.png" width="56"><br>
 <b>Story AI, your choice</b><br>
-<sub>Decide who narrates your world: a human at the table, an AI Dungeon Master on your own OpenAI API key, or (on desktop) a local model the app sizes to your hardware, downloads and runs for you, so nothing leaves your machine.</sub>
+<sub>Decide who narrates your world: a human at the table, an AI Dungeon Master on your own OpenAI API key, or, on desktop, a local model the app sizes to your hardware, downloads and runs for you, or a CLI agent you already pay for (Claude Code, Codex, opencode, Grok Build) narrating on its own subscription.</sub>
 </td>
 <td width="50%" valign="top" align="center">
 <img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/images.png" width="56"><br>
@@ -130,8 +131,8 @@ room code. The code never changes for that table; it only works while you are
 sharing. Voice chat relays through Cloudflare TURN, so it works across networks
 without opening ports either.
 
-Desktop and Android behave the same way on purpose. The one exception is local AI,
-which only the desktop app installs.
+Desktop and Android behave the same way on purpose. The one exception is the AI a
+computer runs: a local model or a CLI agent is a desktop-only Story AI.
 
 ## Story AI
 
@@ -148,6 +149,11 @@ world on your device:
   summaries when there is room. It downloads a pinned llama.cpp build (Vulkan on
   Windows and Linux x64, Metal on Apple Silicon), writes the preset the AI Dungeon
   Master was tuned on, and starts and stops the model with your world.
+- **An agent you already have** (desktop only, not the Flatpak build). Claude Code,
+  Codex, opencode or Grok Build, installed and signed in on this computer, narrates
+  on the subscription you already pay for. No API key changes hands. The program
+  gets none of its own tools, only the table's rules turn by turn, the same as the
+  built-in storyteller.
 
 Scene art on desktop can come from a local ComfyUI the app installs into its own
 Python virtual environment (it needs Python 3 on the machine) with the SDXL base
@@ -300,7 +306,8 @@ anywhere until you share a world, add a server, or choose an online Story AI:
   the TURN credentials for voice, and the tunnel closes when you stop sharing.
 - **Servers you add** receive what you do on them, like any website.
 - **OpenAI** receives the story prompts only if you pick your own OpenAI key as the
-  Story AI. A local model keeps everything on your machine.
+  Story AI. An agent you already have sends them to its own provider, on its own
+  sign-in. A local model keeps everything on your machine.
 
 There is no telemetry.
 
