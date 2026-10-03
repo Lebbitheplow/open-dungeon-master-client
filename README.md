@@ -54,7 +54,7 @@ More help, and the full player guide, live at
 | Platform | File | Notes |
 | --- | --- | --- |
 | **Windows** (x64) | `Open-Dungeon-Master-Setup-<version>.exe` | Installer; updates itself. |
-| **macOS** (Apple Silicon) | `open-dungeon-master-client-<version>-arm64-mac.dmg` | Not notarized yet: the first time, right-click the app and choose Open. |
+| **macOS** (Apple Silicon) | `open-dungeon-master-client-<version>-arm64-mac.dmg` | Not notarized yet: the first time macOS blocks it, open System Settings > Privacy & Security and choose Open Anyway (on macOS 14 and earlier, right-click the app and choose Open). |
 | **macOS** (Intel) | `open-dungeon-master-client-<version>-x64-mac.dmg` | Same as above. |
 | **Linux** (x64) | `.AppImage`, `.deb`, `.rpm`, `.tar.gz`, `.flatpak` | The AppImage carries a static runtime, so it runs on distros that no longer ship libfuse2. |
 | **Android** 8.0+ (arm64) | `open-dungeon-master-client-<version>.apk` | Sideload it: allow installs from your browser or file manager when Android asks. |
