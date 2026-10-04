@@ -336,6 +336,11 @@ public final class WorldRuntime {
         // Tells the server it is the shell's own world, so its admin panel
         // hides what the shell manages (address, sign-ups, voice, Discord).
         env.put("ODM_DEVICE_WORLD", "1");
+        // The server refuses uploads once the disk would drop below 1 GB
+        // free, sized for a server's volume. Plenty of phones live under
+        // that, and this disk is the owner's own, so the floor here is only
+        // what keeps the database writable.
+        env.put("UPLOAD_MIN_FREE_BYTES", String.valueOf(256L * 1024 * 1024));
         env.put("HOME", app.getFilesDir().getAbsolutePath());
         env.put("TMPDIR", tmp.getAbsolutePath());
         env.put("LD_LIBRARY_PATH", app.getApplicationInfo().nativeLibraryDir);
