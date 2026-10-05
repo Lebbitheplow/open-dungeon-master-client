@@ -20,6 +20,7 @@
     mode: "" | "named" | "quick";
     error: string;
     lanUrl: string;
+    refusedCodes?: string[];
   }
   interface ShellHost {
     platform: "android";

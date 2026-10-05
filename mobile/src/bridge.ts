@@ -41,6 +41,8 @@ import {
   createPublishLedger,
   DEFAULT_BROKER_URL,
   parseTableReply,
+  refusedAfter,
+  TABLE_REFUSED_STATUS,
   tableEndpoint,
 } from "../../src/shared/broker";
 import {
@@ -736,6 +738,15 @@ async function fetchJson(
 // reach the broker still shares by link and QR.
 const TABLE_SECRET_PREFIX = "odm-table-secret:";
 let publishedCodes: string[] = [];
+// Codes the registry is refusing from this phone (another device holds
+// them), reported to the lobby with the share status.
+let refusedRoomCodes: string[] = [];
+
+function setRefusedRoomCodes(next: string[]): void {
+  const changed = next.join() !== refusedRoomCodes.join();
+  refusedRoomCodes = next;
+  if (changed && worldPageOpen) void shellShareStatus().then((status) => pushShareStatus(undefined, status));
+}
 // Which codes the registry already holds at the current address, so the
 // minute-by-minute republish only sends what changed.
 const publishLedger = createPublishLedger();
@@ -791,16 +802,19 @@ async function publishRoomCodes(url: string): Promise<void> {
   const codes = await ownedRoomCodes(status.origin, profile.token);
   const due = publishLedger.due(codes, url);
   const published = codes.filter((code) => !due.includes(code));
+  const refused: string[] = [];
   for (const code of due) {
     const reply = await fetchJson(tableEndpoint(DEFAULT_BROKER_URL, code), {
       method: "PUT",
       headers: { "x-table-secret": await tableSecretFor(code) },
       body: { url },
     }).catch(() => null);
+    if (reply?.status === TABLE_REFUSED_STATUS) refused.push(code);
     if (!reply || reply.status < 200 || reply.status >= 300) continue;
     published.push(code);
     publishLedger.sent([code], url);
   }
+  setRefusedRoomCodes(refusedAfter(refusedRoomCodes, { codes, published, refused }));
   // A code the registry refused (claimed from another device) stays listed
   // so it is at least dropped with the rest later.
   const before = await loadPublishedCodes();
@@ -811,6 +825,7 @@ async function publishRoomCodes(url: string): Promise<void> {
 async function unpublishRoomCodes(): Promise<void> {
   const codes = [...new Set([...publishedCodes, ...(await loadPublishedCodes())])];
   publishedCodes = [];
+  setRefusedRoomCodes([]);
   publishLedger.clear();
   await savePublishedCodes([]);
   for (const code of codes) {
@@ -1003,7 +1018,7 @@ const SHARE_UNSUPPORTED: ShellShareStatus = {
 async function shellShareStatus(): Promise<ShellShareStatus> {
   if (!worldPageOpen) return SHARE_UNSUPPORTED;
   const [status, world] = await Promise.all([shareTunnel.status(), localWorld.status()]);
-  return { supported: true, ...status, lanUrl: world.lanOrigin };
+  return { supported: true, ...status, lanUrl: world.lanOrigin, refusedCodes: refusedRoomCodes };
 }
 
 // Down to the game page's shell hook (shell-hook.ts): an answer to one

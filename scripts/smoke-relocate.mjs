@@ -179,7 +179,7 @@ const sheet = {
   name: "Wren of the Ford",
   race: "human",
   class: "fighter",
-  abilities: { str: 14, dex: 12, con: 13, int: 10, wis: 11, cha: 8 },
+  abilities: { str: 16, dex: 13, con: 15, int: 11, wis: 14, cha: 9 },
   maxHp: 12,
   ac: 16,
   hitDice: { die: "d10", total: 1, spent: 0 },
@@ -224,12 +224,13 @@ try {
   // syncPublicUrl's registry half: the owner's codes follow the address up.
   const owned = await ownedTableCodes(first.origin, hostGrant.token);
   assert(owned.includes(code), "the host's own campaign code is not among the owned codes");
-  const published = await publishTables({
+  const { published, refused: refusedFirst } = await publishTables({
     codes: owned,
     url: first.origin,
     secretFor: (c) => hostStore.tableSecret(c),
   });
   assert(published.includes(code), "publishing the room code failed");
+  assert(refusedFirst.length === 0, "a code nobody else holds was reported as refused");
   ok("host published the room code at the first address");
 
   // The friend types the code. servers:open-invite asks the registry first.
@@ -317,7 +318,7 @@ try {
   const probe2 = await probeServer(second.origin);
   assert(probe2.instanceId === probe.instanceId, "instanceId changed across the restart");
   const hostAgain = hostStore.tableSecret(code);
-  const republished = await publishTables({
+  const { published: republished } = await publishTables({
     codes: await ownedTableCodes(second.origin, (await loginForToken(second.origin, "host", "host-pass-123")).token),
     url: second.origin,
     secretFor: () => hostAgain,
@@ -329,7 +330,15 @@ try {
     body: JSON.stringify({ url: "https://evil.example" }),
   });
   assert(squatter.status === 409, `another secret could move the code (${squatter.status})`);
-  ok(`world back at ${second.origin} with the same instanceId; code re-pointed, squatter refused`);
+  // A device without the host's secret (the code lapsed and someone else
+  // claimed it, or the world moved here without its secrets) is told so.
+  const held = await publishTables({
+    codes: [code],
+    url: "https://elsewhere.example",
+    secretFor: () => "a-different-devices-secret",
+  });
+  assert(held.refused.includes(code) && !held.published.includes(code), "a held code was not reported as refused");
+  ok(`world back at ${second.origin} with the same instanceId; code re-pointed, squatter refused and told so`);
 
   // ---- the friend comes back: connectRemote's sequence, step for step ----
   let saved = playerStore.get(entry.id);
@@ -381,6 +390,43 @@ try {
   const renewed = await loginForToken(second.origin, "wren", secret);
   assert(renewed.username === "wren", "renewal signed in as somebody else");
   ok("an expired session renews with the app-minted password, no form");
+
+  // ---- the host had to take a new code (another device holds the old one) ----
+  // handleJoinLink's sequence for a returning friend who types the new code
+  // while the world sits at an address their entry has never seen: the
+  // registry names the address, the world there says who it is, and the
+  // saved entry is the one that opens. No second entry, no second account.
+  const hostNow = await loginForToken(second.origin, "host", "host-pass-123");
+  const rotated = await json(second.origin, `/api/campaigns/${campaign.id}/invite`, hostNow.token, { method: "POST" });
+  const newCode = String(rotated.body?.inviteCode ?? "");
+  assert(rotated.status === 200 && newCode && newCode !== code, `no new code: ${JSON.stringify(rotated.body)}`);
+  tables.set(code, { url: "https://somewhere-else.example", secret: "the-other-devices-secret" });
+  const afterRotate = await publishTables({
+    codes: await ownedTableCodes(second.origin, hostNow.token),
+    url: second.origin,
+    secretFor: (c) => hostStore.tableSecret(c),
+  });
+  assert(afterRotate.published.includes(newCode), "the new code was not published");
+  assert(!afterRotate.published.includes(code) && !afterRotate.refused.includes(code), "the old code is still being published");
+  playerStore.rebindOrigin(entry.id, first.origin);
+  const entriesBefore = playerStore.summaries().length;
+  const typed = await resolveTable(newCode.toLowerCase());
+  assert(typed === second.origin, `the new code resolved ${JSON.stringify(typed)}`);
+  assert(playerStore.findByOrigin(typed) === null, "the entry already knew this address; the step proves nothing");
+  const typedProbe = await probeServer(typed);
+  const match = playerStore.findByInstanceId(typedProbe.instanceId);
+  assert(match && match.id === entry.id, "the world behind the new code was not matched to the saved entry");
+  assert((await resolveTable(newCode)) === typed, "the registry does not vouch for the address");
+  const rebound = playerStore.rebindOrigin(match.id, typed);
+  playerStore.rememberJoinCode(rebound.id, newCode);
+  assert(playerStore.summaries().length === entriesBefore, "typing the new code added a second entry");
+  const reboundToken = playerStore.token(rebound.id) ?? (await loginForToken(typed, "wren", playerStore.secret(rebound.id))).token;
+  const meAgain = await json(typed, "/api/auth/me", reboundToken);
+  assert(meAgain.body?.user?.username === "wren", "the new code signed the friend in as somebody else");
+  const sheetAgain = await json(typed, `/api/campaigns/${campaign.id}/sheet`, reboundToken);
+  assert(sheetAgain.status === 200 && sheetAgain.body?.sheet?.name === sheet.name, "the character is not there under the new code");
+  assert(playerStore.tableCodesFor(entry.id)[0] === newCode, "the new code was not kept on the entry");
+  ok(`host took new code ${newCode}; the friend typed it and opened the same entry, account and character`);
 
   // ---- the safety rule: a recycled address that answers as another world ----
   const strangerDir = path.join(tmp, "stranger");

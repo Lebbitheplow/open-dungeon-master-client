@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createPublishLedger, parseBrokerSession } from "../dist/shared/broker.js";
+import { createPublishLedger, parseBrokerSession, refusedAfter } from "../dist/shared/broker.js";
 
 const good = {
   code: "ABCD1234",
@@ -76,9 +76,24 @@ test("the publish ledger sends a code once per address, then only as a refresh",
   // A new address owes everything again.
   const moved = "https://play-wxyz9876.opendungeonmaster.com";
   assert.deepEqual(ledger.due(["AAAA2222", "BBBB3333"], moved, 200), ["AAAA2222", "BBBB3333"]);
-  // And so does age, so the registry's 45-day claim keeps sliding.
+  // And so does age, so the registry's claim keeps sliding.
   assert.deepEqual(ledger.due(["AAAA2222"], url, 1000), ["AAAA2222"]);
   assert.deepEqual(ledger.due(["BBBB3333"], url, 1000), []);
   ledger.clear();
   assert.deepEqual(ledger.due(["BBBB3333"], url, 1001), ["BBBB3333"]);
+});
+
+test("a code the registry refuses is reported until it is taken or gone", () => {
+  const codes = ["AAAA2222", "BBBB3333"];
+  // Another device holds BBBB3333.
+  let refused = refusedAfter([], { codes, published: ["AAAA2222"], refused: ["BBBB3333"] });
+  assert.deepEqual(refused, ["BBBB3333"]);
+  // A pass that could not reach the registry says nothing new.
+  refused = refusedAfter(refused, { codes, published: ["AAAA2222"], refused: [] });
+  assert.deepEqual(refused, ["BBBB3333"]);
+  // The host made a new code: the old one is no longer theirs to publish.
+  refused = refusedAfter(refused, { codes: ["AAAA2222", "CCCC4444"], published: ["AAAA2222", "CCCC4444"], refused: [] });
+  assert.deepEqual(refused, []);
+  // A code the registry takes after all stops being reported.
+  assert.deepEqual(refusedAfter(["BBBB3333"], { codes, published: codes, refused: [] }), []);
 });
