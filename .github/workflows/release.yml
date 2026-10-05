@@ -133,6 +133,11 @@ jobs:
           npm run build && node scripts/stage-desktop-payload.mjs &&
           npx electron-builder ${{ matrix.args }}
           --publish ${{ startsWith(github.ref, 'refs/tags/v') && 'always' || 'never' }}
+      # The local AI installer sizes its models from a PowerShell scan of the
+      # display adapters; only a Windows machine can say whether it runs.
+      - name: Check the graphics memory scan runs on Windows
+        if: runner.os == 'Windows'
+        run: node --test --test-name-pattern "Windows adapter scan" tests/local-ai.test.mjs
       # 0.15.1 and earlier shipped with no signature at all and would not open
       # once downloaded. A failure here leaves the release a draft.
       - name: Check the Mac app is signed and starts

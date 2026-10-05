@@ -71,32 +71,81 @@ async function linuxVramGb(): Promise<{
   return { vramGb: best, gttGb: gtt, gpuName, vendor };
 }
 
+// What Windows knows about its display adapters, read in one PowerShell
+// call: the CIM rows (a name for every adapter) and the driver's own
+// registry rows, which carry the memory as a 64-bit figure.
+export type WindowsAdapters = {
+  cim: Array<{ Name?: unknown; AdapterRAM?: unknown }>;
+  reg: Array<{ Name?: unknown; Bytes?: unknown }>;
+};
+
+const WINDOWS_ADAPTERS_SCRIPT = [
+  "$cim = @(Get-CimInstance Win32_VideoController | Select-Object Name,AdapterRAM)",
+  "$reg = @(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}\\0*' -ErrorAction SilentlyContinue | ForEach-Object { [pscustomobject]@{ Name = $_.DriverDesc; Bytes = $_.'HardwareInformation.qwMemorySize' } })",
+  "@{ cim = $cim; reg = $reg } | ConvertTo-Json -Depth 4 -Compress",
+].join("; ");
+
+export async function readWindowsAdapters(): Promise<WindowsAdapters | null> {
+  try {
+    const { stdout } = await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", WINDOWS_ADAPTERS_SCRIPT]);
+    const parsed = JSON.parse(stdout) as Partial<WindowsAdapters>;
+    return { cim: Array.isArray(parsed.cim) ? parsed.cim : [], reg: Array.isArray(parsed.reg) ? parsed.reg : [] };
+  } catch {
+    return null;
+  }
+}
+
+// A registry memory figure: a number where the driver wrote a QWORD, eight
+// little-endian bytes where it wrote binary.
+function registryBytes(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return Math.max(0, value);
+  if (Array.isArray(value) && value.length && value.length <= 8 && value.every((byte) => Number.isInteger(byte) && byte >= 0 && byte <= 255)) {
+    return value.reduceRight((sum: number, byte: number) => sum * 256 + byte, 0);
+  }
+  return 0;
+}
+
+// The adapter with the most memory, and how much. Win32_VideoController's
+// AdapterRAM is a 32-bit field: every card over 4 GB reads as 4 GB there (a
+// 20 GB Radeon RX 7900 XT was scanned as 4 GB, which put the whole model
+// ladder two tiers too low and spilled a model that fits the card into
+// system RAM). The driver's registry row holds the real 64-bit figure, so
+// that wins wherever it is present; AdapterRAM stands in where it is not.
+// Picking by memory rather than taking the first row also keeps an
+// integrated adapter listed ahead of the real card from being the answer.
+export function pickWindowsGpu(adapters: WindowsAdapters | null): { vramGb: number; gpuName: string; vendor: GpuVendor } {
+  const byName = new Map<string, number>();
+  const note = (name: unknown, bytes: number) => {
+    if (typeof name !== "string" || !name.trim()) return;
+    byName.set(name.trim(), Math.max(byName.get(name.trim()) ?? 0, bytes));
+  };
+  for (const row of adapters?.cim ?? []) {
+    note(row?.Name, typeof row?.AdapterRAM === "number" && Number.isFinite(row.AdapterRAM) ? Math.max(0, row.AdapterRAM) : 0);
+  }
+  for (const row of adapters?.reg ?? []) {
+    note(row?.Name, registryBytes(row?.Bytes));
+  }
+  let gpuName = "";
+  let bytes = 0;
+  for (const [name, memory] of byName) {
+    if (!gpuName || memory > bytes) {
+      gpuName = name;
+      bytes = memory;
+    }
+  }
+  const vendor: GpuVendor = /nvidia|geforce|rtx|gtx|quadro/i.test(gpuName) ? "nvidia" : /amd|radeon/i.test(gpuName) ? "amd" : "";
+  return { vramGb: bytes / 1024 ** 3, gpuName, vendor };
+}
+
 async function windowsVramGb(): Promise<{
   vramGb: number;
   gttGb: number;
   gpuName: string;
   vendor: GpuVendor;
 }> {
-  // AdapterRAM is a 32-bit field on many drivers, so it understates big
-  // cards; nvidia-smi corrects that where present. Understating is safe
-  // here: the budget falls back to RAM-assisted MoE offload.
-  let vramGb = 0;
-  let gpuName = "";
-  let vendor: GpuVendor = "";
-  try {
-    const { stdout } = await run("powershell.exe", [
-      "-NoProfile",
-      "-Command",
-      "Get-CimInstance Win32_VideoController | Select-Object -First 1 Name,AdapterRAM | ConvertTo-Json",
-    ]);
-    const parsed = JSON.parse(stdout) as { Name?: string; AdapterRAM?: number };
-    gpuName = parsed.Name ?? "";
-    if (Number.isFinite(parsed.AdapterRAM)) vramGb = (parsed.AdapterRAM as number) / 1024 ** 3;
-    if (/nvidia|geforce|rtx|gtx|quadro/i.test(gpuName)) vendor = "nvidia";
-    else if (/amd|radeon/i.test(gpuName)) vendor = "amd";
-  } catch {
-    // No signal; RAM budget it is.
-  }
+  // No signal at all leaves the zeros, and the budget falls back to RAM.
+  const picked = pickWindowsGpu(await readWindowsAdapters());
+  let { vramGb, vendor } = picked;
   try {
     const { stdout } = await run("nvidia-smi", [
       "--query-gpu=memory.total",
@@ -108,7 +157,7 @@ async function windowsVramGb(): Promise<{
   } catch {
     // Not an NVIDIA machine.
   }
-  return { vramGb, gttGb: 0, gpuName, vendor };
+  return { vramGb, gttGb: 0, gpuName: picked.gpuName, vendor };
 }
 
 export async function scanHardware(): Promise<HardwareInfo> {
