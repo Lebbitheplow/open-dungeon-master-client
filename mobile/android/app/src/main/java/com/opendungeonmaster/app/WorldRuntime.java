@@ -10,6 +10,7 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -203,6 +204,33 @@ public final class WorldRuntime {
         return cached;
     }
 
+    // The code the world's first account must send. The server listens on
+    // the Wi-Fi before the host has typed a name, and whoever registers
+    // first becomes the world's admin; only this app can work the code out,
+    // so only it can. Derived from the database key rather than stored, so
+    // it is the same in a new app process around a server still running.
+    static String setupCodeFor(String dbKey) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(("odm-setup-code:" + dbKey).getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (int index = 0; index < 16; index++) {
+                hex.append(String.format("%02x", digest[index]));
+            }
+            return hex.toString();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private String setupCode() {
+        try {
+            return setupCodeFor(WorldEnvironment.dbEncryptionKey(dataDir()));
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
     public JSONObject status() {
         JSONObject info = bundledInfo();
         JSONObject json = new JSONObject();
@@ -215,6 +243,7 @@ public final class WorldRuntime {
             json.put("origin", running ? origin() : "");
             json.put("lanOrigin", running ? lanOrigin() : "");
             json.put("firstRun", !dbFile().exists());
+            json.put("setupCode", running ? setupCode() : "");
             json.put("serverVersion", info != null ? info.optString("serverVersion", "") : "");
             json.put("error", error);
         } catch (Exception ignored) {
@@ -336,6 +365,7 @@ public final class WorldRuntime {
         // Tells the server it is the shell's own world, so its admin panel
         // hides what the shell manages (address, sign-ups, voice, Discord).
         env.put("ODM_DEVICE_WORLD", "1");
+        env.put("ODM_SETUP_CODE", setupCodeFor(dbKey));
         // The server refuses uploads once the disk would drop below 1 GB
         // free, sized for a server's volume. Plenty of phones live under
         // that, and this disk is the owner's own, so the floor here is only

@@ -294,7 +294,10 @@ export function renderAuth(
   // asking for it (which a lapsed session used to reach) was a dead end.
   // Joining again is the only door, and the copy says what became of the
   // old seat.
-  const mode: "login" | "register" = probe.deviceWorld ? "register" : requested;
+  // A server with no accounts has nobody to sign in as: the only thing to do
+  // there is create the first one, which becomes its admin.
+  const claiming = probe.needsSetup && !probe.deviceWorld;
+  const mode: "login" | "register" = probe.deviceWorld || claiming ? "register" : requested;
   const reseat = probe.deviceWorld && requested === "login";
   const shape = joinFormShape({
     deviceWorld: probe.deviceWorld,
@@ -320,6 +323,24 @@ export function renderAuth(
     inviteField = field;
     form.append(inviteLabel);
     form.append(el("p", "hint", "This server is invite-only. Ask whoever runs it for a code."));
+  }
+  let setupField: HTMLInputElement | null = null;
+  if (claiming) {
+    const [setupLabel, field] = input("Setup code", "text");
+    field.placeholder = "XXXX-XXXX-XXXX-XXXX";
+    field.autocomplete = "off";
+    field.autocapitalize = "characters";
+    field.spellcheck = false;
+    field.required = true;
+    setupField = field;
+    form.append(setupLabel);
+    form.append(
+      el(
+        "p",
+        "hint",
+        "This server has no accounts yet. The first one becomes its admin and needs the one-time setup code printed in the server's log.",
+      ),
+    );
   }
   const error = el("p", "error");
   if (reseat) {
@@ -368,6 +389,7 @@ export function renderAuth(
         : window.odm.register({
             ...shared,
             inviteCode: inviteField?.value.trim() ?? "",
+            setupCode: setupField?.value.trim() ?? "",
             // The app mints the password for a room-code join and keeps it,
             // the way the device world's own profile works.
             generated: byRoomCode,
@@ -382,7 +404,7 @@ export function renderAuth(
   // remember, and a brand-new account is created on the way if signups are
   // open. The password form stays underneath for everyone else.
   const leading: (HTMLElement | null)[] = [];
-  if (probe.discord) {
+  if (probe.discord && !claiming) {
     const discord = button(
       "secondary",
       "Sign in with Discord",
@@ -412,7 +434,7 @@ export function renderAuth(
     backLink("Back", () => renderAdd(probe.origin)),
     intro(name, subtitle),
     joinBanner(),
-    formCard(...leading, authTabs(probe, mode, presetUsername), form, ...notes),
+    formCard(...leading, claiming ? null : authTabs(probe, mode, presetUsername), form, ...notes),
   );
   (presetUsername ? passField : userField).focus();
 }

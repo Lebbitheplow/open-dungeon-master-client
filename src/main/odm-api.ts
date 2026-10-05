@@ -35,6 +35,7 @@ export async function probeServer(origin: string): Promise<ServerProbe> {
         version?: string;
         instanceId?: string;
         deviceWorld?: boolean;
+        needsSetup?: boolean;
       } | null)
     : null;
   if (!body || typeof body.password !== "boolean") {
@@ -51,6 +52,7 @@ export async function probeServer(origin: string): Promise<ServerProbe> {
     instanceId: typeof body.instanceId === "string" ? body.instanceId : "",
     // Servers older than 0.16.6 do not say, and are taken for real ones.
     deviceWorld: body.deviceWorld === true,
+    needsSetup: body.needsSetup === true,
   };
 }
 
@@ -87,7 +89,7 @@ export async function loginForToken(
 
 export async function registerAccount(
   origin: string,
-  input: { username: string; password: string; inviteCode: string; joinCode?: string },
+  input: { username: string; password: string; inviteCode: string; joinCode?: string; setupCode?: string },
 ): Promise<TokenGrant> {
   const payload: Record<string, string> = {
     username: input.username,
@@ -99,6 +101,10 @@ export async function registerAccount(
   // signup. The server looks it up without consuming it
   // (src/app/api/auth/register), and the same code then seats the player.
   if (input.joinCode) payload.joinCode = input.joinCode;
+  // The code that claims a server's first account: typed by whoever runs a
+  // real server (it is in the server's log), and the shell's own for the
+  // world it hosts (src/main/local-server.ts). Servers ignore it otherwise.
+  if (input.setupCode) payload.setupCode = input.setupCode;
   const res = await api(origin, "/api/auth/register", {
     method: "POST",
     headers: { "content-type": "application/json" },

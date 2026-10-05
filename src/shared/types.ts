@@ -25,6 +25,10 @@ export interface ServerProbe {
   // should be inventing a password for a game on someone's phone. A real
   // server keeps passwords and whatever signup rule its owner set.
   deviceWorld: boolean;
+  // A server nobody has signed up to yet: its first account
+  // becomes the admin and takes the one-time setup code from the server's
+  // log, so the form asks for it. False on older servers, which do not say.
+  needsSetup: boolean;
 }
 
 // A remembered server, minus its stored credential.
@@ -378,6 +382,8 @@ export interface OdmBridge {
     // player only picks a name.
     generated?: boolean;
     joinCode?: string;
+    // The one-time code that claims a fresh server's first account.
+    setupCode?: string;
   }): Promise<Result<{ server: ServerSummary }>>;
   // Sign in through the server's Discord OAuth in a web view; the shell
   // harvests the session the callback plants and remembers the server like

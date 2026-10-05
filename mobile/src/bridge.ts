@@ -181,6 +181,7 @@ async function probeOrigin(origin: string): Promise<ServerProbe> {
     version?: string;
     instanceId?: string;
     deviceWorld?: boolean;
+    needsSetup?: boolean;
   } | null;
   if (reply.status !== 200 || !body || typeof body.password !== "boolean") {
     throw new Error(`${origin} does not look like an Open Dungeon Master server.`);
@@ -196,6 +197,7 @@ async function probeOrigin(origin: string): Promise<ServerProbe> {
     instanceId: typeof body.instanceId === "string" ? body.instanceId : "",
     // Servers older than 0.16.6 do not say, and are taken for real ones.
     deviceWorld: body.deviceWorld === true,
+    needsSetup: body.needsSetup === true,
   };
 }
 
@@ -221,9 +223,12 @@ async function loginForToken(
 
 async function registerAccount(
   origin: string,
-  input: { username: string; password: string; inviteCode: string; joinCode?: string },
+  input: { username: string; password: string; inviteCode: string; joinCode?: string; setupCode?: string },
 ): Promise<TokenGrant> {
   const body: Record<string, string> = { username: input.username, password: input.password };
+  // The code that claims a server's first account: typed for a real server,
+  // the shell's own for the world this device hosts (local-world.ts).
+  if (input.setupCode) body.setupCode = input.setupCode;
   if (input.inviteCode) body.inviteCode = input.inviteCode;
   // The room code travels with the registration: on a world an app hosts
   // it is the only door, and on an invite-only server it vouches for the
@@ -1473,6 +1478,7 @@ const bridge: OdmBridge = {
         password,
         inviteCode: String(input.inviteCode ?? "").trim(),
         joinCode,
+        setupCode: String(input.setupCode ?? "").trim().slice(0, 40),
       });
       return await adoptGrant(origin, grant, joinCode, generated ? password : undefined);
     } catch (err) {

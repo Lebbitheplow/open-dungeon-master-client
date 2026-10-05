@@ -666,6 +666,7 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
         password,
         inviteCode: str(input?.inviteCode, 40).trim(),
         joinCode,
+        setupCode: str(input?.setupCode, 40).trim(),
       });
       // An account the app made up a password for (joining by room code)
       // keeps that password, the way the device world's own profile does,
@@ -777,6 +778,7 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
       username: localProfileName(),
       password: secret,
       inviteCode: "",
+      setupCode: local.setupCode,
     });
     adoptLocalGrant(grant, secret);
     await ensureLocalVoice();
@@ -790,6 +792,7 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
         username: str(input?.username, 24),
         password: str(input?.password, 100),
         inviteCode: "",
+        setupCode: local.setupCode,
       });
       adoptLocalGrant(grant);
       await ensureLocalVoice();
