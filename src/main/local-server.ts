@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
@@ -53,6 +53,18 @@ export class LocalServer {
   // The settings `extraEnv` handed the running server, so a caller can tell
   // whether a changed setting is live yet.
   private startedEnv: Record<string, string> = {};
+
+  // The code that claims this world's first account, which is its admin.
+  // The server is told it at start and refuses a first registration without
+  // it, so the profile the shell makes is the only one that can own the
+  // world: nobody who reaches the port first (another program on this
+  // computer, or anyone once the world is shared) can register ahead of it.
+  // Never shown, and worked out from the world's database key rather than
+  // stored, so it is the same after the app restarts around a server that
+  // kept running. A world that already has its owner ignores it.
+  get setupCode(): string {
+    return createHash("sha256").update(`odm-setup-code:${this.dbEncryptionKey()}`).digest("hex").slice(0, 32);
+  }
 
   // `rendererDir` is the shell's own bundle (dist/renderer): the art it
   // carries is copied into the server tree rather than shipped twice.
@@ -233,6 +245,7 @@ export class LocalServer {
           // Tells the server it is the shell's own world, so its admin panel
           // hides what the shell manages (address, sign-ups, voice, Discord).
           ODM_DEVICE_WORLD: "1",
+          ODM_SETUP_CODE: this.setupCode,
           ...extra,
         },
         stdio: ["ignore", log, log],

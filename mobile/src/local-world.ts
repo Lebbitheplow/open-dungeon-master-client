@@ -23,6 +23,10 @@ export interface WorldStatus {
   firstRun: boolean;
   serverVersion: string;
   error: string;
+  // The code the running world's first account must send (WorldRuntime
+  // works it out and hands it to the server). Absent on an older native
+  // side, whose worlds do not ask for one.
+  setupCode?: string;
 }
 
 // What the native side reports on its own (LocalWorldPlugin's worldEvent):
@@ -85,7 +89,7 @@ export interface LocalWorldDeps {
   loginForToken(origin: string, username: string, password: string): Promise<TokenGrant>;
   registerAccount(
     origin: string,
-    input: { username: string; password: string; inviteCode: string },
+    input: { username: string; password: string; inviteCode: string; setupCode?: string },
   ): Promise<TokenGrant>;
   tokenIsValid(origin: string, token: string): Promise<boolean>;
   patchAdminSettings(origin: string, token: string, patch: object): Promise<void>;
@@ -252,10 +256,15 @@ export function createLocalWorld(deps: LocalWorldDeps) {
       const origin = await start();
       const minted = !input.password;
       const password = minted ? deps.randomSecret() : input.password;
+      // The world listens on the Wi-Fi from the moment it starts, before
+      // this account exists; the code is what makes this registration, and
+      // not a neighbour's, the one that owns it.
+      const setupCode = (await deps.plugin.status().catch(() => null))?.setupCode ?? "";
       const grant = await deps.registerAccount(origin, {
         username: input.username,
         password,
         inviteCode: "",
+        setupCode,
       });
       const profile = await adopt(grant, minted ? password : "");
       await settleWorldSettings(origin, profile.token);
