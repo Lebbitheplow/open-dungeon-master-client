@@ -65,6 +65,11 @@ jobs:
         env:
           ODM_SERVER_DIR: ${{ github.workspace }}/open-dungeon-master
         run: npm run bundle-server
+      # This one Linux-built payload ships to Windows and macOS too. Until
+      # server 0.24.6 the bundler compiled its Windows branches away, and the
+      # Windows app could not find an installed agent program (issue 14).
+      - name: The payload keeps its Windows code
+        run: node open-dungeon-master/scripts/check-built-platform.mjs client/vendor/server/.next/server
       - name: Pack the payload without symlinks (Windows tar cannot extract
           them; each platform job recreates the module aliases)
         working-directory: client
