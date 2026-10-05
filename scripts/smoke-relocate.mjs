@@ -179,7 +179,7 @@ const sheet = {
   name: "Wren of the Ford",
   race: "human",
   class: "fighter",
-  abilities: { str: 14, dex: 12, con: 13, int: 10, wis: 11, cha: 8 },
+  abilities: { str: 16, dex: 13, con: 15, int: 11, wis: 14, cha: 9 },
   maxHp: 12,
   ac: 16,
   hitDice: { die: "d10", total: 1, spent: 0 },
@@ -224,12 +224,13 @@ try {
   // syncPublicUrl's registry half: the owner's codes follow the address up.
   const owned = await ownedTableCodes(first.origin, hostGrant.token);
   assert(owned.includes(code), "the host's own campaign code is not among the owned codes");
-  const published = await publishTables({
+  const { published, refused: refusedFirst } = await publishTables({
     codes: owned,
     url: first.origin,
     secretFor: (c) => hostStore.tableSecret(c),
   });
   assert(published.includes(code), "publishing the room code failed");
+  assert(refusedFirst.length === 0, "a code nobody else holds was reported as refused");
   ok("host published the room code at the first address");
 
   // The friend types the code. servers:open-invite asks the registry first.
@@ -317,7 +318,7 @@ try {
   const probe2 = await probeServer(second.origin);
   assert(probe2.instanceId === probe.instanceId, "instanceId changed across the restart");
   const hostAgain = hostStore.tableSecret(code);
-  const republished = await publishTables({
+  const { published: republished } = await publishTables({
     codes: await ownedTableCodes(second.origin, (await loginForToken(second.origin, "host", "host-pass-123")).token),
     url: second.origin,
     secretFor: () => hostAgain,
@@ -329,7 +330,15 @@ try {
     body: JSON.stringify({ url: "https://evil.example" }),
   });
   assert(squatter.status === 409, `another secret could move the code (${squatter.status})`);
-  ok(`world back at ${second.origin} with the same instanceId; code re-pointed, squatter refused`);
+  // A device without the host's secret (the code lapsed and someone else
+  // claimed it, or the world moved here without its secrets) is told so.
+  const held = await publishTables({
+    codes: [code],
+    url: "https://elsewhere.example",
+    secretFor: () => "a-different-devices-secret",
+  });
+  assert(held.refused.includes(code) && !held.published.includes(code), "a held code was not reported as refused");
+  ok(`world back at ${second.origin} with the same instanceId; code re-pointed, squatter refused and told so`);
 
   // ---- the friend comes back: connectRemote's sequence, step for step ----
   let saved = playerStore.get(entry.id);

@@ -48,7 +48,7 @@ export function parseTableReply(body: unknown): string {
 // publish every minute for as long as they share (a campaign made mid-session
 // gets its code out, a broker that was down gets retried), but the registry
 // does not need to hear the same code at the same address again: a claim
-// lives 45 days. So a code is sent once per address and then only as a
+// lives for months. So a code is sent once per address and then only as a
 // refresh a few hours apart, which keeps the broker's KV write quota (the
 // free tier's 1,000 a day) for the codes that actually moved. The ledger is
 // per process: a restart just publishes once more, which is fine.
@@ -79,6 +79,23 @@ export function createPublishLedger(refreshMs = PUBLISH_REFRESH_MS): PublishLedg
       entries.clear();
     },
   };
+}
+
+// The registry's answer to a code somebody else holds: another device
+// claimed it first, with a secret this one does not have.
+export const TABLE_REFUSED_STATUS = 409;
+
+// The codes the registry is refusing after one publish pass. A refused code
+// is never counted as sent, so every pass asks again and its answer is the
+// truth; a pass that could not reach the registry for a code says nothing
+// new about it, so what was known before stands.
+export function refusedAfter(
+  previous: readonly string[],
+  pass: { codes: readonly string[]; published: readonly string[]; refused: readonly string[] },
+): string[] {
+  return pass.codes.filter(
+    (code) => pass.refused.includes(code) || (previous.includes(code) && !pass.published.includes(code)),
+  );
 }
 
 export interface BrokerSession {

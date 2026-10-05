@@ -130,6 +130,9 @@ export interface ShellShareStatus extends TunnelStatus {
   supported: boolean;
   // The Wi-Fi address of a device-hosted world, "" when there is none.
   lanUrl: string;
+  // Room codes the table registry would not take from this shell because
+  // another device claimed them first; the lobby tells the host.
+  refusedCodes?: string[];
 }
 
 // What the hardware scan learned; sizes in whole GB.

@@ -47,6 +47,7 @@ import {
 } from "./odm-api";
 import { LOCAL_SERVER_ID, type ServerStore, type StoredServer } from "./servers";
 import { dropTables, ownedTableCodes, publishTables, resolveTable } from "./table-registry";
+import { refusedAfter } from "../shared/broker";
 import { portalEligible } from "../shared/portal-logic";
 import { relocateWorld } from "../shared/relocate";
 import {
@@ -210,6 +211,14 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
   // place rather than from either button.
   // The codes last published are kept in the store, not in memory, so a
   // crash or a quit can still take them offline on the next start.
+  // Codes the registry is refusing from this shell (another device holds
+  // them), reported to the lobby with the share status.
+  let refusedCodes: string[] = [];
+  const setRefusedCodes = (next: string[]): void => {
+    const changed = next.join() !== refusedCodes.join();
+    refusedCodes = next;
+    if (changed && localPageShowing()) win.sendToGame("odm:share-status", shellShareStatus());
+  };
   const syncPublicUrl = async (): Promise<void> => {
     const token = store.token(LOCAL_SERVER_ID);
     if (!token || !local.origin) return;
@@ -218,17 +227,19 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     await patchAdminSettings(local.origin, token, { publicUrl: live }).catch(() => undefined);
     if (live) {
       const codes = await ownedTableCodes(local.origin, token);
-      const published = await publishTables({
+      const { published, refused } = await publishTables({
         codes,
         url: live,
         secretFor: (code) => store.tableSecret(code),
       });
+      setRefusedCodes(refusedAfter(refusedCodes, { codes, published, refused }));
       // A code refused by the registry (claimed from another device) stays
       // in the list so it is at least dropped with the rest later.
       const before = store.publishedCodes();
       store.setPublishedCodes([...new Set([...published, ...before])]);
       return;
     }
+    setRefusedCodes([]);
     const stale = store.publishedCodes();
     store.setPublishedCodes([]);
     if (stale.length > 0) {
@@ -600,6 +611,7 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     supported: true,
     ...tunnel.status(),
     lanUrl: "",
+    refusedCodes,
   });
   const localPageShowing = (): boolean =>
     !win.isPortalView() && !!local.origin && win.viewOrigin() === local.origin;

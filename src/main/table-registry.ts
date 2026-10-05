@@ -11,6 +11,7 @@ import {
   createPublishLedger,
   DEFAULT_BROKER_URL,
   parseTableReply,
+  TABLE_REFUSED_STATUS,
   tableEndpoint,
 } from "../shared/broker";
 import { CODE_SHAPE } from "../shared/deep-link";
@@ -52,26 +53,30 @@ export async function ownedTableCodes(origin: string, token: string): Promise<st
 // Points each code at the address the world is reachable at now. Called
 // every minute while sharing; only codes the registry has not heard at this
 // address (or not for hours) go over the wire, the rest count as published.
+// A code another device claimed first comes back in refused, so the host
+// can be told rather than left sharing a code that leads somewhere else.
 const ledger = createPublishLedger();
 
 export async function publishTables(input: {
   codes: readonly string[];
   url: string;
   secretFor: (code: string) => string;
-}): Promise<string[]> {
+}): Promise<{ published: string[]; refused: string[] }> {
   const due = ledger.due(input.codes, input.url);
   const published = input.codes.filter((code) => !due.includes(code));
+  const refused: string[] = [];
   for (const code of due) {
     const response = await send(tableEndpoint(brokerBase(), code), {
       method: "PUT",
       headers: { "content-type": "application/json", "x-table-secret": input.secretFor(code) },
       body: JSON.stringify({ url: input.url }),
     });
+    if (response?.status === TABLE_REFUSED_STATUS) refused.push(code);
     if (!response?.ok) continue;
     published.push(code);
     ledger.sent([code], input.url);
   }
-  return published;
+  return { published, refused };
 }
 
 // Sharing stopped: a friend who types the code is told the table is
