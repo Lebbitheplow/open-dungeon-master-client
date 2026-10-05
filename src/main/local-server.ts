@@ -246,6 +246,11 @@ export class LocalServer {
           // hides what the shell manages (address, sign-ups, voice, Discord).
           ODM_DEVICE_WORLD: "1",
           ODM_SETUP_CODE: this.setupCode,
+          // The server refuses uploads once the disk would drop below 1 GB
+          // free, sized for a server's volume. This disk is the owner's own,
+          // so the floor here is only what keeps the database writable; a
+          // value already in the environment still wins.
+          UPLOAD_MIN_FREE_BYTES: process.env.UPLOAD_MIN_FREE_BYTES || String(256 * 1024 * 1024),
           ...extra,
         },
         stdio: ["ignore", log, log],
