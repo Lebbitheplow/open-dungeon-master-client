@@ -9,6 +9,8 @@ import type { SseEvent } from "../../shared/sse.js";
 import { hostRelativePath } from "../../shared/host-fetch.js";
 import { localAsset } from "./local-assets.js";
 import { hold, keepObjectUrlsFor, objectUrlFor } from "./object-urls.js";
+import { canStreamAudio, liveAudioUrl } from "./live-audio.js";
+import { isLiveNarrationPath } from "../../shared/live-audio.js";
 
 // Public static files of the host: no session needed, so the address is
 // rewritten in place and the browser loads them itself. Any query on the
@@ -204,6 +206,12 @@ function patchMediaSetters(): void {
           return;
         }
         this.setAttribute("data-odm-src", raw);
+        // Narration still being rendered is read as it arrives rather than
+        // fetched whole, so its first line is heard at once.
+        if (this instanceof HTMLMediaElement && isLiveNarrationPath(raw) && canStreamAudio()) {
+          nativeSet.call(this, liveAudioUrl(() => patchedFetch(raw, { cache: "no-store" })));
+          return;
+        }
         const direct = resolveMedia(client, raw, (url) => {
           if (this.getAttribute("data-odm-src") !== raw) return;
           hold(this, url);
