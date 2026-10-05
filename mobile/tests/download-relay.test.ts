@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  coverFileName,
   createDownloadRelay,
   fetchableUrl,
   sanitizeFilename,
@@ -279,4 +280,32 @@ test("download() sends the caller's headers and reports whether the file arrived
   });
   assert.equal(await failed.relay.download(`${HOST}/uploads/handout.pdf`, "handout.pdf", {}), false);
   assert.deepEqual(failed.notices, ["Could not save handout.pdf. Could not reach the host."]);
+});
+
+// DownloadPlugin.SEGMENT, the only names the native streamer accepts.
+const NATIVE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$/;
+
+test("a home cover's cache name is one the native streamer accepts", () => {
+  const host = "25716981-e7b1-4c95-829a-28e92db5751f";
+  const face = coverFileName(host, `${HOST}/uploads/a75480f3-03e2-4a35-83f3-d230c7a03fa1.webp`);
+  assert.equal(face, `${host}-uploads-a75480f3-03e2-4a35-83f3-d230c7a03fa1.webp`);
+
+  const names = [
+    face,
+    coverFileName("local", "http://127.0.0.1:3210/generated/1784334102829-526230449-comfyui-top-down-illustrated-game-map-neon-blueprint-schematic-of-a-sunken-vault.png"),
+    coverFileName(host, `${HOST}/uploads/a75480f3-03e2-4a35-83f3-d230c7a03fa1.webp?w=256`),
+    coverFileName(host, `${HOST}/uploads/la%20tour%20(2)/caf\u00e9 map.PNG`),
+    coverFileName(host, `${HOST}/uploads/no-extension`),
+    coverFileName(host, "not an address"),
+    coverFileName("", `${HOST}/.hidden`),
+  ];
+  for (const name of names) assert.match(name, NATIVE_SEGMENT, name);
+
+  // The picture's kind survives a long name, and a sized copy is its own file.
+  assert.ok(names[1].endsWith(".png"));
+  assert.equal(names[1].length, 120);
+  assert.ok(names[2].endsWith(".webp"));
+  assert.notEqual(names[2], face);
+  // One host's picture never takes another's place.
+  assert.notEqual(coverFileName("local", `${HOST}/uploads/a.png`), coverFileName(host, `${HOST}/uploads/a.png`));
 });
