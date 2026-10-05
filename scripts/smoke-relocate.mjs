@@ -391,6 +391,43 @@ try {
   assert(renewed.username === "wren", "renewal signed in as somebody else");
   ok("an expired session renews with the app-minted password, no form");
 
+  // ---- the host had to take a new code (another device holds the old one) ----
+  // handleJoinLink's sequence for a returning friend who types the new code
+  // while the world sits at an address their entry has never seen: the
+  // registry names the address, the world there says who it is, and the
+  // saved entry is the one that opens. No second entry, no second account.
+  const hostNow = await loginForToken(second.origin, "host", "host-pass-123");
+  const rotated = await json(second.origin, `/api/campaigns/${campaign.id}/invite`, hostNow.token, { method: "POST" });
+  const newCode = String(rotated.body?.inviteCode ?? "");
+  assert(rotated.status === 200 && newCode && newCode !== code, `no new code: ${JSON.stringify(rotated.body)}`);
+  tables.set(code, { url: "https://somewhere-else.example", secret: "the-other-devices-secret" });
+  const afterRotate = await publishTables({
+    codes: await ownedTableCodes(second.origin, hostNow.token),
+    url: second.origin,
+    secretFor: (c) => hostStore.tableSecret(c),
+  });
+  assert(afterRotate.published.includes(newCode), "the new code was not published");
+  assert(!afterRotate.published.includes(code) && !afterRotate.refused.includes(code), "the old code is still being published");
+  playerStore.rebindOrigin(entry.id, first.origin);
+  const entriesBefore = playerStore.summaries().length;
+  const typed = await resolveTable(newCode.toLowerCase());
+  assert(typed === second.origin, `the new code resolved ${JSON.stringify(typed)}`);
+  assert(playerStore.findByOrigin(typed) === null, "the entry already knew this address; the step proves nothing");
+  const typedProbe = await probeServer(typed);
+  const match = playerStore.findByInstanceId(typedProbe.instanceId);
+  assert(match && match.id === entry.id, "the world behind the new code was not matched to the saved entry");
+  assert((await resolveTable(newCode)) === typed, "the registry does not vouch for the address");
+  const rebound = playerStore.rebindOrigin(match.id, typed);
+  playerStore.rememberJoinCode(rebound.id, newCode);
+  assert(playerStore.summaries().length === entriesBefore, "typing the new code added a second entry");
+  const reboundToken = playerStore.token(rebound.id) ?? (await loginForToken(typed, "wren", playerStore.secret(rebound.id))).token;
+  const meAgain = await json(typed, "/api/auth/me", reboundToken);
+  assert(meAgain.body?.user?.username === "wren", "the new code signed the friend in as somebody else");
+  const sheetAgain = await json(typed, `/api/campaigns/${campaign.id}/sheet`, reboundToken);
+  assert(sheetAgain.status === 200 && sheetAgain.body?.sheet?.name === sheet.name, "the character is not there under the new code");
+  assert(playerStore.tableCodesFor(entry.id)[0] === newCode, "the new code was not kept on the entry");
+  ok(`host took new code ${newCode}; the friend typed it and opened the same entry, account and character`);
+
   // ---- the safety rule: a recycled address that answers as another world ----
   const strangerDir = path.join(tmp, "stranger");
   fs.mkdirSync(strangerDir);
