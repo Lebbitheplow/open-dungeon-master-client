@@ -1,7 +1,7 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import { Directory, Filesystem } from "@capacitor/filesystem";
 import { MAX_DOWNLOAD_BYTES } from "./download-shim-core";
-import { DOWNLOAD_FOLDER, INCOMING_NAME, sanitizeFilename, type NativeFetchResult } from "./download-relay";
+import { coverFileName, DOWNLOAD_FOLDER, INCOMING_NAME, type NativeFetchResult } from "./download-relay";
 
 // The app's own streaming download (android/.../DownloadPlugin.java): a
 // host file goes straight from the socket to the app cache, with the
@@ -64,16 +64,6 @@ export async function renameIncoming(from: string, to: string): Promise<string> 
 // base64 in memory. The folder is swept once per run; the page keeps its
 // answers per run too (src/renderer/home.ts).
 export const COVER_FOLDER = "odm-covers";
-
-export function coverFileName(hostId: string, url: string): string {
-  let path = url;
-  try {
-    path = new URL(url).pathname;
-  } catch {
-    // Not an address; the plugin will refuse it anyway.
-  }
-  return sanitizeFilename(`${hostId} ${path}`.replace(/[\\/]+/g, "-"), "");
-}
 
 export async function fetchCover(
   plugin: OdmDownloadPlugin,

@@ -91,6 +91,35 @@ export function sanitizeFilename(name: unknown, mime: unknown): string {
   return stem + extension;
 }
 
+// A home cover's file in the app cache, named for the host and the
+// picture's path so one host's cover never lands on another's; the query (a
+// sized variant, "?w=256") counts too. The native streamer takes only
+// letters, digits, dot, dash and underscore, 120 at most, starting with a
+// letter or digit (DownloadPlugin.SEGMENT), and refuses anything else before
+// it fetches. sanitizeFilename keeps spaces, so a name built with it was
+// refused every time: no cover or face ever came through the app's own
+// session, and the home screen only showed them while hosts still handed
+// those files to anyone who asked.
+export function coverFileName(hostId: string, url: string): string {
+  let path = url;
+  let query = "";
+  try {
+    const parsed = new URL(url);
+    path = parsed.pathname;
+    query = parsed.search;
+  } catch {
+    // Not an address; the plugin will refuse it anyway.
+  }
+  const dot = path.lastIndexOf(".");
+  const extension = dot > 0 && /^\.[A-Za-z0-9]{1,15}$/.test(path.slice(dot)) ? path.slice(dot) : "";
+  const stem = `${hostId}-${extension ? path.slice(0, dot) : path}${query}`
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^[^A-Za-z0-9]+/, "")
+    .slice(0, MAX_NAME_LENGTH - extension.length);
+  return `${stem || "cover"}${extension}`;
+}
+
 // btoa never emits whitespace, so anything outside the alphabet is a
 // corrupt or hostile payload rather than a formatting quirk.
 const BASE64_SHAPE = /^[A-Za-z0-9+/]*={0,2}$/;
