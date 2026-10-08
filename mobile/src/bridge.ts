@@ -1716,6 +1716,10 @@ const bridge: OdmBridge = {
     return { ok: true, tunnel: status };
   },
   shareStop: async () => ({ ok: true, tunnel: await shareTunnel.stop() }),
+  // The phone's world answers on its Wi-Fi from the moment it runs; there
+  // is no switch to turn, so both answer with where it already is.
+  lanStart: async () => ({ ok: true, status: await localWorld.status() }),
+  lanStop: async () => ({ ok: true, status: await localWorld.status() }),
   localAiScan: async () => fail(new Error("Local AI is desktop-only.")),
   localAiInstall: async () => fail(new Error("Local AI is desktop-only.")),
   localAiInstallComfy: async () => fail(new Error("Local AI is desktop-only.")),

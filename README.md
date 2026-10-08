@@ -71,7 +71,7 @@ More help, and the full player guide, live at
 <td width="50%" valign="top" align="center">
 <img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/chats.png" width="56"><br>
 <b>Share it with one code</b><br>
-<sub>Open a campaign lobby and the app opens a public address for your world through a Cloudflare tunnel, with no port forwarding and no router setup. Friends join with the room code, an invite link, or a QR code; friends on the same Wi-Fi can use the LAN address.</sub>
+<sub>Open a campaign lobby and the app opens a public address for your world through a Cloudflare tunnel, with no port forwarding and no router setup. Friends join with the room code, an invite link, or a QR code. For a table in the same room, share on this Wi-Fi instead and play with no internet at all.</sub>
 </td>
 </tr>
 <tr>

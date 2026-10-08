@@ -53,7 +53,9 @@ export interface LocalStatus {
   serverVersion: string;
   error: string;
   // Where friends on the same network reach a device-hosted world ("" when
-  // not hosting or not on a network). Both shells share through a tunnel.
+  // not hosting or not on a network). The phone's world always answers on
+  // its Wi-Fi; the desktop's only while Wi-Fi sharing is on (lanStart).
+  // Both shells share online through a tunnel.
   lanOrigin: string;
 }
 
@@ -459,6 +461,11 @@ export interface OdmBridge {
   localPlay(joinCode?: string, path?: string): Promise<ConnectResult>;
   shareStart(): Promise<Result<{ tunnel: TunnelStatus }>>;
   shareStop(): Promise<Result<{ tunnel: TunnelStatus }>>;
+  // Wi-Fi sharing: the desktop's world answers on every interface so an
+  // in-person table plays with no internet at all. Desktop only; the
+  // phone's world is on its Wi-Fi already and answers that it is.
+  lanStart(): Promise<Result<{ status: LocalStatus }>>;
+  lanStop(): Promise<Result<{ status: LocalStatus }>>;
   localAiScan(): Promise<Result<{ hardware: HardwareInfo; tiers: LocalAiTier[] }>>;
   // warning is "" or a sentence: the install worked but wiring the world's
   // settings to it failed and needs a hand.

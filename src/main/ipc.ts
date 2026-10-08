@@ -186,6 +186,9 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
 
   local.onStatus(() => {
     win.sendEvent({ kind: "local-status", status: localStatus() });
+    // The lobby's invite dialog shows the Wi-Fi address, which comes and
+    // goes with the server's binding.
+    if (localPageShowing()) win.sendToGame("odm:share-status", shellShareStatus());
     refreshHomeFeed();
   });
   tunnel.onStatus(() => {
@@ -224,7 +227,10 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     if (!token || !local.origin) return;
     const status = tunnel.status();
     const live = status.state === "running" ? status.url : "";
-    await patchAdminSettings(local.origin, token, { publicUrl: live }).catch(() => undefined);
+    // Without a tunnel, the Wi-Fi address while sharing on it: invite links
+    // and QR codes made inside the game then point where a friend at the
+    // table can reach. The table registry only learns public addresses.
+    await patchAdminSettings(local.origin, token, { publicUrl: live || local.lanOrigin }).catch(() => undefined);
     if (live) {
       const codes = await ownedTableCodes(local.origin, token);
       const { published, refused } = await publishTables({
@@ -596,6 +602,27 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     return { ok: true, tunnel: tunnel.status() };
   });
 
+  // Sharing on this Wi-Fi only: the world answers on every interface and an
+  // in-person table plays with no internet. Nothing is published anywhere;
+  // the address is one friends type or scan at the table.
+  const setLanSharing = async (on: boolean): Promise<Result<{ status: LocalStatus }>> => {
+    try {
+      if (on) await local.start();
+      await local.setLanSharing(on);
+      if (on && !local.lanOrigin) {
+        await local.setLanSharing(false);
+        return fail(new Error("This computer is not on a network right now."));
+      }
+      await syncPublicUrl();
+      if (on) await ensureLocalVoice();
+      return { ok: true, status: localStatus() };
+    } catch (err) {
+      return fail(err);
+    }
+  };
+  ipcMain.handle("share:lan-start", () => setLanSharing(true));
+  ipcMain.handle("share:lan-stop", () => setLanSharing(false));
+
   // The same switch for the game page's preload (src/preload/game.ts), only
   // honored while the page on top is the local world itself: a remote
   // server's page gets "unsupported" and draws nothing.
@@ -610,7 +637,7 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
   const shellShareStatus = (): ShellShareStatus => ({
     supported: true,
     ...tunnel.status(),
-    lanUrl: "",
+    lanUrl: local.lanOrigin,
     refusedCodes,
   });
   const localPageShowing = (): boolean =>

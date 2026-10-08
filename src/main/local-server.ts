@@ -2,7 +2,9 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
+import os from "node:os";
 import path from "node:path";
+import { lanOrigin } from "../shared/lan";
 import type { LocalStatus } from "../shared/types";
 import { materializeRunTree } from "./run-tree";
 
@@ -49,6 +51,13 @@ export class LocalServer {
   private state: LocalStatus["state"] = "stopped";
   private error = "";
   private readonly listeners = new Set<() => void>();
+
+  // Whether the server answers on every interface (friends on this Wi-Fi
+  // can reach it) or on loopback only, the default. Not remembered across
+  // runs: like the tunnel, Wi-Fi sharing is something the host turns on
+  // for an evening, and a world should never wake up reachable because it
+  // was last time.
+  private bindAll = false;
 
   // The settings `extraEnv` handed the running server, so a caller can tell
   // whether a changed setting is live yet.
@@ -97,6 +106,23 @@ export class LocalServer {
   get running(): boolean {
     return this.state === "running";
   }
+  // Where friends on this Wi-Fi reach the world: "" unless it runs on
+  // every interface and this computer is on a network.
+  get lanOrigin(): string {
+    return this.state === "running" && this.bindAll ? lanOrigin(os.networkInterfaces(), this.port) : "";
+  }
+  get sharedOnLan(): boolean {
+    return this.bindAll;
+  }
+
+  // Turns Wi-Fi sharing on or off. The bundled server picks its address at
+  // boot, so a running world restarts (same port, see pickPort); an open
+  // page's stream reconnects on its own.
+  async setLanSharing(on: boolean): Promise<void> {
+    if (this.bindAll === on) return;
+    this.bindAll = on;
+    if (this.state === "running" || this.startPromise) await this.restart();
+  }
 
   onStatus(listener: () => void): void {
     this.listeners.add(listener);
@@ -118,7 +144,7 @@ export class LocalServer {
       username,
       serverVersion: info?.serverVersion ?? "",
       error: this.error,
-      lanOrigin: "",
+      lanOrigin: this.lanOrigin,
     };
   }
 
@@ -147,11 +173,15 @@ export class LocalServer {
     }
   }
 
+  private get bindHost(): string {
+    return this.bindAll ? "0.0.0.0" : "127.0.0.1";
+  }
+
   private listenFree(port: number): Promise<number | null> {
     return new Promise((resolve) => {
       const probe = net.createServer();
       probe.once("error", () => resolve(null));
-      probe.listen({ host: "127.0.0.1", port }, () => {
+      probe.listen({ host: this.bindHost, port }, () => {
         const address = probe.address();
         const got = typeof address === "object" && address ? address.port : null;
         probe.close(() => resolve(got));
@@ -234,7 +264,7 @@ export class LocalServer {
           ELECTRON_RUN_AS_NODE: "1",
           NODE_ENV: "production",
           PORT: String(this.port),
-          HOSTNAME: "127.0.0.1",
+          HOSTNAME: this.bindHost,
           SQLITE_DB_PATH: this.dbPath,
           DB_ENCRYPTION_KEY: this.dbEncryptionKey(),
           // The spells, items, monsters and feats catalogue, staged by
@@ -275,6 +305,7 @@ export class LocalServer {
   // Stops and starts again on the same port when it is still free (see
   // pickPort), so an open page and a share tunnel find the world where it was.
   async restart(): Promise<void> {
+    if (this.startPromise) await this.startPromise.catch(() => undefined);
     await this.stop();
     await this.start();
   }

@@ -40,6 +40,8 @@ const bridge: OdmBridge = {
     ipcRenderer.invoke("local:play", joinCode, path),
   shareStart: () => ipcRenderer.invoke("share:start"),
   shareStop: () => ipcRenderer.invoke("share:stop"),
+  lanStart: () => ipcRenderer.invoke("share:lan-start"),
+  lanStop: () => ipcRenderer.invoke("share:lan-stop"),
   localAiScan: () => ipcRenderer.invoke("local-ai:scan"),
   localAiInstall: (tierId: string) => ipcRenderer.invoke("local-ai:install", tierId),
   localAiInstallComfy: () => ipcRenderer.invoke("local-ai:install-comfy"),
