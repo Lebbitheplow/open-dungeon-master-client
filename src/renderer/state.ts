@@ -38,6 +38,8 @@ export const state = {
     lanOrigin: "",
   } as LocalStatus,
   tunnel: { state: "stopped", url: "", mode: "", error: "" } as TunnelStatus,
+  // Why the last Share on this Wi-Fi failed, "" otherwise.
+  lanError: "",
   joinIntent: null as JoinIntent | null,
   screenName: "home",
   // A shell screen laid over a running world (chrome.ts showOverlay).

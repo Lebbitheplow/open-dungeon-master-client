@@ -79,7 +79,9 @@ export function renderHelp(): void {
       isAndroid ? "globe" : "monitor",
       `Your world on this ${device}`,
       `The app can host a world itself: no server needed. Enter it from the home screen and it wakes up; close the app and it sleeps. Your campaigns, characters and pictures stay on this ${device}.`,
-      `Friends on the same Wi-Fi can join at the address shown in Settings. Share online and the app opens a public address so friends anywhere can join while the app runs. Copy the address, send it through your phone's share sheet, or show its QR code for a camera to scan.`,
+      isAndroid
+        ? `Friends on the same Wi-Fi can join at the address shown in Settings. Share online and the app opens a public address so friends anywhere can join while the app runs. Copy the address, send it through your phone's share sheet, or show its QR code for a camera to scan.`
+        : `Share on this Wi-Fi and friends in the same room join at the address shown, with no internet at all: type it into a browser or the app, or scan its QR code. The address is plain http on your own network, so anyone on that network can reach the sign-in page while it is on. Share online and the app opens a public address so friends anywhere can join while the app runs.`,
     ),
     section(
       "sparkles",

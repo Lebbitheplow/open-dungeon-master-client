@@ -111,7 +111,7 @@ function deviceSection(): HTMLElement | null {
   }
   body.append(accountRow);
   const share = el("div", "settings-share");
-  share.append(el("span", "settings-label", "Share online"));
+  share.append(el("span", "settings-label", isAndroid ? "Share online" : "Sharing"));
   share.append(
     local.state === "running"
       ? shareRow()

@@ -9,7 +9,8 @@ import { tryOpenNativeLocal } from "./game-screen.js";
 import { renderHome } from "./home.js";
 import { renderLocalAi } from "./local-ai.js";
 import { renderSettings } from "./settings.js";
-import { localPlayAt, refresh, state } from "./state.js";
+import type { TunnelStatus } from "../shared/types.js";
+import { isAndroid, localPlayAt, refresh, state } from "./state.js";
 
 // Opens the device world, starting it first when it sleeps. path is the
 // page to land on ("" for the world's root).
@@ -139,11 +140,72 @@ export function shareRow(): HTMLElement {
     row.append(spinner(), el("span", "status-line", "Opening a public address..."));
     return row;
   }
-  const idle = state.local.lanOrigin
-    ? `On your Wi-Fi at ${state.local.lanOrigin}. Share online and friends anywhere can join with a campaign's room code.`
-    : "Share online while the app runs and friends anywhere can join with a campaign's room code.";
-  const line = el("span", "status-line", tunnel.state === "error" ? tunnel.error : idle);
-  const start = button(
+  const lan = state.local.lanOrigin;
+  if (lan && !isAndroid) {
+    // Sharing on this Wi-Fi: the address friends at the table type or scan.
+    // Online sharing can still be opened on top of it.
+    row.append(badge("Shared on this Wi-Fi", true));
+    row.append(el("span", "status-line", lan));
+    row.append(
+      el(
+        "span",
+        "status-line",
+        "Friends on the same network open this address in a browser or the app. No internet needed. It stays open until you stop sharing or quit.",
+      ),
+    );
+    const copy = button("secondary", "Copy address", () => {
+      void copyText(lan).then((worked) => {
+        copy.lastChild!.textContent = worked ? "Copied" : "Copy failed";
+        setTimeout(() => (copy.lastChild!.textContent = "Copy address"), 1500);
+      });
+    }, "copy");
+    row.append(copy);
+    row.append(
+      button("secondary", state.shareQrOpen ? "Hide QR" : "QR code", () => {
+        state.shareQrOpen = !state.shareQrOpen;
+        rerenderShareScreen();
+      }, "qr"),
+    );
+    row.append(shareOnlineButton(tunnel));
+    row.append(
+      button("quiet", "Stop Wi-Fi sharing", (btn) => {
+        btn.disabled = true;
+        state.shareQrOpen = false;
+        void window.odm.lanStop().then(async () => {
+          await refresh().catch(() => undefined);
+          rerenderShareScreen();
+        });
+      }),
+    );
+    if (state.shareQrOpen) row.append(qrPanel(lan));
+    return row;
+  }
+  const idle = lan
+    ? `On your Wi-Fi at ${lan}. Share online and friends anywhere can join with a campaign's room code.`
+    : isAndroid
+      ? "Share online while the app runs and friends anywhere can join with a campaign's room code."
+      : "Share on this Wi-Fi for a table in the same room, no internet needed. Share online and friends anywhere can join with a campaign's room code.";
+  const line = el("span", "status-line", state.lanError || (tunnel.state === "error" ? tunnel.error : idle));
+  row.append(line);
+  if (!isAndroid && state.local.state !== "unavailable") {
+    row.append(
+      button("secondary", state.lanError ? "Try Wi-Fi again" : "Share on this Wi-Fi", (btn) => {
+        btn.disabled = true;
+        state.lanError = "";
+        void window.odm.lanStart().then(async (result) => {
+          if (!result.ok) state.lanError = result.error;
+          await refresh().catch(() => undefined);
+          rerenderShareScreen();
+        });
+      }, "wifi"),
+    );
+  }
+  row.append(shareOnlineButton(tunnel));
+  return row;
+}
+
+function shareOnlineButton(tunnel: TunnelStatus): HTMLButtonElement {
+  return button(
     "secondary",
     tunnel.state === "error" ? "Try sharing again" : "Share online",
     (btn) => {
@@ -156,8 +218,6 @@ export function shareRow(): HTMLElement {
     },
     "globe",
   );
-  row.append(line, start);
-  return row;
 }
 
 export function renderLocalAccount(mode: "create" | "login"): void {
