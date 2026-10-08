@@ -5,6 +5,7 @@ import {
   classifyOutcome,
   coverRequestUrl,
   createHomeFeed,
+  cacheEntryFor,
   hostFromCache,
   hostKindFor,
   imageDataUrl,
@@ -12,6 +13,7 @@ import {
   localOutcome,
   orderHosts,
   parseCampaigns,
+  parseCanCreate,
   resolveHost,
 } from "../dist/shared/home-feed-logic.js";
 
@@ -181,6 +183,28 @@ test("the title screen's glance rides the list: pictures pinned to the host, the
   // No owned row: the seat is unknown and left out rather than guessed.
   const guest = parseCampaigns({ campaigns: [{ id: "g", title: "Guest", status: "active", role: "player", dmUserId: "x" }] }, origin);
   assert.equal("dmSeat" in guest[0], false);
+});
+
+test("the campaign list says whether the account may start one; a server that does not say is open", () => {
+  assert.equal(parseCanCreate({ campaigns: [], canCreateCampaigns: false }), false);
+  assert.equal(parseCanCreate({ campaigns: [], canCreateCampaigns: true }), true);
+  assert.equal(parseCanCreate({ campaigns: [] }), true);
+  assert.equal(parseCanCreate(null), true);
+  const input = { id: "s1", kind: "server", name: "Shared", origin, username: "guest", token: "t" };
+  const kept = resolveHost(
+    input,
+    { kind: "reply", status: 200, body: { campaigns: [], canCreateCampaigns: false } },
+    null,
+    "2026-10-08T12:00:00.000Z",
+  );
+  assert.equal(kept.canCreate, false);
+  // The cache remembers the answer; a host out of reach keeps it, and a
+  // cache from before the policy existed reads as open.
+  const entry = cacheEntryFor(kept);
+  assert.equal(entry.canCreate, false);
+  assert.equal(resolveHost(input, { kind: "failed", error: "down" }, entry, "2026-10-08T12:01:00.000Z").canCreate, false);
+  assert.equal(hostFromCache(input, entry).canCreate, false);
+  assert.equal(hostFromCache(input, { status: "online", campaigns: [], lastSeenAt: null }).canCreate, true);
 });
 
 test("responses classify: 401/403 need login, failures are offline, 2xx is online", () => {

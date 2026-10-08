@@ -468,8 +468,15 @@ function menu(primary: HomeHost | null, focusJoin: () => void): HTMLElement {
   nav.setAttribute("aria-label", "Main menu");
   const items: MenuItem[] = [];
   if (primary && !(primary.kind === "local" && state.local.firstRun)) {
+    // A server whose admin keeps campaign creation offers no door for it;
+    // the room code in the Join box is the way in there.
+    if (primary.canCreate) {
+      items.push(
+        { label: "New campaign", glyph: "tab-campaigns", tour: "tile-new-campaign", onClick: (btn) => openHost(primary, "/?new=1", btn) },
+        { label: "Quick start", glyph: "tab-story", tour: "tile-quick-start", onClick: (btn) => openHost(primary, "/?new=starter", btn) },
+      );
+    }
     items.push(
-      { label: "New campaign", glyph: "tab-campaigns", tour: "tile-new-campaign", onClick: (btn) => openHost(primary, "/?new=1", btn) },
       { label: "Characters", glyph: "tab-characters", tour: "tile-characters", onClick: (btn) => openHost(primary, "/characters", btn) },
       { label: "Workshop", glyph: "system-homebrew", tour: "tile-workshop", onClick: (btn) => openHost(primary, "/workshop", btn) },
       { label: "Rulebook", glyph: "system-rules", tour: "tile-rulebook", onClick: (btn) => openHost(primary, "/rulebook", btn) },
