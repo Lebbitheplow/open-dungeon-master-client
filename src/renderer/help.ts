@@ -90,7 +90,7 @@ export function renderHelp(): void {
     section(
       "wand",
       "Workshop, characters, campaigns",
-      `The title screen's menu opens the pages you use most on whichever host you were last in. New campaign starts an adventure: pick a genre or a world pack, decide who narrates, and share the room code. Characters holds your adventurers and the creation wizard. The Workshop is the Dungeon Master's prep bench: maps, monsters, NPCs, lore and handouts. Join with a code drops you into the sigil boxes at the foot of the screen.`,
+      `The title screen's menu opens the pages you use most on whichever host you were last in. New campaign starts an adventure: pick a genre or a world pack, decide who narrates, and share the room code. Quick start skips all that: a one-evening adventure with ready-made heroes, seated from the lobby. Both doors are missing on a server whose admin keeps campaign creation; a room code is the way in there. Characters holds your adventurers and the creation wizard. The Workshop is the Dungeon Master's prep bench: maps, monsters, NPCs, lore and handouts. Join with a code drops you into the sigil boxes at the foot of the screen.`,
     ),
     section(
       "play",

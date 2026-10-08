@@ -319,6 +319,10 @@ export interface HomeHost {
   stale: boolean;
   error: string;
   campaigns: HomeCampaign[];
+  // Whether this account may start a campaign there: the server's shared
+  // host policy (its campaign list says so; older servers do not, and are
+  // taken as open).
+  canCreate: boolean;
 }
 
 // refreshedAt is "" for a feed served from the cache before any refresh.

@@ -51,6 +51,8 @@ export interface HomeCacheEntry {
   status: HomeHost["status"];
   campaigns: HomeCampaign[];
   lastSeenAt: string | null;
+  // Absent in caches written before the policy existed: open.
+  canCreate?: boolean;
 }
 
 export type HomeCache = Record<string, HomeCacheEntry>;
@@ -268,27 +270,38 @@ export interface Classification {
   status: HomeHost["status"];
   // null when nothing fresh came back; the caller falls back to its cache.
   campaigns: HomeCampaign[] | null;
+  // Whether the account may start a campaign there; only meaningful with a
+  // fresh list. A server that does not say (before 0.25) is open.
+  canCreate: boolean;
   error: string;
 }
 
+export function parseCanCreate(body: unknown): boolean {
+  const value = (body as { canCreateCampaigns?: unknown } | null)?.canCreateCampaigns;
+  return value !== false;
+}
+
 export function classifyOutcome(outcome: FetchOutcome, origin: string): Classification {
-  if (outcome.kind === "skipped") return { status: outcome.status, campaigns: null, error: outcome.error };
-  if (outcome.kind === "failed") return { status: "offline", campaigns: null, error: outcome.error };
+  if (outcome.kind === "skipped") {
+    return { status: outcome.status, campaigns: null, canCreate: true, error: outcome.error };
+  }
+  if (outcome.kind === "failed") return { status: "offline", campaigns: null, canCreate: true, error: outcome.error };
   if (outcome.status === 401 || outcome.status === 403) {
-    return { status: "needsLogin", campaigns: null, error: "" };
+    return { status: "needsLogin", campaigns: null, canCreate: true, error: "" };
   }
   if (outcome.status < 200 || outcome.status >= 300) {
-    return { status: "offline", campaigns: null, error: `${origin} answered ${outcome.status}.` };
+    return { status: "offline", campaigns: null, canCreate: true, error: `${origin} answered ${outcome.status}.` };
   }
   const campaigns = parseCampaigns(outcome.body, origin);
   if (!campaigns) {
     return {
       status: "offline",
       campaigns: null,
+      canCreate: true,
       error: `${origin} did not answer with a campaign list.`,
     };
   }
-  return { status: "online", campaigns, error: "" };
+  return { status: "online", campaigns, canCreate: parseCanCreate(outcome.body), error: "" };
 }
 
 // Fresh data wins; otherwise the cached list is shown and marked stale.
@@ -313,6 +326,7 @@ export function resolveHost(
     stale: !fresh,
     error: result.error,
     campaigns: result.campaigns ?? cached?.campaigns ?? [],
+    canCreate: fresh ? result.canCreate : (cached?.canCreate ?? true),
   };
 }
 
@@ -335,11 +349,12 @@ export function hostFromCache(
     stale: true,
     error: "",
     campaigns: cached?.campaigns ?? [],
+    canCreate: cached?.canCreate ?? true,
   };
 }
 
 export function cacheEntryFor(host: HomeHost): HomeCacheEntry {
-  return { status: host.status, campaigns: host.campaigns, lastSeenAt: host.lastSeenAt };
+  return { status: host.status, campaigns: host.campaigns, lastSeenAt: host.lastSeenAt, canCreate: host.canCreate };
 }
 
 // The device world leads; everything else follows in the order the player
