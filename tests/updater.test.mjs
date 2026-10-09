@@ -37,6 +37,44 @@ test("package-manager territory (/usr, /opt) reads as managed", () => {
 
 test("a linux binary outside /usr and /opt is a portable unpack", () => {
   assert.equal(detectInstallKind({}, LINUX_HOME, "linux", true), "portable");
+  // /usr/local is never a package manager's.
+  assert.equal(detectInstallKind({}, "/usr/local/odm/open-dungeon-master-client", "linux", true), "portable");
+});
+
+test("the rpm and deb builds name themselves through package-type", async () => {
+  const { packageFormatOf } = await import("../dist/main/updater.js");
+  const RPM_EXEC = "/opt/Open Dungeon Master/open-dungeon-master-client";
+  assert.equal(detectInstallKind({}, RPM_EXEC, "linux", true, "rpm"), "managed");
+  // Moved somewhere unusual, the package still owns it.
+  assert.equal(detectInstallKind({}, LINUX_HOME, "linux", true, "deb"), "managed");
+  // The sandbox markers still win.
+  assert.equal(detectInstallKind({ APPIMAGE: "/x.AppImage" }, RPM_EXEC, "linux", true, "rpm"), "appimage");
+  assert.equal(packageFormatOf("rpm\n"), "rpm");
+  assert.equal(packageFormatOf("deb"), "deb");
+  assert.equal(packageFormatOf("pacman"), "");
+  assert.equal(packageFormatOf(""), "");
+});
+
+test("a tar.gz unpacked under /opt is not mistaken for an rpm", async () => {
+  // No package-type: whatever owns /opt (the AUR package) is left to update
+  // it, instead of installing the rpm beside it and restarting the old copy.
+  const { Updater, packageFormatOf } = await import("../dist/main/updater.js");
+  const { host } = fakeHost({ format: packageFormatOf(""), execPath: "/opt/odm/open-dungeon-master-client" });
+  const kind = detectInstallKind({}, host.execPath, "linux", true, "");
+  assert.equal(kind, "managed");
+  const status = await new Updater(kind, "0.12.0", async () => "0.12.1", 0, host).checkForUpdates();
+  assert.equal(status.canDownload, false);
+  assert.match(status.instruction, /package manager/);
+});
+
+test("flatpak-info says which installation holds the app", async () => {
+  const { flatpakIsSystemWide } = await import("../dist/main/updater.js");
+  const info = (appPath) => `[Application]\nname=com.opendungeonmaster.client\n\n[Instance]\napp-path=${appPath}\n`;
+  assert.equal(flatpakIsSystemWide(info("/var/lib/flatpak/app/com.opendungeonmaster.client/x86_64/master/abc/files")), true);
+  assert.equal(flatpakIsSystemWide(info("/home/kaleb/.local/share/flatpak/app/com.opendungeonmaster.client/x86_64/master/abc/files")), false);
+  assert.equal(flatpakIsSystemWide(""), false);
+  // An installation flatpak was pointed elsewhere for counts as the player's.
+  assert.equal(flatpakIsSystemWide(info("/tmp/odm-flatpak-user/app/com.opendungeonmaster.client/x86_64/master/abc/files")), false);
 });
 
 test("windows splits on the portable marker, defaulting to nsis", () => {
@@ -254,12 +292,41 @@ test("a tar.gz install unpacks over itself and restarts, or reveals the archive 
   assert.deepEqual(log.relaunched, [""]);
   assert.equal(updater.progress().state, "ready");
 
-  const readOnly = fakeHost({ format: "", execPath: host.execPath, downloadsDir: () => folder, writable: async () => false });
+  // Not writable and no pkexec to lean on: the archive is shown instead.
+  const readOnly = fakeHost({
+    format: "",
+    execPath: host.execPath,
+    downloadsDir: () => folder,
+    writable: async () => false,
+    has: async (command) => command === "tar",
+  });
   const stuck = new Updater("portable", "0.12.0", async () => "0.12.1", 0, readOnly.host);
   await stuck.downloadAndInstall();
   assert.deepEqual(readOnly.log.ran, []);
   assert.deepEqual(readOnly.log.revealed, [file]);
   assert.match(stuck.progress().message, /Unpack it/);
+  await fsp.rm(folder, { recursive: true, force: true });
+});
+
+test("a tar.gz install in a folder only root can write goes through pkexec", async () => {
+  const { Updater } = await import("../dist/main/updater.js");
+  const fsp = await import("node:fs/promises");
+  const path = await import("node:path");
+  const folder = await tempFolder();
+  const { host, log } = fakeHost({
+    format: "",
+    execPath: "/usr/local/odm/open-dungeon-master-client",
+    downloadsDir: () => folder,
+    writable: async () => false,
+  });
+  const updater = new Updater("portable", "0.12.0", async () => "0.12.1", 0, host);
+  await updater.downloadAndInstall();
+  const file = path.join(folder, "open-dungeon-master-client-0.12.1-x64.tar.gz");
+  assert.deepEqual(log.ran, [
+    ["pkexec", "tar", "-xzf", file, "-C", "/usr/local/odm", "--strip-components=1", "--no-same-owner"],
+  ]);
+  assert.deepEqual(log.revealed, []);
+  assert.deepEqual(log.relaunched, [""]);
   await fsp.rm(folder, { recursive: true, force: true });
 });
 
@@ -299,18 +366,229 @@ test("a Mac install swaps the bundle from the release zip", async () => {
   await fsp.rm(folder, { recursive: true, force: true });
 });
 
-test("a flatpak bundle is handed to the software center", async () => {
+// The shell command inside an osascript "with administrator privileges"
+// call, unescaped from its AppleScript string.
+function adminScript(args) {
+  const match = /^do shell script "(.*)" with administrator privileges$/s.exec(args[1]);
+  assert.ok(match, args[1]);
+  return match[1].replace(/\\(["\\])/g, "$1");
+}
+
+test("a Mac install the account cannot write moves the bundle behind the password prompt", async () => {
+  const { Updater } = await import("../dist/main/updater.js");
+  const fsp = await import("node:fs/promises");
+  const path = await import("node:path");
+  const { execFile } = await import("node:child_process");
+  const folder = await tempFolder();
+  // A quote in the path, to prove the shell and AppleScript quoting.
+  const apps = path.join(folder, "Kaleb's \"Apps\"");
+  const downloads = path.join(folder, "Downloads");
+  await fsp.mkdir(downloads, { recursive: true });
+  const bundle = path.join(apps, "Open Dungeon Master.app");
+  const exe = path.join(bundle, "Contents", "MacOS", "Open Dungeon Master");
+  await fsp.mkdir(path.dirname(exe), { recursive: true });
+  await fsp.writeFile(exe, "old");
+  const { host, log } = fakeHost({
+    platform: "darwin",
+    arch: "x64",
+    format: "",
+    execPath: exe,
+    downloadsDir: () => downloads,
+    writable: async (dir) => dir !== apps,
+    run: async (command, args) => {
+      log.ran.push([command, ...args]);
+      if (command === "ditto") {
+        const staging = args[args.length - 1];
+        await fsp.mkdir(path.join(staging, "Open Dungeon Master.app", "Contents", "MacOS"), { recursive: true });
+        await fsp.writeFile(path.join(staging, "Open Dungeon Master.app", "Contents", "MacOS", "Open Dungeon Master"), "new");
+        return { code: 0, stderr: "" };
+      }
+      // osascript stands in by running the shell command it was handed.
+      return new Promise((resolve) => {
+        execFile("sh", ["-c", adminScript(args)], (err, _out, stderr) => resolve({ code: err ? 1 : 0, stderr }));
+      });
+    },
+  });
+  const updater = new Updater("mac", "0.12.0", async () => "0.12.1", 0, host);
+  await updater.downloadAndInstall();
+  assert.deepEqual(log.ran.map((call) => call[0]), ["ditto", "osascript"]);
+  // Unpacked next to the download, where this account can write.
+  assert.equal(path.dirname(log.ran[0][log.ran[0].length - 1]), downloads);
+  assert.equal(await fsp.readFile(exe, "utf8"), "new");
+  assert.deepEqual(await fsp.readdir(apps), ["Open Dungeon Master.app"]);
+  assert.deepEqual(await fsp.readdir(downloads), []);
+  assert.deepEqual(log.relaunched, [""]);
+  await fsp.rm(folder, { recursive: true, force: true });
+});
+
+test("a Mac copy run from where Gatekeeper put it is installed into Applications", async () => {
+  const { Updater } = await import("../dist/main/updater.js");
+  const fsp = await import("node:fs/promises");
+  const folder = await tempFolder();
+  const exe = "/private/var/folders/xy/T/AppTranslocation/1234/d/Open Dungeon Master.app/Contents/MacOS/Open Dungeon Master";
+  const { host, log } = fakeHost({
+    platform: "darwin",
+    arch: "arm64",
+    format: "",
+    execPath: exe,
+    downloadsDir: () => folder,
+    // Neither the translocated copy nor /Applications (on this test box).
+    writable: async (dir) => dir === folder,
+    run: async (command, args) => {
+      log.ran.push([command, ...args]);
+      if (command === "ditto") {
+        await fsp.mkdir(`${args[args.length - 1]}/Open Dungeon Master.app`, { recursive: true });
+      }
+      return { code: 0, stderr: "" };
+    },
+  });
+  const updater = new Updater("mac", "0.12.0", async () => "0.12.1", 0, host);
+  await updater.downloadAndInstall();
+  assert.equal(log.ran[1][0], "osascript");
+  const script = adminScript(log.ran[1].slice(1));
+  assert.match(script, /mv '[^']*\/Open Dungeon Master\.app' '\/Applications\/Open Dungeon Master\.app'/);
+  assert.doesNotMatch(script, /AppTranslocation/);
+  assert.deepEqual(log.relaunched, ["/Applications/Open Dungeon Master.app/Contents/MacOS/Open Dungeon Master"]);
+  await fsp.rm(folder, { recursive: true, force: true });
+});
+
+test("a closed Mac password prompt keeps the old app and says so", async () => {
+  const { Updater } = await import("../dist/main/updater.js");
+  const fsp = await import("node:fs/promises");
+  const folder = await tempFolder();
+  const { host, log } = fakeHost({
+    platform: "darwin",
+    arch: "arm64",
+    format: "",
+    execPath: "/Applications/Open Dungeon Master.app/Contents/MacOS/Open Dungeon Master",
+    downloadsDir: () => folder,
+    writable: async (dir) => dir === folder,
+    run: async (command, args) => {
+      log.ran.push([command, ...args]);
+      if (command === "ditto") {
+        await fsp.mkdir(`${args[args.length - 1]}/Open Dungeon Master.app`, { recursive: true });
+        return { code: 0, stderr: "" };
+      }
+      return { code: 1, stderr: "0:180: execution error: User canceled. (-128)\n" };
+    },
+  });
+  const updater = new Updater("mac", "0.12.0", async () => "0.12.1", 0, host);
+  await assert.rejects(() => updater.downloadAndInstall(), /cancelled/);
+  assert.deepEqual(log.relaunched, []);
+  // The zip stays for a manual install; the staging folder does not.
+  assert.deepEqual(await fsp.readdir(folder), ["open-dungeon-master-client-0.12.1-arm64-mac.zip"]);
+  await fsp.rm(folder, { recursive: true, force: true });
+});
+
+test("a flatpak installs its bundle through the host's flatpak and restarts", async () => {
   const { Updater } = await import("../dist/main/updater.js");
   const fsp = await import("node:fs/promises");
   const path = await import("node:path");
   const folder = await tempFolder();
-  const { host, log } = fakeHost({ format: "", downloadsDir: () => folder });
+  const { host, log } = fakeHost({
+    format: "",
+    downloadsDir: () => folder,
+    flatpak: { id: "com.opendungeonmaster.client", system: true },
+  });
   const updater = new Updater("flatpak", "0.12.0", async () => "0.12.1", 0, host);
   assert.equal((await updater.checkForUpdates()).canDownload, true);
   await updater.downloadAndInstall();
+  const file = path.join(folder, "open-dungeon-master-client-0.12.1-x86_64.flatpak");
+  assert.deepEqual(log.ran, [
+    ["flatpak-spawn", "--host", "true"],
+    // -y, not --noninteractive: that would also refuse the password prompt.
+    ["flatpak-spawn", "--host", "flatpak", "install", "--system", "-y", "--bundle", file],
+  ]);
+  assert.deepEqual(log.opened, []);
+  assert.deepEqual(log.relaunched, [""]);
+  assert.deepEqual(await fsp.readdir(folder), []);
+  assert.equal(updater.progress().state, "ready");
+
+  const user = fakeHost({ format: "", downloadsDir: () => folder, flatpak: { id: "com.opendungeonmaster.client", system: false } });
+  await new Updater("flatpak", "0.12.0", async () => "0.12.1", 0, user.host).downloadAndInstall();
+  assert.equal(user.log.ran[1][4], "--user");
+  await fsp.rm(folder, { recursive: true, force: true });
+});
+
+test("a flatpak that cannot reach the host hands its bundle to the software center", async () => {
+  const { Updater } = await import("../dist/main/updater.js");
+  const fsp = await import("node:fs/promises");
+  const path = await import("node:path");
+  const folder = await tempFolder();
+  const { host, log } = fakeHost({
+    format: "",
+    downloadsDir: () => folder,
+    flatpak: { id: "com.opendungeonmaster.client", system: false },
+    // A bundle from before the org.freedesktop.Flatpak permission.
+    run: async (command, args) => {
+      log.ran.push([command, ...args]);
+      return { code: 1, stderr: "Portal call failed" };
+    },
+  });
+  const updater = new Updater("flatpak", "0.12.0", async () => "0.12.1", 0, host);
+  await updater.downloadAndInstall();
+  assert.deepEqual(log.ran, [["flatpak-spawn", "--host", "true"]]);
   assert.deepEqual(log.opened, [path.join(folder, "open-dungeon-master-client-0.12.1-x86_64.flatpak")]);
   assert.deepEqual(log.relaunched, []);
   assert.match(updater.progress().message, /software center/);
+  await fsp.rm(folder, { recursive: true, force: true });
+});
+
+test("a failed flatpak install says why and keeps the bundle", async () => {
+  const { Updater } = await import("../dist/main/updater.js");
+  const fsp = await import("node:fs/promises");
+  const folder = await tempFolder();
+  const { host, log } = fakeHost({
+    format: "",
+    downloadsDir: () => folder,
+    flatpak: { id: "com.opendungeonmaster.client", system: true },
+    run: async (command, args) => {
+      log.ran.push([command, ...args]);
+      return args[1] === "true" ? { code: 0, stderr: "" } : { code: 1, stderr: "error: Not authorized\n" };
+    },
+  });
+  const updater = new Updater("flatpak", "0.12.0", async () => "0.12.1", 0, host);
+  await assert.rejects(() => updater.downloadAndInstall(), /Not authorized/);
+  assert.equal(updater.progress().state, "error");
+  assert.equal((await fsp.readdir(folder)).length, 1);
+  assert.deepEqual(log.relaunched, []);
+  await fsp.rm(folder, { recursive: true, force: true });
+});
+
+test("the flatpak relaunch waits for the old sandbox, then runs the app", async () => {
+  // The host half of the command, run for real against a stand-in flatpak
+  // that reports the instance twice before it is gone.
+  const { flatpakRelaunchCommand } = await import("../dist/main/updater.js");
+  const fsp = await import("node:fs/promises");
+  const path = await import("node:path");
+  const { execFile } = await import("node:child_process");
+  const folder = await tempFolder();
+  const calls = path.join(folder, "calls");
+  await fsp.writeFile(
+    path.join(folder, "flatpak"),
+    [
+      "#!/bin/sh",
+      `echo "$*" >> '${calls}'`,
+      'if [ "$1" = ps ]; then',
+      `  n=$(grep -c '^ps' '${calls}')`,
+      '  [ "$n" -le 2 ] && echo com.opendungeonmaster.client',
+      "fi",
+      "exit 0",
+    ].join("\n"),
+    { mode: 0o755 },
+  );
+  const [command, args] = flatpakRelaunchCommand("com.opendungeonmaster.client");
+  assert.equal(command, "flatpak-spawn");
+  assert.deepEqual(args.slice(0, 2), ["--host", "sh"]);
+  const stdout = await new Promise((resolve, reject) => {
+    execFile(args[1], args.slice(2), { env: { ...process.env, PATH: `${folder}:${process.env.PATH}` } }, (err, out) =>
+      err ? reject(err) : resolve(out),
+    );
+  });
+  assert.equal(stdout, "up\n");
+  const lines = (await fsp.readFile(calls, "utf8")).trim().split("\n");
+  assert.equal(lines.filter((line) => line.startsWith("ps")).length, 3);
+  assert.equal(lines[lines.length - 1], "run com.opendungeonmaster.client");
   await fsp.rm(folder, { recursive: true, force: true });
 });
 

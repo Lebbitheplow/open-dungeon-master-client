@@ -23,8 +23,9 @@ asar: true
 icon: build/icon.png
 # Releases live on GitHub; the in-app updater reads the latest release's
 # latest.yml (NSIS) and latest-linux.yml (AppImage) straight from its
-# assets, no token needed once the repo is public. Other targets (deb, rpm,
-# tar.gz, dmg) ignore the feed; their installs are notify-only in the app.
+# assets, no token needed once the repo is public. The other installs (deb,
+# rpm, tar.gz, flatpak, the Mac zip) fetch their own asset from the release
+# and apply it (src/main/updater.ts).
 # opendungeonmaster.com links here rather than hosting binaries itself.
 publish:
   provider: github
@@ -55,7 +56,9 @@ flatpak:
   # dri and /run/udev added so the Gamepad API sees the Steam Deck's
   # controls (Steam Input's virtual pad) and other pads. --device=input
   # would be narrower, but the flatpak 1.14 that builds this on Ubuntu
-  # 24.04 does not know it.
+  # 24.04 does not know it. org.freedesktop.Flatpak lets the in-app updater
+  # install the next bundle with `flatpak-spawn --host flatpak install` and
+  # start it again from the host.
   finishArgs:
     - --socket=wayland
     - --socket=x11
@@ -66,6 +69,7 @@ flatpak:
     - --filesystem=home
     - --share=network
     - --talk-name=org.freedesktop.Notifications
+    - --talk-name=org.freedesktop.Flatpak
 mac:
   target: [dmg, zip]
   category: public.app-category.games

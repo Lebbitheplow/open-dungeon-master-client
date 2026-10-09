@@ -6,9 +6,10 @@ import type { InstallKind, UpdateProgress, UpdateStatus } from "../shared/types"
 // the AppImage and NSIS builds swap themselves out through electron-updater's
 // feed, an rpm or deb goes through the package manager behind the system's
 // password prompt, a tar.gz unpacks over itself, the Mac bundle is replaced
-// from the release zip, and a flatpak bundle is handed to the software
-// center. Only a store install (snap, pacman) keeps the old "here is where
-// to get it" note.
+// from the release zip, and a flatpak bundle is installed by the host's
+// flatpak. Where the app cannot write, the system's password prompt stands
+// in. Only a store install (snap, pacman) keeps the old "here is where to
+// get it" note.
 //
 // electron-updater answers null instead of checking whenever it does not
 // recognise the install (on Linux that is anything but an AppImage), which
@@ -84,6 +85,9 @@ export interface InstallHost {
   // Starts the app again once this process has quit (from a new binary when
   // one is given), then quits.
   relaunch(execPath?: string): void;
+  // The flatpak this run is, and whether it sits in the system-wide
+  // installation; null outside a flatpak.
+  flatpak?: { id: string; system: boolean } | null;
   fetchImpl?: typeof fetch;
 }
 
@@ -101,16 +105,20 @@ const INSTRUCTIONS: Record<InstallKind, string> = {
   mac: "Download the latest version from the releases page on GitHub.",
 };
 
-// How was this build installed? Decides whether the app may replace itself.
+// How was this build installed? Decides how the app replaces itself.
 // Sandbox and package-manager markers win over the path check because those
-// environments still mount the binary under /usr. The linux fallthrough
-// (a tar.gz unpacked anywhere) reads as "portable": notify-only, with the
-// plain download instruction.
+// environments still mount the binary under /usr. packageType is the
+// resources/package-type file electron-builder leaves in every rpm and deb
+// it builds (and nowhere else), so a tar.gz unpacked under /opt no longer
+// reads as one. Without it, /usr and /opt still mean a package manager owns
+// the files (the AUR package), which the app leaves to that manager;
+// /usr/local and everywhere else is a tar.gz unpack.
 export function detectInstallKind(
   env: NodeJS.ProcessEnv,
   execPath: string,
   platform: NodeJS.Platform,
   packaged: boolean,
+  packageType = "",
 ): InstallKind {
   if (!packaged) return "dev";
   if (env.APPIMAGE) return "appimage";
@@ -118,8 +126,51 @@ export function detectInstallKind(
   if (env.SNAP) return "snap";
   if (platform === "win32") return env.PORTABLE_EXECUTABLE_DIR ? "portable" : "nsis";
   if (platform === "darwin") return "mac";
+  if (packageType) return "managed";
+  if (execPath.startsWith("/usr/local/")) return "portable";
   if (execPath.startsWith("/usr/") || execPath.startsWith("/opt/")) return "managed";
   return "portable";
+}
+
+// Which package the app updates from: the package-type electron-builder
+// wrote, when it is one the release carries.
+export function packageFormatOf(packageType: string): PackageFormat {
+  const type = packageType.trim();
+  return type === "rpm" || type === "deb" ? type : "";
+}
+
+// /.flatpak-info names the deployed app's path, which says which
+// installation holds it. Anything but the system-wide one reads as the
+// player's own: a new build there is still the one flatpak run prefers.
+export function flatpakIsSystemWide(info: string): boolean {
+  const appPath = /^app-path=(.*)$/m.exec(info)?.[1] ?? "";
+  return appPath.startsWith("/var/lib/flatpak/");
+}
+
+// Starts a flatpak again from outside its sandbox once the running copy is
+// gone: a relaunch from inside would start the old build still mounted at
+// /app, and one started too soon meets the single-instance lock and quits.
+// "up" tells the app the host has the command before it quits; the wait
+// gives up after a minute.
+export function flatpakRelaunchCommand(id: string): [string, string[]] {
+  const script = [
+    "echo up",
+    "exec >/dev/null 2>&1",
+    "i=0",
+    'while [ "$i" -lt 120 ] && flatpak ps --columns=application | grep -qx "$1"; do sleep 0.5; i=$((i + 1)); done',
+    'exec flatpak run "$1"',
+  ].join("; ");
+  return ["flatpak-spawn", ["--host", "sh", "-c", script, "sh", id]];
+}
+
+// POSIX single quotes for a shell word.
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+// An AppleScript string literal.
+function appleScriptString(value: string): string {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
 // Plain numeric dotted compare; the release stream is x.y.z with no
@@ -421,12 +472,16 @@ export class Updater {
 
   // A tar.gz install unpacks the new build over itself. Linux replaces the
   // files under a running program without complaint; the old binaries stay
-  // alive until this process quits and the relaunch starts the new ones.
+  // alive until this process quits and the relaunch starts the new ones. A
+  // folder the player cannot write to (unpacked there as root) goes through
+  // pkexec, and the files stay root's.
   private async unpackOver(file: string, version: string): Promise<void> {
     const host = this.host!;
     const pathModule = await import("node:path");
     const dir = pathModule.dirname(host.execPath);
-    if (!(await host.has("tar")) || !(await host.writable(dir))) {
+    const direct = await host.writable(dir);
+    const elevate = !direct && (await host.has("pkexec"));
+    if (!(await host.has("tar")) || (!direct && !elevate)) {
       this.setProgress({
         state: "ready",
         percent: 100,
@@ -435,26 +490,41 @@ export class Updater {
       host.reveal(file);
       return;
     }
-    this.setProgress({ state: "installing", percent: 100, message: `Installing version ${version}...` });
+    this.setProgress({
+      state: "installing",
+      percent: 100,
+      message: elevate ? `Installing version ${version}. Your system may ask for your password.` : `Installing version ${version}...`,
+    });
     // The archive wraps everything in one versioned folder.
-    const { code, stderr } = await host.run("tar", ["-xzf", file, "-C", dir, "--strip-components=1"]);
+    const args = ["-xzf", file, "-C", dir, "--strip-components=1"];
+    const { code, stderr } = elevate
+      ? await host.run("pkexec", ["tar", ...args, "--no-same-owner"])
+      : await host.run("tar", args);
+    if (elevate && code === 126) throw new Error(`The install was cancelled. Version ${version} is in your Downloads folder.`);
     if (code !== 0) throw new Error(`Unpacking version ${version} failed${lastLine(stderr)}`);
     await this.discard(file);
     this.installed(version);
     host.relaunch();
   }
 
-  // The Mac bundle is replaced whole: the zip unpacks beside it, the old
-  // bundle steps aside, the new one takes its path, and the relaunch starts
-  // it from there. A bundle the player cannot write next to (a mounted disk
-  // image, someone else's Applications folder) gets the drag-and-drop note.
+  // The Mac bundle is replaced whole: the zip unpacks, the old bundle steps
+  // aside, the new one takes its path, and the relaunch starts it from
+  // there. A copy Gatekeeper runs from a read-only random path (never moved
+  // out of Downloads) or a disk image is not where the app lives, so the
+  // new build goes into Applications instead. A folder this account cannot
+  // write to takes the move behind the administrator password prompt.
   private async swapBundle(file: string, version: string): Promise<void> {
     const host = this.host!;
     const pathModule = await import("node:path");
-    const { mkdir, readdir, rename, rm } = await import("node:fs/promises");
-    const bundle = pathModule.resolve(host.execPath, "../../..");
+    const { mkdir, readdir, rm } = await import("node:fs/promises");
+    const running = pathModule.resolve(host.execPath, "../../..");
+    const adrift =
+      running.includes("/AppTranslocation/") ||
+      (running.startsWith("/Volumes/") && !(await host.writable(pathModule.dirname(running))));
+    const bundle = adrift ? pathModule.join("/Applications", pathModule.basename(running)) : running;
     const parent = pathModule.dirname(bundle);
-    if (!bundle.endsWith(".app") || !(await host.has("ditto")) || !(await host.writable(parent))) {
+    const elevated = !(await host.writable(parent));
+    if (!running.endsWith(".app") || !(await host.has("ditto")) || (elevated && !(await host.has("osascript")))) {
       this.setProgress({
         state: "ready",
         percent: 100,
@@ -463,8 +533,14 @@ export class Updater {
       host.reveal(file);
       return;
     }
-    this.setProgress({ state: "installing", percent: 100, message: `Installing version ${version}...` });
-    const staging = pathModule.join(parent, `.odm-update-${version}`);
+    this.setProgress({
+      state: "installing",
+      percent: 100,
+      message: elevated ? `Installing version ${version}. Your Mac may ask for your password.` : `Installing version ${version}...`,
+    });
+    // Beside the bundle, the swap is one rename on the same disk; the
+    // elevated move starts from a folder this account can write.
+    const staging = pathModule.join(elevated ? pathModule.dirname(file) : parent, `.odm-update-${version}`);
     await rm(staging, { recursive: true, force: true });
     await mkdir(staging, { recursive: true });
     try {
@@ -472,19 +548,90 @@ export class Updater {
       if (code !== 0) throw new Error(`Unpacking version ${version} failed${lastLine(stderr)}`);
       const unpacked = (await readdir(staging)).find((entry) => entry.endsWith(".app"));
       if (!unpacked) throw new Error(`The download of version ${version} did not contain an app.`);
-      const retired = `${bundle}.old`;
-      await rm(retired, { recursive: true, force: true });
-      await rename(bundle, retired);
-      try {
-        await rename(pathModule.join(staging, unpacked), bundle);
-      } catch (err) {
-        await rename(retired, bundle).catch(() => undefined);
-        throw err;
-      }
-      await rm(retired, { recursive: true, force: true }).catch(() => undefined);
+      const fresh = pathModule.join(staging, unpacked);
+      if (elevated) await this.moveBundleAsAdmin(fresh, bundle, version);
+      else await this.moveBundle(fresh, bundle);
     } finally {
       await rm(staging, { recursive: true, force: true }).catch(() => undefined);
     }
+    await this.discard(file);
+    this.installed(version);
+    host.relaunch(adrift ? pathModule.join(bundle, "Contents", "MacOS", pathModule.basename(host.execPath)) : undefined);
+  }
+
+  // The old bundle (when there is one) steps aside and comes back if the
+  // new one cannot take its place.
+  private async moveBundle(fresh: string, bundle: string): Promise<void> {
+    const { rename, rm } = await import("node:fs/promises");
+    const retired = `${bundle}.old`;
+    await rm(retired, { recursive: true, force: true });
+    let hadOld = true;
+    try {
+      await rename(bundle, retired);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      hadOld = false;
+    }
+    try {
+      await rename(fresh, bundle);
+    } catch (err) {
+      if (hadOld) await rename(retired, bundle).catch(() => undefined);
+      throw err;
+    }
+    await rm(retired, { recursive: true, force: true }).catch(() => undefined);
+  }
+
+  // The same steps as one shell command run by osascript with
+  // administrator privileges, which puts up the Mac's own password prompt.
+  private async moveBundleAsAdmin(fresh: string, bundle: string, version: string): Promise<void> {
+    const b = shellQuote(bundle);
+    const r = shellQuote(`${bundle}.old`);
+    const f = shellQuote(fresh);
+    const script = `rm -rf ${r} && { [ ! -e ${b} ] || mv ${b} ${r}; } && { mv ${f} ${b} || { [ ! -e ${r} ] || mv ${r} ${b}; exit 1; }; } && rm -rf ${r}`;
+    const { code, stderr } = await this.host!.run("osascript", [
+      "-e",
+      `do shell script ${appleScriptString(script)} with administrator privileges`,
+    ]);
+    // -128 is the player closing the password prompt.
+    if (/-128/.test(stderr)) throw new Error(`The install was cancelled. Version ${version} is in your Downloads folder.`);
+    if (code !== 0) throw new Error(`Moving version ${version} into place failed${lastLine(stderr)}`);
+  }
+
+  // A flatpak bundle installs from the host side: flatpak-spawn reaches the
+  // host's flatpak (the bundle's --talk-name=org.freedesktop.Flatpak) and
+  // installs into whichever installation holds the running copy, the
+  // system-wide one behind the same password prompt the software center
+  // uses. A bundle built before that permission cannot reach the host, so
+  // its download still goes to the software center.
+  private async installFlatpak(file: string, version: string): Promise<void> {
+    const host = this.host!;
+    const flatpak = host.flatpak;
+    const reachable =
+      Boolean(flatpak) && (await host.has("flatpak-spawn")) && (await host.run("flatpak-spawn", ["--host", "true"])).code === 0;
+    if (!flatpak || !reachable) {
+      this.setProgress({
+        state: "ready",
+        percent: 100,
+        message: `Version ${version} is downloaded. Your software center is opening it: choose Install there, then start the app again.`,
+      });
+      await host.open(file);
+      return;
+    }
+    this.setProgress({
+      state: "installing",
+      percent: 100,
+      message: flatpak.system ? `Installing version ${version}. Your system may ask for your password.` : `Installing version ${version}...`,
+    });
+    const { code, stderr } = await host.run("flatpak-spawn", [
+      "--host",
+      "flatpak",
+      "install",
+      flatpak.system ? "--system" : "--user",
+      "-y",
+      "--bundle",
+      file,
+    ]);
+    if (code !== 0) throw new Error(`Flatpak could not install version ${version}${lastLine(stderr)}`);
     await this.discard(file);
     this.installed(version);
     host.relaunch();
@@ -500,14 +647,7 @@ export class Updater {
     if (this.kind === "managed") return this.installPackage(file, version);
     if (this.kind === "portable") return this.unpackOver(file, version);
     if (this.kind === "mac") return this.swapBundle(file, version);
-    // A flatpak bundle installs from the host side only, and the sandbox has
-    // no flatpak command; the software center is what opens it.
-    this.setProgress({
-      state: "ready",
-      percent: 100,
-      message: `Version ${version} is downloaded. Your software center is opening it: choose Install there, then start the app again.`,
-    });
-    await this.host!.open(file);
+    return this.installFlatpak(file, version);
   }
 
   // The package route: one file from the release into Downloads, then
