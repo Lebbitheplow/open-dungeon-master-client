@@ -2,6 +2,7 @@
 // process. Pure declarations only: this file is shared by the CommonJS main
 // build and the browser renderer build, so it must stay runtime-free.
 
+import type { DeckChoice, DeckInfo, FieldRect } from "./deck";
 import type { StoryMemory, StoryMemoryStatus } from "./story-memory";
 
 export type SignupMode = "open" | "invite" | "closed";
@@ -216,6 +217,8 @@ export interface AppInfo {
   // What the background check had found by the time the page asked: a
   // renderer that loaded after the check still hears about it.
   update?: UpdateStatus | null;
+  // The Steam Deck layout (src/shared/deck.ts). Desktop only.
+  deck?: DeckInfo;
 }
 
 export interface UpdateStatus {
@@ -482,6 +485,12 @@ export interface OdmBridge {
   localSpeechStatus?(): Promise<Result<{ speech: LocalSpeechStatus }>>;
   localSpeechInstall?(): Promise<Result<{ speech: LocalSpeechStatus }>>;
   appInfo(): Promise<AppInfo>;
+  // The Steam Deck layout switch in Settings; answers with the info as it
+  // stands after the change. Desktop only.
+  setDeckChoice?(choice: DeckChoice): Promise<DeckInfo>;
+  // Steam's on-screen keyboard over a text field (field in CSS pixels of
+  // this window), or put away. A no-op unless Steam runs the session.
+  steamKeyboard?(open: boolean, field?: FieldRect, multiline?: boolean): Promise<void>;
   updateCheck(): Promise<Result<{ update: UpdateStatus }>>;
   updateInstall(): Promise<Result>;
   onEvent(listener: (event: ShellEvent) => void): void;

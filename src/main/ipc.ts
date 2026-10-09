@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import os from "node:os";
-import { app, ipcMain, nativeTheme, type IpcMainInvokeEvent } from "electron";
+import { app, ipcMain, nativeTheme, shell, type IpcMainInvokeEvent } from "electron";
 import type {
   ServerProbe,
   AiSetup,
@@ -24,6 +24,14 @@ import {
   type JoinLink,
 } from "../shared/deep-link";
 import { NO_SAVED_AI, harnessPatch, openAiPatch, savedAiFrom } from "../shared/ai-setup";
+import {
+  STEAM_KEYBOARD_CLOSE,
+  parseDeckChoice,
+  steamKeyboardUrl,
+  withDeckChoice,
+  type DeckInfo,
+  type FieldRect,
+} from "../shared/deck";
 import { speechStatusFrom } from "../shared/speech";
 import { coverRequestUrl, type HostInput } from "../shared/home-feed-logic";
 import { landingPath, safeInnerPath } from "../shared/open-path";
@@ -74,6 +82,8 @@ export interface ShellContext {
   tunnel: QuickTunnel;
   localAi: LocalAiManager;
   updater: Updater;
+  // What src/shared/deck.ts found at start; absent where nobody asked.
+  deck?: DeckInfo;
 }
 
 export interface ShellIpc {
@@ -86,6 +96,15 @@ export interface ShellIpc {
 // Everything arriving over IPC is untrusted renderer input: coerce and cap.
 function str(value: unknown, max: number): string {
   return typeof value === "string" ? value.slice(0, max) : "";
+}
+
+function fieldOf(value: unknown): FieldRect {
+  const raw = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+  const num = (key: string): number => {
+    const n = raw[key];
+    return typeof n === "number" && Number.isFinite(n) ? Math.max(0, Math.min(n, 16384)) : 0;
+  };
+  return { x: num("x"), y: num("y"), width: num("width"), height: num("height") };
 }
 
 function joinCodeOf(value: unknown): string {
@@ -1011,7 +1030,31 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
 
   ipcMain.handle("local-ai:status", () => localAi.status());
 
-  ipcMain.handle("app:info", () => ({ version: app.getVersion(), installKind: updater.kind, update: updater.lastFound() }));
+  // The Steam Deck layout: the switch saves the choice and redraws at once;
+  // the window itself (full screen in Game Mode) follows on the next start.
+  let deck = ctx.deck;
+  ipcMain.handle("app:info", () => ({
+    version: app.getVersion(),
+    installKind: updater.kind,
+    update: updater.lastFound(),
+    deck,
+  }));
+  ipcMain.handle("deck:set-choice", (_event, raw: unknown) => {
+    if (!deck) return undefined;
+    const choice = parseDeckChoice(raw);
+    store.setDeckChoice(choice);
+    deck = withDeckChoice(deck, choice);
+    return deck;
+  });
+  // Steam's keyboard comes and goes through its own deep links, the way SDL
+  // asks for it on a Deck. Off Steam there is nobody to answer them, and
+  // opening one would start Steam, so nothing is sent.
+  ipcMain.handle("deck:keyboard", async (_event, open: unknown, field: unknown, multiline: unknown) => {
+    if (!deck?.steam) return;
+    const url =
+      open === true ? steamKeyboardUrl(win.screenRect(fieldOf(field)), multiline === true) : STEAM_KEYBOARD_CLOSE;
+    await shell.openExternal(url).catch(() => undefined);
+  });
 
   // The screens' theme (docs/vtt-parity-implementation-plan.md 18.2, phase
   // 29): the OS frame follows the parchment or the night.

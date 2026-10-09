@@ -2,6 +2,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { spawn } from "node:child_process";
 import { app, safeStorage, shell } from "electron";
+import { detectDeck } from "../shared/deck";
 import { joinLinkFromArgv, parseJoinLink, type JoinLink } from "../shared/deep-link";
 import { LocalAiManager } from "./local-ai/manager";
 import { LocalServer } from "./local-server";
@@ -165,8 +166,27 @@ function main(): void {
       },
     );
 
+    // The Steam Deck layout (src/shared/deck.ts): the hardware, the OS
+    // (inside a flatpak the host's os-release is under /run/host), Steam's
+    // markers in the environment, a launch flag, and the saved choice.
+    const readText = (file: string): string => {
+      if (process.platform !== "linux") return "";
+      try {
+        return fs.readFileSync(file, "utf8");
+      } catch {
+        return "";
+      }
+    };
+    const deck = detectDeck({
+      env: process.env,
+      argv: process.argv,
+      dmiVendor: readText("/sys/devices/virtual/dmi/id/board_vendor"),
+      dmiProduct: readText("/sys/devices/virtual/dmi/id/product_name"),
+      osRelease: readText("/run/host/os-release") || readText("/etc/os-release"),
+      choice: store.deckChoice(),
+    });
     win = new ShellWindow();
-    win.create();
+    win.create({ fullscreen: deck.gameMode, maximize: deck.active && deck.device });
     // A logout inside the server's web UI already revoked the session
     // server-side; forget the matching stored token so the server list does
     // not offer a dead one. The local entry keeps its secretCipher, so the
@@ -176,7 +196,7 @@ function main(): void {
         origin === local.origin ? store.get(LOCAL_SERVER_ID) : store.findByOrigin(origin);
       if (entry) store.clearToken(entry.id);
     });
-    ipc = registerIpc({ store, window: win, local, tunnel, localAi, updater });
+    ipc = registerIpc({ store, window: win, local, tunnel, localAi, updater, deck });
     // Not before the page listens: an answer sent into a loading window was
     // lost, and the player never saw the popup.
     updater.checkOnStartup(win.whenPageReady());

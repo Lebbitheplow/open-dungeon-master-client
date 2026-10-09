@@ -1,8 +1,18 @@
 // The shell UI's entry point: mounts the frame, wires the bridge's events
 // to the screens, and paints the home. The screens themselves live in the
 // sibling modules; all privileged work happens across window.odm.
-import { closeOverlay, mountShell, repaintUpdatePopup, showUpdatePopup, updateNoteFor } from "./chrome.js";
-import { closeDrawer, createDrawer, isDrawerOpen } from "./drawer.js";
+import {
+  applyDeckLayout,
+  closeOverlay,
+  closeUpdatePopup,
+  isUpdatePopupOpen,
+  mountShell,
+  repaintUpdatePopup,
+  showUpdatePopup,
+  updateNoteFor,
+} from "./chrome.js";
+import { closeDrawer, createDrawer, isDrawerOpen, toggleDrawer } from "./drawer.js";
+import { startGamepad } from "./gamepad.js";
 import { renderHome } from "./home.js";
 import { aiProgress } from "./local-ai.js";
 import { renderAdd, renderAuth } from "./servers.js";
@@ -22,6 +32,21 @@ function rerenderHome(): void {
   if (state.screenName === "home") renderHome();
 }
 
+// The way back, for Android's back gesture and a controller's B: a running
+// tour ends first, then the update popup, an open drawer and a shell
+// screen over a world close; then the world's previous page, and any
+// inner screen returns home. layersOnly stops after the closing part. At
+// home, atRoot decides what back means.
+function goBack(layersOnly: boolean, atRoot: () => void): void {
+  if (isTourActive()) endTour();
+  else if (isUpdatePopupOpen()) closeUpdatePopup();
+  else if (isDrawerOpen()) closeDrawer();
+  else if (closeOverlay() || layersOnly) return;
+  else if (isGameShowing() && gameBack()) return;
+  else if (state.screenName === "home") atRoot();
+  else goHome();
+}
+
 // Screens that show live status (the device world, the tunnel) repaint in
 // place when it changes; the others keep what they have.
 function rerenderLive(): void {
@@ -34,15 +59,9 @@ window.odm.onEvent((event) => {
     goHome();
     void refreshFeed();
   } else if (event.kind === "back") {
-    // Android's back gesture: a running tour ends first, then an open
-    // drawer closes, any inner screen returns home, and home leaves the
-    // app, the way a root screen should.
-    if (isTourActive()) endTour();
-    else if (isDrawerOpen()) closeDrawer();
-    else if (closeOverlay()) return;
-    else if (isGameShowing() && gameBack()) return;
-    else if (state.screenName === "home") void window.odm.leaveApp?.();
-    else goHome();
+    // Android's back gesture: home leaves the app, the way a root screen
+    // should.
+    goBack(false, () => void window.odm.leaveApp?.());
   } else if (event.kind === "local-status") {
     state.local = event.status;
     rerenderLive();
@@ -123,6 +142,7 @@ window.odm.onEvent((event) => {
 
 void window.odm.appInfo().then((info) => {
   state.appInfo = info;
+  applyDeckLayout();
   // The background check may have answered before this page was listening.
   if (info.update?.available) {
     state.updateStatus = info.update;
@@ -141,6 +161,29 @@ void window.odm
     rerenderHome();
   })
   .catch(() => undefined);
+// A controller (the Steam Deck's, or any pad) drives the shell and the
+// game screens; B backs out but never leaves the app from home. Steam's
+// keyboard is asked for only where Steam runs the session.
+startGamepad({
+  back: (layersOnly) => goBack(layersOnly, () => undefined),
+  menu: () => toggleDrawer(),
+  settings: () => {
+    if (state.overlayName === "settings") closeOverlay();
+    else if (state.screenName === "settings") goHome();
+    else renderSettings();
+  },
+  keyboard: (field) => {
+    if (!state.appInfo?.deck?.steam || !window.odm.steamKeyboard) return;
+    if (!field) {
+      void window.odm.steamKeyboard(false);
+      return;
+    }
+    const box = field.getBoundingClientRect();
+    const multiline = field instanceof HTMLTextAreaElement || field.isContentEditable;
+    void window.odm.steamKeyboard(true, { x: box.left, y: box.top, width: box.width, height: box.height }, multiline);
+  },
+});
+
 // Escape closes a shell screen laid over a world (the drawer's own
 // listener closes the drawer the same way).
 document.addEventListener("keydown", (event) => {

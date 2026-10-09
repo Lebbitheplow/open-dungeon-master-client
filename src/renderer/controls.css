@@ -22,6 +22,14 @@ button:where(:not(.game-root *)) {
 }
 button:where(:not(.game-root *)):disabled { cursor: default; }
 button:where(:not(.game-root *)):focus-visible { outline: 2px solid rgba(212, 171, 58, 0.6); outline-offset: 2px; }
+/* The controller's highlight (src/renderer/gamepad.ts), on whatever it
+   lands on, the game's own controls included. Script focus after a tap no
+   longer counts as :focus-visible, so this keys off :focus while a pad is
+   in use; the title screen's lines, slots and Enter light their own way. */
+html.pad-active :focus:not(.tt-menu-item, .tt-slot, .tt-enter) {
+  outline: 2px solid rgba(236, 210, 135, 0.95);
+  outline-offset: 2px;
+}
 
 /* The two doors of the title screen: the gold one lit from within, and the
    quiet hairline of gold over the night. */

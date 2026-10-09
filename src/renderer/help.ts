@@ -28,7 +28,7 @@ export function renderHelp(): void {
   const device = isAndroid ? "phone" : "computer";
   const wayBack = isAndroid
     ? "On Android, the back gesture at a page's root closes that world too."
-    : "On desktop, Ctrl+M brings you back from anywhere.";
+    : "On desktop, Ctrl+M brings you back from anywhere, and a controller's B button backs out of anything.";
   const scan = window.odm.scanInvite
     ? " Scan a QR code with the camera: a friend's invite, or the address code a server shows in its corner."
     : " An invite's QR code carries the same link; on a phone the app scans it.";
@@ -100,6 +100,16 @@ export function renderHelp(): void {
       `Once you are in a campaign, the Help button in its header explains every control, and offers guided tours of the table: one for players and one for the Dungeon Master's console. Each runs once on its own and can be replayed from Help.`,
       `The dice button in the campaign header turns the 3D dice on or off; when on, every roll the server makes tumbles across the screen before the result lands in the chat.`,
     ),
+    isAndroid
+      ? null
+      : section(
+          "gamepad",
+          "Steam Deck and controllers",
+          `On a Steam Deck the app switches to its Deck layout by itself: full screen in Game Mode, a title screen that fits the Deck's screen, and button hints along the foot. Settings has the switch; the launch options --steam-deck and --no-steam-deck decide for one Steam shortcut.`,
+          `To play from Game Mode, add the app to Steam in Desktop Mode: in Steam choose Games, then Add a Non-Steam Game to My Library, and pick Open Dungeon Master (the flatpak) or browse to the AppImage. If a shortcut to the AppImage does not start, open its Properties and put --no-sandbox in Launch Options.`,
+          `A controller works on every screen, the Deck's own or any pad: the D-pad moves the highlight, A presses, B backs out, Menu opens the menu and View opens Settings. At the table, X jumps to the message box with Steam's keyboard up, holding L1 talks in voice chat (with the mic on Push to talk), and holding R1 speaks to the Dungeon Master. Settings lists every control.`,
+          `The Deck's built-in microphone works like any other: pick it, or a headset, under Audio and dice in Settings, where the level meter shows whether it hears you.`,
+        ),
     section(
       "gear",
       "Settings",
