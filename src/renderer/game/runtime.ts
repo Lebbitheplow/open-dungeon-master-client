@@ -25,6 +25,10 @@ const MEDIA_ATTRS = ["src", "poster"];
 // the app's own origin and draw nothing.
 const SVG_IMAGE_ATTRS = ["href"];
 const MEDIA_SELECTOR = "img, audio, video, source, image";
+const SVG_NS = "http://www.w3.org/2000/svg";
+// What an SVG <image> shows while its protected picture is fetched: one
+// transparent pixel, so nothing is asked of the app's own origin.
+const BLANK_IMAGE = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
 
 let active: HostClient | null = null;
 let nativeFetch: typeof fetch | null = null;
@@ -221,6 +225,40 @@ function patchMediaSetters(): void {
       },
     });
   }
+  // An SVG <image> takes its address from an href attribute, which Preact
+  // sets with setAttribute before the element is in the page. The browser
+  // starts loading at once, so a host path ("/uploads/...") was asked of the
+  // app's own origin and missed (a 404, then the observer's swap a beat
+  // later). The battle map's tokens and backdrops and WorldForge's web of
+  // portraits all draw this way. So the attribute write itself is rerouted:
+  // a carried asset or a public host path is set directly, and a protected
+  // one shows nothing until its object URL arrives.
+  const nativeSetAttribute = Element.prototype.setAttribute;
+  Element.prototype.setAttribute = function setAttribute(this: Element, name: string, value: string): void {
+    const raw = String(value);
+    if (this.localName !== "image" || this.namespaceURI !== SVG_NS || !SVG_IMAGE_ATTRS.includes(name) || !isRootRelative(raw)) {
+      nativeSetAttribute.call(this, name, value);
+      return;
+    }
+    const local = localAsset(raw);
+    const client = active;
+    if (!local && !client) {
+      nativeSetAttribute.call(this, name, value);
+      return;
+    }
+    nativeSetAttribute.call(this, `data-odm-${name}`, raw);
+    if (local) {
+      nativeSetAttribute.call(this, name, local);
+      return;
+    }
+    const direct = resolveMedia(client!, raw, (url) => {
+      if (this.getAttribute(`data-odm-${name}`) !== raw) return;
+      hold(this, url);
+      nativeSetAttribute.call(this, name, url);
+    });
+    nativeSetAttribute.call(this, name, direct ?? BLANK_IMAGE);
+  };
+
   const NativeAudio = window.Audio;
   const PatchedAudio = function Audio(this: HTMLAudioElement, src?: string): HTMLAudioElement {
     const element = new NativeAudio();
