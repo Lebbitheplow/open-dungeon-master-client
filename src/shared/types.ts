@@ -225,7 +225,7 @@ export interface UpdateStatus {
   canSelfUpdate: boolean;
   // The app can fetch this install's release file itself and apply it: the
   // package manager for an rpm or deb, an unpack over the install for a
-  // tar.gz or the Mac bundle, the software center for a flatpak bundle.
+  // tar.gz or the Mac bundle, the host's flatpak for a flatpak bundle.
   canDownload: boolean;
   // Human words for installs that cannot self-update ("flatpak update", ...).
   instruction: string;

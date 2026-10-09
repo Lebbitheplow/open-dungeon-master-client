@@ -9,7 +9,7 @@ import { registerIpc, type ShellIpc } from "./ipc";
 import { LOCAL_SERVER_ID, ServerStore, type TokenCrypt } from "./servers";
 import { storyMemoryEnv, storyMemorySupported } from "../shared/story-memory";
 import { QuickTunnel } from "./tunnel";
-import { detectInstallKind, Updater } from "./updater";
+import { detectInstallKind, flatpakIsSystemWide, flatpakRelaunchCommand, packageFormatOf, Updater } from "./updater";
 import { ShellWindow } from "./window";
 
 // Session tokens go through the OS keychain when one is available. The
@@ -96,13 +96,28 @@ function main(): void {
       path.join(app.getPath("userData"), "tunnel.log"),
     );
     const localAi = new LocalAiManager(path.join(app.getPath("userData"), "local-ai"));
-    // Which package this machine installs, for the installs that update by
-    // package: Debian's marker file, else an rpm database.
-    const packageFormat = fs.existsSync("/etc/debian_version")
-      ? "deb"
-      : fs.existsSync("/usr/lib/sysimage/rpm") || fs.existsSync("/var/lib/rpm")
-        ? "rpm"
-        : "";
+    // Which package this install came from: electron-builder writes
+    // resources/package-type into the rpm and deb it builds, and nowhere
+    // else, so it is the package manager's own claim on these files.
+    let packageType = "";
+    if (app.isPackaged && process.platform === "linux") {
+      try {
+        packageType = fs.readFileSync(path.join(process.resourcesPath, "package-type"), "utf8").trim();
+      } catch {
+        // An AppImage, flatpak or tar.gz: no package behind it.
+      }
+    }
+    // A flatpak updates into the installation that holds it.
+    let flatpak: { id: string; system: boolean } | null = null;
+    if (process.env.FLATPAK_ID) {
+      let info = "";
+      try {
+        info = fs.readFileSync("/.flatpak-info", "utf8");
+      } catch {
+        // Not readable: the per-user installation is the safe guess.
+      }
+      flatpak = { id: process.env.FLATPAK_ID, system: flatpakIsSystemWide(info) };
+    }
     // Is the command on the PATH? Decides which package manager (and
     // whether pkexec) an install can lean on.
     const onPath = async (command: string): Promise<boolean> => {
@@ -118,12 +133,12 @@ function main(): void {
       return false;
     };
     const updater = new Updater(
-      detectInstallKind(process.env, process.execPath, process.platform, app.isPackaged),
+      detectInstallKind(process.env, process.execPath, process.platform, app.isPackaged, packageType),
       app.getVersion(),
       undefined,
       undefined,
       {
-        format: packageFormat,
+        format: packageFormatOf(packageType),
         platform: process.platform,
         arch: process.arch,
         execPath: process.execPath,
@@ -157,11 +172,30 @@ function main(): void {
             child.on("close", (code) => resolve({ code: code ?? -1, stderr }));
           }),
         // The new binary starts once this process is gone: from an AppImage
-        // the mount goes with the process, so the path must be the file.
+        // the mount goes with the process, so the path must be the file. A
+        // flatpak is started again by the host, which waits for this
+        // sandbox to close; the app quits once the host has the command.
         relaunch: (execPath) => {
-          app.relaunch(execPath ? { execPath, args: [] } : undefined);
-          app.quit();
+          if (!flatpak) {
+            app.relaunch(execPath ? { execPath, args: [] } : undefined);
+            app.quit();
+            return;
+          }
+          const [command, args] = flatpakRelaunchCommand(flatpak.id);
+          const child = spawn(command, args, { detached: true, stdio: ["ignore", "pipe", "ignore"] });
+          let quitting = false;
+          const quit = (): void => {
+            if (quitting) return;
+            quitting = true;
+            app.quit();
+          };
+          child.stdout.once("data", quit);
+          child.once("error", quit);
+          child.once("exit", quit);
+          setTimeout(quit, 5_000);
+          child.unref();
         },
+        flatpak,
       },
     );
 
