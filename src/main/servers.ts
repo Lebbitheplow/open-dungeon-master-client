@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { HomeCache } from "../shared/home-feed-logic";
+import { parseDeckChoice, type DeckChoice } from "../shared/deck";
 import { parseStoryMemory, type StoryMemory } from "../shared/story-memory";
 import type { ServerSummary } from "../shared/types";
 
@@ -52,6 +53,9 @@ interface RegistryFile {
   // The device world's story memory (src/shared/story-memory.ts); absent
   // means the server's English default.
   storyMemory?: StoryMemory;
+  // The Steam Deck layout forced on or off in Settings; absent means auto
+  // (on on a Deck and in Steam's Game Mode).
+  deckLayout?: "on" | "off";
   // Per room code, the secret that claims it in the broker's table
   // registry. Kept so the same code can be pointed at next session's
   // address; nobody else can move a table this shell claimed.
@@ -263,6 +267,17 @@ export class ServerStore {
     const registry = this.load();
     if (choice === "english") delete registry.storyMemory;
     else registry.storyMemory = choice;
+    this.save(registry);
+  }
+
+  deckChoice(): DeckChoice {
+    return parseDeckChoice(this.load().deckLayout);
+  }
+
+  setDeckChoice(choice: DeckChoice): void {
+    const registry = this.load();
+    if (choice === "auto") delete registry.deckLayout;
+    else registry.deckLayout = choice;
     this.save(registry);
   }
 

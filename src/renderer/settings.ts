@@ -3,7 +3,16 @@
 // and QR), the home screen's hide-offline toggle, help and the tour, and
 // the legal links. Servers keep their own account settings; this screen
 // says so and points there.
-import { backLink, closeOverlay, intro, onLeaveScreen, show, showOverlay, updateControls } from "./chrome.js";
+import {
+  applyDeckLayout,
+  backLink,
+  closeOverlay,
+  intro,
+  onLeaveScreen,
+  show,
+  showOverlay,
+  updateControls,
+} from "./chrome.js";
 import { button, chip, el, icon, spinner } from "./dom.js";
 import type { IconName } from "./dom.js";
 import { isGameShowing, mountDeviceSettings } from "./game-screen.js";
@@ -12,6 +21,7 @@ import { GUIDE_URL, renderHelp } from "./help.js";
 import { openLocal, shareRow } from "./local.js";
 import { renderLocalAi } from "./local-ai.js";
 import { DEVICE, isAndroid, refresh, state } from "./state.js";
+import { PAD_LEGEND, deckStatusLine, type DeckChoice } from "../shared/deck.js";
 import type { StoryMemory, StoryMemoryStatus } from "../shared/story-memory.js";
 import { startAppTour } from "./tour.js";
 
@@ -65,6 +75,41 @@ function audioSection(): HTMLElement {
     .catch(() => {
       host.replaceChildren(el("p", "hint", "The audio and dice controls did not load."));
     });
+  return card;
+}
+
+// The Steam Deck layout and the controller (src/shared/deck.ts): Auto, On
+// or Off, what the app found about this machine, and what every control
+// does. Desktop only; the window itself follows the choice next start.
+function deckSection(): HTMLElement | null {
+  const deck = state.appInfo?.deck;
+  const setChoice = window.odm.setDeckChoice;
+  if (isAndroid || !deck || !setChoice) return null;
+  const { card, body } = section("gamepad", "Steam Deck and controllers", deckStatusLine(deck));
+  const choices = el("div", "deck-choice");
+  choices.setAttribute("role", "radiogroup");
+  choices.setAttribute("aria-label", "Steam Deck layout");
+  const options: readonly [DeckChoice, string][] = [
+    ["auto", "Auto"],
+    ["on", "On"],
+    ["off", "Off"],
+  ];
+  for (const [choice, label] of options) {
+    const btn = button("secondary", label, () => {
+      void setChoice(choice).then((next) => {
+        if (next && state.appInfo) state.appInfo.deck = next;
+        applyDeckLayout();
+        renderSettings();
+      });
+    });
+    btn.setAttribute("role", "radio");
+    btn.setAttribute("aria-checked", String(deck.choice === choice));
+    choices.append(btn);
+  }
+  body.append(row("Deck layout. Auto turns it on on a Steam Deck and in Steam's Game Mode", choices));
+  const legend = el("dl", "pad-legend");
+  for (const entry of PAD_LEGEND) legend.append(el("dt", "", entry.control), el("dd", "", entry.does));
+  body.append(el("span", "settings-label", "The controller, on every screen and at the table"), legend);
   return card;
 }
 
@@ -402,6 +447,7 @@ export function renderSettings(): void {
   const sections = (): (HTMLElement | null)[] => [
     intro("Settings", "The app, your device world, and the way home."),
     audioSection(),
+    deckSection(),
     appSection(),
     deviceSection(),
     memorySection(),

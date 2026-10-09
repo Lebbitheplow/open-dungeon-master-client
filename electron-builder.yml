@@ -51,6 +51,21 @@ linux:
 flatpak:
   runtimeVersion: "24.08"
   baseVersion: "24.08"
+  # electron-builder's default permissions, with --device=all in place of
+  # dri and /run/udev added so the Gamepad API sees the Steam Deck's
+  # controls (Steam Input's virtual pad) and other pads. --device=input
+  # would be narrower, but the flatpak 1.14 that builds this on Ubuntu
+  # 24.04 does not know it.
+  finishArgs:
+    - --socket=wayland
+    - --socket=x11
+    - --share=ipc
+    - --device=all
+    - --filesystem=/run/udev:ro
+    - --socket=pulseaudio
+    - --filesystem=home
+    - --share=network
+    - --talk-name=org.freedesktop.Notifications
 mac:
   target: [dmg, zip]
   category: public.app-category.games

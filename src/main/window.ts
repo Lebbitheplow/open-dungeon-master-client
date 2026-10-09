@@ -1,5 +1,6 @@
 import path from "node:path";
 import { BrowserWindow, Menu, WebContentsView, screen, session, shell } from "electron";
+import type { FieldRect } from "../shared/deck";
 import type { ShellEvent } from "../shared/types";
 import { appIconPath } from "./app-icon";
 import { autoConfirmBluetoothPairing, wireBluetoothChooser } from "./bluetooth";
@@ -77,12 +78,17 @@ export class ShellWindow {
     this.onRevoked = handler;
   }
 
-  create(): void {
+  // Steam's Game Mode draws one window over the whole screen with no frame,
+  // so the app starts full screen there; a Deck in Desktop Mode starts
+  // maximized, since the default size is the whole 1280x800 panel and the
+  // taskbar would cut it off.
+  create(options: { fullscreen?: boolean; maximize?: boolean } = {}): void {
     this.win = new BrowserWindow({
       width: 1280,
       height: 800,
       minWidth: 900,
       minHeight: 600,
+      fullscreen: options.fullscreen === true,
       backgroundColor: "#0a0817",
       icon: appIconPath(),
       autoHideMenuBar: true,
@@ -110,7 +116,23 @@ export class ShellWindow {
       this.view = null;
     });
     Menu.setApplicationMenu(this.buildMenu());
+    if (options.maximize && !options.fullscreen) this.win.maximize();
     void this.win.loadFile(path.join(__dirname, "../renderer/index.html"));
+  }
+
+  // A box in the shell page's CSS pixels, in screen pixels: where Steam's
+  // keyboard must not cover the field being typed into.
+  screenRect(field: FieldRect): FieldRect | null {
+    if (!this.win) return null;
+    const zoom = this.win.webContents.getZoomFactor();
+    const bounds = this.win.getContentBounds();
+    const scale = screen.getDisplayMatching(bounds).scaleFactor;
+    return {
+      x: (bounds.x + field.x * zoom) * scale,
+      y: (bounds.y + field.y * zoom) * scale,
+      width: field.width * zoom * scale,
+      height: field.height * zoom * scale,
+    };
   }
 
   // The table view on a second screen (docs/vtt-parity-implementation-plan.md

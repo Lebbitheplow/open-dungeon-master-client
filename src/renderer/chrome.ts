@@ -41,6 +41,42 @@ export function mountShell(drawer: HTMLElement, scrim: HTMLElement): void {
   root.replaceChildren(drawer, scrim, page);
 }
 
+// The Steam Deck layout (src/shared/deck.ts) is a class on <html>: the
+// sheets size the shell for a 7 inch 1280x800 screen held at arm's length
+// and a thumb on the touchscreen.
+export function deckLayoutOn(): boolean {
+  return state.appInfo?.deck?.active === true;
+}
+
+// The strip of button hints along the foot of every shell screen in the
+// Deck layout (the sheet hides it inside a world, where the host's pages
+// own the window).
+let padHints: HTMLElement | null = null;
+
+function padHint(glyph: string | SVGSVGElement, label: string): HTMLElement {
+  const hint = el("span", "pad-hint");
+  const mark = el("span", "pad-glyph");
+  mark.append(glyph);
+  hint.append(mark, document.createTextNode(label));
+  return hint;
+}
+
+export function applyDeckLayout(): void {
+  const on = deckLayoutOn();
+  document.documentElement.classList.toggle("deck", on);
+  if (on && !padHints) {
+    padHints = el("div", "pad-hints");
+    padHints.setAttribute("aria-hidden", "true");
+    padHints.append(
+      padHint("A", "Select"),
+      padHint("B", "Back"),
+      padHint(icon("menu"), "Menu"),
+      padHint(icon("view"), "Settings"),
+    );
+    document.body.append(padHints);
+  }
+}
+
 function goHome(): void {
   void refresh().then(() => renderHome());
 }
@@ -299,6 +335,10 @@ export function updateControls(rerender: () => void): HTMLElement {
 let updatePopup: HTMLElement | null = null;
 let updatePopupShownFor = "";
 
+export function isUpdatePopupOpen(): boolean {
+  return updatePopup !== null;
+}
+
 export function closeUpdatePopup(): void {
   updatePopup?.remove();
   updatePopup = null;
@@ -396,7 +436,15 @@ export function footer(): HTMLElement {
   foot.append(el("span", "", state.updateNote || version));
   if (!isAndroid) {
     foot.append(updateControls(rerenderHome));
-    foot.append(el("span", "", "Ctrl+M brings you back here from any world."));
+    foot.append(
+      el(
+        "span",
+        "",
+        deckLayoutOn()
+          ? "B backs out of anything, Menu opens the menu, and the app guide has the rest of the controls."
+          : "Ctrl+M brings you back here from any world.",
+      ),
+    );
   }
   foot.append(...legalLinks());
   return foot;
