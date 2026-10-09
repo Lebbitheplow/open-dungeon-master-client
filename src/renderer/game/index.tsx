@@ -47,6 +47,9 @@ const ROUTES: Route[] = [
   { pattern: "/settings", load: () => import("@/app/settings/page") },
   { pattern: "/friends", load: () => import("@/app/friends/page"), skeleton: "list" },
   { pattern: "/admin", load: () => import("@/app/admin/page") },
+  // The guided setup: the admin panel's settings one question at a time,
+  // for a server this app is signed in to as an admin.
+  { pattern: "/setup", load: () => import("@/app/setup/page") },
   { pattern: "/reference", load: () => import("@/app/reference/page"), skeleton: "list" },
   // The rulebook: the whole SRD 5.1 as a book.
   { pattern: "/rulebook", load: () => import("@/app/rulebook/page") },

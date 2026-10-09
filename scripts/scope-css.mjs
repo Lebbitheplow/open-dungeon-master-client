@@ -187,12 +187,16 @@ export function scopePrelude(prelude) {
 
 // The flat form: "&" is written out as the scope selector, and a selector
 // without one becomes a descendant of it, exactly what nesting would have
-// made of it.
+// made of it. Only a bare "&" is the nesting token: Tailwind's arbitrary
+// variants put an escaped one inside a class name (`.\[\&\>header\]\:pr-9`),
+// and writing the scope into that renamed the class, so no element matched.
+const NESTING = /(?<!\\)&/g;
+
 export function flattenPrelude(prelude, scope) {
   return splitSelectors(prelude)
     .map((part) => {
       const selector = scopeSelector(part);
-      return selector.includes("&") ? selector.replaceAll("&", scope) : `${scope} ${selector}`;
+      return selector.search(NESTING) >= 0 ? selector.replace(NESTING, scope) : `${scope} ${selector}`;
     })
     .join(",");
 }
