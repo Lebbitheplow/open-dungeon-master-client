@@ -81,6 +81,13 @@ test("flattenPrelude keeps a class name with escaped commas whole", () => {
   assert.equal(scopePrelude(`${tailwind},body`), `${tailwind},&`);
 });
 
+test("flattenPrelude leaves the escaped & inside a Tailwind arbitrary variant alone", () => {
+  // [&>header]:pr-9 is how a wizard makes room for its close button.
+  const variant = String.raw`.\[\&\>header\]\:pr-9>header`;
+  assert.equal(flattenPrelude(variant, ".game-root"), `.game-root ${variant}`);
+  assert.equal(flattenPrelude(`${variant},:root`, ".game-root"), `.game-root ${variant},.game-root`);
+});
+
 test("flattenPrelude writes the scope out: descendant rules, the scope itself, and <html> attributes ahead of it", () => {
   const scope = ".game-root";
   assert.equal(flattenPrelude("h1,p", scope), ".game-root h1,.game-root p");
