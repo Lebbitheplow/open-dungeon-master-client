@@ -4,6 +4,7 @@ import {
   PAD_LEGEND,
   STEAM_KEYBOARD_CLOSE,
   deckFlag,
+  deckLaunchArgs,
   deckStatusLine,
   detectDeck,
   parseDeckChoice,
@@ -59,6 +60,11 @@ test("the saved choice decides over auto, and a launch flag decides over both", 
   assert.equal(detectDeck({ ...quiet, choice: "off", argv: ["app", "--steam-deck"] }).active, true);
   assert.equal(deckFlag(["--steam-deck", "--no-steam-deck"]), "off");
   assert.equal(deckFlag(["odm://join/X"]), "");
+  // An update's restart passes the flag on, and nothing else (a join link
+  // would join again).
+  assert.deepEqual(deckLaunchArgs(["app", "odm://join/X", "--steam-deck"]), ["--steam-deck"]);
+  assert.deepEqual(deckLaunchArgs(["app", "--steam-deck", "--no-steam-deck"]), ["--no-steam-deck"]);
+  assert.deepEqual(deckLaunchArgs(["app", "odm://join/X"]), []);
   assert.equal(parseDeckChoice("on"), "on");
   assert.equal(parseDeckChoice("sideways"), "auto");
   assert.equal(parseDeckChoice(undefined), "auto");

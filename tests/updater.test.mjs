@@ -589,6 +589,16 @@ test("the flatpak relaunch waits for the old sandbox, then runs the app", async 
   const lines = (await fsp.readFile(calls, "utf8")).trim().split("\n");
   assert.equal(lines.filter((line) => line.startsWith("ps")).length, 3);
   assert.equal(lines[lines.length - 1], "run com.opendungeonmaster.client");
+  // A Steam Deck launch option rides along to the new run.
+  const [, withFlag] = flatpakRelaunchCommand("com.opendungeonmaster.client", ["--steam-deck"]);
+  await fsp.writeFile(calls, "");
+  await new Promise((resolve, reject) => {
+    execFile(withFlag[1], withFlag.slice(2), { env: { ...process.env, PATH: `${folder}:${process.env.PATH}` } }, (err) =>
+      err ? reject(err) : resolve(),
+    );
+  });
+  const flagged = (await fsp.readFile(calls, "utf8")).trim().split("\n");
+  assert.equal(flagged[flagged.length - 1], "run com.opendungeonmaster.client --steam-deck");
   await fsp.rm(folder, { recursive: true, force: true });
 });
 

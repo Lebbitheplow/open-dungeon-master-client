@@ -52,6 +52,13 @@ export function deckFlag(argv: readonly string[]): "on" | "off" | "" {
   return "";
 }
 
+// That launch option again, for an update that starts the app anew
+// (src/main/index.ts), so the forced layout outlives the restart.
+export function deckLaunchArgs(argv: readonly string[]): string[] {
+  const flag = deckFlag(argv);
+  return flag === "on" ? ["--steam-deck"] : flag === "off" ? ["--no-steam-deck"] : [];
+}
+
 function osId(osRelease: string): string {
   const match = /^ID=["']?([^"'\n]*)/m.exec(osRelease);
   return (match?.[1] ?? "").trim().toLowerCase();

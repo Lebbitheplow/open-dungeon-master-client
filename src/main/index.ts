@@ -2,7 +2,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { spawn } from "node:child_process";
 import { app, safeStorage, shell } from "electron";
-import { detectDeck } from "../shared/deck";
+import { deckLaunchArgs, detectDeck } from "../shared/deck";
 import { joinLinkFromArgv, parseJoinLink, type JoinLink } from "../shared/deep-link";
 import { LocalAiManager } from "./local-ai/manager";
 import { LocalServer } from "./local-server";
@@ -176,13 +176,14 @@ function main(): void {
         // the mount goes with the process, so the path must be the file. A
         // flatpak is started again by the host, which waits for this
         // sandbox to close; the app quits once the host has the command.
+        // A Steam Deck launch option goes along either way.
         relaunch: (execPath) => {
           if (!flatpak) {
-            app.relaunch(execPath ? { execPath, args: [] } : undefined);
+            app.relaunch(execPath ? { execPath, args: deckLaunchArgs(process.argv) } : undefined);
             app.quit();
             return;
           }
-          const [command, args] = flatpakRelaunchCommand(flatpak.id);
+          const [command, args] = flatpakRelaunchCommand(flatpak.id, deckLaunchArgs(process.argv));
           const child = spawn(command, args, { detached: true, stdio: ["ignore", "pipe", "ignore"] });
           let quitting = false;
           const quit = (): void => {

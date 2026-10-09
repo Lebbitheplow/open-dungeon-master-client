@@ -151,16 +151,16 @@ export function flatpakIsSystemWide(info: string): boolean {
 // gone: a relaunch from inside would start the old build still mounted at
 // /app, and one started too soon meets the single-instance lock and quits.
 // "up" tells the app the host has the command before it quits; the wait
-// gives up after a minute.
-export function flatpakRelaunchCommand(id: string): [string, string[]] {
+// gives up after a minute. Any args follow the id to the new run.
+export function flatpakRelaunchCommand(id: string, args: readonly string[] = []): [string, string[]] {
   const script = [
     "echo up",
     "exec >/dev/null 2>&1",
     "i=0",
     'while [ "$i" -lt 120 ] && flatpak ps --columns=application | grep -qx "$1"; do sleep 0.5; i=$((i + 1)); done',
-    'exec flatpak run "$1"',
+    'exec flatpak run "$@"',
   ].join("; ");
-  return ["flatpak-spawn", ["--host", "sh", "-c", script, "sh", id]];
+  return ["flatpak-spawn", ["--host", "sh", "-c", script, "sh", id, ...args]];
 }
 
 // POSIX single quotes for a shell word.
