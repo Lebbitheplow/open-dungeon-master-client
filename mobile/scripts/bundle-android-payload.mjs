@@ -106,7 +106,9 @@ function main() {
     fs.mkdirSync(assets, { recursive: true });
     const zip = path.join(assets, "server-payload.zip");
     fs.rmSync(zip, { force: true });
-    execFileSync("zip", ["-q", "-r", "-X", zip, "."], { cwd: staging, stdio: "inherit" });
+    // Deflated as far as zip goes: the APK packer deflates the asset again
+    // and gains nothing on it, so this pass is the one that sets the size.
+    execFileSync("zip", ["-q", "-r", "-X", "-9", zip, "."], { cwd: staging, stdio: "inherit" });
     fs.copyFileSync(path.join(vendor, "odm-payload.json"), path.join(assets, "server-payload.json"));
     const size = (fs.statSync(zip).size / 1024 / 1024).toFixed(1);
     console.log(`Server payload zipped: ${size} MB`);
