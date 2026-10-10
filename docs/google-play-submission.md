@@ -777,6 +777,27 @@ settings material and `UnofficialPackNotice.tsx` already says so in the UI.
     so no native frame ever appears in a crash Play can see. Adding
     `ndk { debugSymbolLevel 'SYMBOL_TABLE' }` would silence the warning and
     little else.
+- **The four "app quality" suggestions in the console** (seen 2026-10-10)
+  are recommendations, not policy checks, and none of them blocks a release.
+  - *Edge-to-edge may not display for all users.* Done: `MainActivity` now
+    calls `EdgeToEdge.enable` with transparent bars and light icons on every
+    Android version, which is the alternative the note itself offers.
+    Capacitor's forced margins keep the page between the bars as before, so
+    the look is unchanged; the window background fills the bars.
+  - *Deprecated edge-to-edge APIs or parameters.* The app's own
+    `statusBarColor` and `navigationBarColor` theme attributes are gone from
+    `styles.xml`. What remains is inside `@capgo/inappbrowser`'s
+    `WebViewDialog` (`setStatusBarColor`, `setNavigationBarColor`,
+    `setDecorFitsSystemWindows`, `FLAG_TRANSLUCENT_STATUS`), all behind
+    version checks and still present in the plugin's 8.x line, so this note
+    may stay until upstream migrates. Harmless at runtime.
+  - *Picture-in-picture.* An engagement suggestion aimed at video apps.
+    Nothing in the app plays video that a corner window would serve. Skip.
+  - *Resizability and orientation restrictions.* The merged release manifest
+    has no `screenOrientation`, `resizeableActivity` or aspect-ratio
+    attributes, and no `setRequestedOrientation` call exists in the app, the
+    plugins or the scanner library, so there is nothing to remove. The one
+    real to-do behind it is a layout pass on a tablet or foldable.
 - **The WebView loads arbitrary user-entered server URLs.** This is core to
   the product and is fine, but it is the reason the IARC "unrestricted
   internet access" answer is yes, and it is worth one line in the listing
