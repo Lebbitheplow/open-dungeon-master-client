@@ -84,6 +84,7 @@ test("a payload with no src at all prunes without complaint", () => {
 import {
   dropLocalAssets,
   pruneBuildTraces,
+  pruneDeadFiles,
   pruneGpuProviders,
   pruneNamedModuleDirs,
   readLocalAssetManifest,
@@ -189,6 +190,61 @@ test("the renderer's manifest is read from beside its game bundle", () => {
     fs.writeFileSync(path.join(dir, "game/public/manifest.json"), JSON.stringify({ "/fx/": ["a.webp"] }));
     assert.deepEqual(readLocalAssetManifest(dir), { "/fx/": ["a.webp"] });
     assert.equal(readLocalAssetManifest(path.join(dir, "nowhere")), null);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("source maps, declarations, TypeScript sources, readmes and test folders leave; licenses and code stay", () => {
+  const dir = stage([
+    "node_modules/onnxruntime-common/dist/ort-common.js",
+    "node_modules/onnxruntime-common/dist/ort-common.js.map",
+    "node_modules/onnxruntime-common/dist/ort-common.d.ts",
+    "node_modules/onnxruntime-common/lib/index.ts",
+    "node_modules/onnxruntime-common/README.md",
+    "node_modules/onnxruntime-common/LICENSE",
+    "node_modules/onnxruntime-common/package.json",
+    "node_modules/mediasoup/node/lib/test/a.test.js",
+    "node_modules/mediasoup/node/lib/index.js",
+    "node_modules/mediasoup/test/b.js",
+    "node_modules/@jsquash/jpeg/CHANGELOG.md",
+    "node_modules/@jsquash/jpeg/codec/enc/mozjpeg_enc.wasm",
+    // A package whose own name is on the dead-folder list keeps its code.
+    "node_modules/docs/index.js",
+    "node_modules/examples/index.js",
+    ".next/server/app/page.js",
+    ".next/server/app/page.js.map",
+    ".next/static/chunks/main.js",
+    "server.js",
+    "package.json",
+  ]);
+  try {
+    const dropped = pruneServerPayload(dir);
+    assert.ok(dropped.some((line) => line.startsWith("source maps, type declarations, TypeScript sources, readmes and test folders (")), dropped.join(", "));
+    const gone = [
+      "node_modules/onnxruntime-common/dist/ort-common.js.map",
+      "node_modules/onnxruntime-common/dist/ort-common.d.ts",
+      "node_modules/onnxruntime-common/lib/index.ts",
+      "node_modules/onnxruntime-common/README.md",
+      "node_modules/mediasoup/test",
+      "node_modules/@jsquash/jpeg/CHANGELOG.md",
+      ".next/server/app/page.js.map",
+    ];
+    for (const rel of gone) assert.ok(!fs.existsSync(path.join(dir, rel)), `${rel} should be gone`);
+    const kept = [
+      "node_modules/onnxruntime-common/dist/ort-common.js",
+      "node_modules/onnxruntime-common/LICENSE",
+      "node_modules/onnxruntime-common/package.json",
+      "node_modules/mediasoup/node/lib/test/a.test.js",
+      "node_modules/mediasoup/node/lib/index.js",
+      "node_modules/@jsquash/jpeg/codec/enc/mozjpeg_enc.wasm",
+      "node_modules/docs/index.js",
+      "node_modules/examples/index.js",
+      ".next/server/app/page.js",
+      ".next/static/chunks/main.js",
+    ];
+    for (const rel of kept) assert.ok(fs.existsSync(path.join(dir, rel)), `${rel} should stay`);
+    assert.equal(pruneDeadFiles(dir), 0);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

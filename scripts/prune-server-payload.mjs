@@ -64,7 +64,40 @@ export function pruneServerPayload(dir) {
   if (traces) dropped.push(`.next/server/**/*.nft.json (${traces})`);
   const providers = pruneGpuProviders(dir);
   if (providers) dropped.push(`onnxruntime GPU providers (${providers})`);
+  const dead = pruneDeadFiles(dir);
+  if (dead) dropped.push(`source maps, type declarations, TypeScript sources, readmes and test folders (${dead})`);
   return dropped.sort();
+}
+
+// Files no running server opens, found under node_modules and the build
+// output: source maps (Node reads none without --enable-source-maps, and a
+// missing map is not an error), type declarations and the TypeScript
+// sources some packages publish beside their JavaScript, readmes and
+// changelogs, and packages' own test folders. Licenses stay. A payload
+// carried about 1.2 MB of these across some 600 files.
+const DEAD_FILE = /\.(map|d\.ts|d\.mts|d\.cts|ts|mts|cts|md|markdown|tsbuildinfo)$/i;
+const DEAD_DIR = new Set(["test", "tests", "__tests__", "docs", "example", "examples", ".github"]);
+
+export function pruneDeadFiles(dir) {
+  let count = 0;
+  const sweep = (root, underModules) =>
+    walk(root, (full, entry) => {
+      if (entry.isDirectory()) {
+        if (underModules && DEAD_DIR.has(entry.name) && path.basename(path.dirname(path.dirname(full))) === "node_modules") {
+          fs.rmSync(full, { recursive: true, force: true });
+          count += 1;
+          return true;
+        }
+        return false;
+      }
+      if (!entry.isFile() || !DEAD_FILE.test(entry.name)) return false;
+      fs.rmSync(full);
+      count += 1;
+      return true;
+    });
+  sweep(path.join(dir, "node_modules"), true);
+  sweep(path.join(dir, ".next"), false);
+  return count;
 }
 
 // Walks `dir` depth first, calling `visit(fullPath, dirent)` for each entry
