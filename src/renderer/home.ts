@@ -288,7 +288,7 @@ function chapter(text: string): HTMLElement {
 
 // The gold door in: the banner's gold, lit from within, a sheen that
 // crosses once and a glow that breathes while the screen waits.
-function enterButton(label: string, onClick: (btn: HTMLButtonElement) => void, leading: IconName = "play"): HTMLButtonElement {
+function enterButton(label: string, onClick: (btn: HTMLButtonElement) => void, leading: IconName = "swords"): HTMLButtonElement {
   const btn = el("button", "tt-enter");
   btn.type = "button";
   const sheen = el("span", "tt-enter-sheen");
@@ -368,7 +368,7 @@ function localBlock(): HTMLElement {
   if (local.state === "error") {
     block.append(reveal(eyebrow("The road is dark"), 140), reveal(goldTitle(DEVICE, true), 220));
     block.append(reveal(el("p", "tt-lede", local.error || "The offline world could not start."), 420));
-    actions.append(enterButton("Try again", (btn) => void playLocal(btn)));
+    actions.append(enterButton("Try again", (btn) => void playLocal(btn), "refresh"));
   } else if (local.firstRun) {
     block.append(reveal(eyebrow("Your first tale"), 140), reveal(goldTitle("Begin your world", true), 220));
     block.append(
@@ -472,8 +472,8 @@ function menu(primary: HomeHost | null, focusJoin: () => void): HTMLElement {
     // the room code in the Join box is the way in there.
     if (primary.canCreate) {
       items.push(
-        { label: "New campaign", glyph: "tab-campaigns", tour: "tile-new-campaign", onClick: (btn) => openHost(primary, "/?new=1", btn) },
         { label: "Quick start", glyph: "tab-story", tour: "tile-quick-start", onClick: (btn) => openHost(primary, "/?new=starter", btn) },
+        { label: "New campaign", glyph: "tab-campaigns", tour: "tile-new-campaign", onClick: (btn) => openHost(primary, "/?new=1", btn) },
       );
     }
     items.push(
