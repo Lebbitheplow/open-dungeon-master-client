@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { app, ipcMain, nativeTheme, shell, type IpcMainInvokeEvent } from "electron";
+import { app, dialog, ipcMain, nativeTheme, shell, type IpcMainInvokeEvent, type OpenDialogOptions, type SaveDialogOptions } from "electron";
 import type {
   ServerProbe,
   AiSetup,
@@ -55,7 +55,9 @@ import {
   tokenIsValid,
   type TokenGrant,
   whoAmI,
+  worldRequest,
 } from "./odm-api";
+import { commitWorldImport, discardWorldTransfer, exportFileName, runWorldJob } from "../shared/world-transfer";
 import { LOCAL_SERVER_ID, type ServerStore, type StoredServer } from "./servers";
 import { dropTables, ownedTableCodes, publishTables, resolveTable } from "./table-registry";
 import { refusedAfter } from "../shared/broker";
@@ -1025,6 +1027,122 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
   };
   shellIpc.handle("local:speech-status", () => speech(false));
   shellIpc.handle("local:speech-install", () => speech(true));
+
+  // Moving the device world (src/shared/world-transfer.ts). The world's own
+  // server packs and checks the archive in its world-transfer folder; the
+  // shell only moves the file between there and where the person keeps it.
+  // The world awake and a live session for its owner: the stored token, or
+  // a fresh one from the profile password the app keeps.
+  // A world nobody has entered yet gets its owner profile first, as
+  // local:play makes it, so a new computer can take in a world straight
+  // away; the import replaces it anyway.
+  const localSession = async (): Promise<string> => {
+    const fresh = local.status(localHasAccount()).firstRun;
+    await local.start();
+    const token = store.token(LOCAL_SERVER_ID);
+    if (token && (await tokenIsValid(local.origin, token))) return token;
+    const entry = store.get(LOCAL_SERVER_ID);
+    const secret = store.secret(LOCAL_SERVER_ID);
+    if (!entry && fresh) return (await provisionLocalProfile()).token;
+    if (!entry || !secret) throw new Error("Enter your world from the home screen first, then try again.");
+    const grant = await loginForToken(local.origin, entry.username, secret);
+    adoptLocalGrant(grant, secret);
+    return grant.token;
+  };
+  const transferPhase = (phase: string) => win.sendEvent({ kind: "world-transfer", phase });
+  const saveDialog = (options: SaveDialogOptions) => {
+    const parent = win.dialogParent();
+    return parent ? dialog.showSaveDialog(parent, options) : dialog.showSaveDialog(options);
+  };
+  const openDialog = (options: OpenDialogOptions) => {
+    const parent = win.dialogParent();
+    return parent ? dialog.showOpenDialog(parent, options) : dialog.showOpenDialog(options);
+  };
+  const ARCHIVE_FILTERS = [
+    { name: "World archive", extensions: ["gz"] },
+    { name: "All files", extensions: ["*"] },
+  ];
+  // The checked archive waiting for the person's yes.
+  let pendingImport = "";
+
+  shellIpc.handle("local:export-world", async () => {
+    try {
+      const token = await localSession();
+      const request = worldRequest(local.origin, token);
+      const job = await runWorldJob(request, { action: "export" }, transferPhase);
+      if (!job.export) throw new Error("The world was packed, but the file is missing.");
+      const choice = await saveDialog({
+        title: "Save your world",
+        defaultPath: path.join(app.getPath("documents"), exportFileName(job.export)),
+        filters: ARCHIVE_FILTERS,
+      });
+      if (choice.canceled || !choice.filePath) {
+        await discardWorldTransfer(request);
+        return { ok: true, saved: false, file: "", bytes: 0 };
+      }
+      transferPhase("Saving");
+      await fs.promises.copyFile(path.join(local.transferDir, job.export.name), choice.filePath);
+      await discardWorldTransfer(request);
+      return { ok: true, saved: true, file: choice.filePath, bytes: job.export.bytes };
+    } catch (err) {
+      return fail(err);
+    }
+  });
+
+  shellIpc.handle("local:import-pick", async () => {
+    try {
+      const choice = await openDialog({ title: "Import a world", properties: ["openFile"], filters: ARCHIVE_FILTERS });
+      if (choice.canceled || !choice.filePaths[0]) return { ok: true, preview: null };
+      const token = await localSession();
+      const request = worldRequest(local.origin, token);
+      await discardWorldTransfer(request);
+      pendingImport = "";
+      const name = `import-${randomBytes(8).toString("hex")}.tar.gz`;
+      await fs.promises.mkdir(local.transferDir, { recursive: true });
+      transferPhase("Copying the file");
+      await fs.promises.copyFile(choice.filePaths[0], path.join(local.transferDir, name));
+      try {
+        const job = await runWorldJob(request, { action: "check", name }, transferPhase);
+        pendingImport = name;
+        return { ok: true, preview: job.preview };
+      } catch (err) {
+        await discardWorldTransfer(request);
+        throw err;
+      }
+    } catch (err) {
+      return fail(err);
+    }
+  });
+
+  // Swaps the checked world in, then restarts it and signs its owner in
+  // with a password the app makes and keeps, the way a new world's profile
+  // is made: the archive never carries one.
+  shellIpc.handle("local:import-commit", async () => {
+    try {
+      if (!pendingImport) throw new Error("Pick a world file first.");
+      const secret = randomBytes(24).toString("base64url");
+      const token = await localSession();
+      transferPhase("Swapping your world in");
+      const { owner } = await commitWorldImport(worldRequest(local.origin, token), pendingImport, secret);
+      pendingImport = "";
+      transferPhase("Restarting your world");
+      await local.restart();
+      // The pages of the world it replaced (their session, their storage)
+      // belong to that world.
+      await clearPartition(partitionFor(LOCAL_SERVER_ID));
+      adoptLocalGrant(await loginForToken(local.origin, owner, secret), secret);
+      win.sendEvent({ kind: "local-status", status: localStatus() });
+      return { ok: true, owner };
+    } catch (err) {
+      return fail(err);
+    }
+  });
+
+  shellIpc.handle("local:import-cancel", async () => {
+    pendingImport = "";
+    const token = store.token(LOCAL_SERVER_ID);
+    if (token && local.origin) await discardWorldTransfer(worldRequest(local.origin, token));
+  });
 
   // What the OpenAI form shows as already saved on this device. Never
   // throws: a world that is not up yet simply has nothing saved to show.

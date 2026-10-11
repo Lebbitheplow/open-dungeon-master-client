@@ -102,6 +102,11 @@ export class LocalServer {
   private get dbPath(): string {
     return path.join(this.dataDir, "odm.sqlite");
   }
+  // Where the world's server stages a world archive it packs or checks
+  // (its src/lib/ops/world-archive.ts): beside the database.
+  get transferDir(): string {
+    return path.join(this.dataDir, "world-transfer");
+  }
   get origin(): string {
     return this.port ? `http://127.0.0.1:${this.port}` : "";
   }

@@ -230,6 +230,11 @@ export class ShellWindow {
     this.win?.webContents.send("odm:event", event);
   }
 
+  // The window a file dialog belongs to, so it opens over the app.
+  dialogParent(): BrowserWindow | null {
+    return this.win;
+  }
+
   // The origin of the server page on top, "" when the manager is showing.
   viewOrigin(): string {
     return this.view ? this.currentOrigin : "";

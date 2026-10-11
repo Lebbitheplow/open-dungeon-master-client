@@ -20,9 +20,10 @@ import { offlineToggle, renderHome } from "./home.js";
 import { GUIDE_URL, renderHelp } from "./help.js";
 import { openLocal, shareRow } from "./local.js";
 import { renderLocalAi } from "./local-ai.js";
-import { DEVICE, isAndroid, refresh, state } from "./state.js";
+import { DEVICE, isAndroid, refresh, refreshFeed, state } from "./state.js";
 import { PAD_LEGEND, deckStatusLine, type DeckChoice } from "../shared/deck.js";
 import type { StoryMemory, StoryMemoryStatus } from "../shared/story-memory.js";
+import { describePreview, formatBytes, type WorldPreview } from "../shared/world-transfer.js";
 import { startAppTour } from "./tour.js";
 
 function section(iconName: IconName, title: string, detail: string): {
@@ -163,6 +164,157 @@ function deviceSection(): HTMLElement | null {
       : el("p", "hint", "Sharing starts once your world is awake. Enter it, then come back here or use the campaign lobby's invite dialog."),
   );
   body.append(share);
+  return card;
+}
+
+// Moving the device world to another device (src/shared/world-transfer.ts):
+// export packs it into one file the person saves, import checks a file they
+// pick, says what is in it, and only then replaces the world. Kept outside
+// the card for the same reason as the story memory note: the screen
+// repaints on every status event of the world, and an import restarts it.
+type TransferNote =
+  | { kind: "none" }
+  | { kind: "working"; action: "export" | "import" }
+  | { kind: "saved"; file: string; bytes: number }
+  | { kind: "confirm"; preview: WorldPreview }
+  | { kind: "imported"; owner: string }
+  | { kind: "error"; message: string };
+
+const transfer: {
+  note: TransferNote;
+  busy: boolean;
+  // What the world's server says it is doing, updated in place.
+  phase: string;
+  phaseText: Text | null;
+  repaint: (() => void) | null;
+  shown: TransferNote | null;
+} = { note: { kind: "none" }, busy: false, phase: "", phaseText: null, repaint: null, shown: null };
+
+// A world-transfer event from the shell: the phase line changes where it
+// stands, without a repaint.
+export function worldTransferPhase(phase: string): void {
+  transfer.phase = phase;
+  if (transfer.phaseText) transfer.phaseText.data = ` ${phase}...`;
+}
+
+function transferNote(note: TransferNote): HTMLElement[] {
+  switch (note.kind) {
+    case "none":
+      return [];
+    case "working": {
+      const line = el("p", "hint memory-working");
+      transfer.phaseText = document.createTextNode(` ${transfer.phase || (note.action === "export" ? "Packing your world" : "Opening the file")}...`);
+      line.append(spinner(), transfer.phaseText);
+      return [line, el("p", "hint", "Keep the app open until this finishes.")];
+    }
+    case "saved":
+      return [
+        el("p", "hint", `Saved to ${note.file} (${formatBytes(note.bytes)}).`),
+        el("p", "hint", "Anyone holding the file can read the campaigns in it, so keep it somewhere private. Keys and sign-ins were left out."),
+      ];
+    case "confirm": {
+      const replace = button("primary", "Replace my world", () => void commitWorld(), "upload");
+      const cancel = button("secondary", "Keep my world", () => cancelImport());
+      const actions = el("div", "transfer-actions");
+      actions.append(replace, cancel);
+      const lines = [
+        el("p", "", `Replace your world with this one? ${describePreview(note.preview)}`),
+        el("p", "hint", "Everything in your world now is replaced. It stays on this device, set aside, until your next import."),
+      ];
+      if (isGameShowing()) {
+        replace.disabled = true;
+        lines.push(el("p", "hint warn", "Leave the table first: the world restarts to take the new one in."));
+      }
+      return [...lines, actions];
+    }
+    case "imported":
+      return [
+        el("p", "hint", `Your world is in place, and you play as ${note.owner}. If it used an AI key, enter it again in Story AI.`),
+      ];
+    case "error":
+      return [el("p", "error tt-shake", note.message)];
+  }
+}
+
+function setTransfer(note: TransferNote, busy = false): void {
+  transfer.note = note;
+  transfer.busy = busy;
+  if (note.kind !== "working") transfer.phaseText = null;
+  transfer.repaint?.();
+}
+
+async function exportWorld(): Promise<void> {
+  const exporter = window.odm.localExportWorld;
+  if (!exporter || transfer.busy) return;
+  transfer.phase = "";
+  setTransfer({ kind: "working", action: "export" }, true);
+  const result = await exporter();
+  if (!result.ok) setTransfer({ kind: "error", message: result.error });
+  else setTransfer(result.saved ? { kind: "saved", file: result.file, bytes: result.bytes } : { kind: "none" });
+}
+
+async function pickWorld(): Promise<void> {
+  const picker = window.odm.localImportPick;
+  if (!picker || transfer.busy) return;
+  transfer.phase = "";
+  setTransfer({ kind: "working", action: "import" }, true);
+  const result = await picker();
+  if (!result.ok) setTransfer({ kind: "error", message: result.error });
+  else setTransfer(result.preview ? { kind: "confirm", preview: result.preview } : { kind: "none" });
+}
+
+async function commitWorld(): Promise<void> {
+  const commit = window.odm.localImportCommit;
+  if (!commit || transfer.busy || isGameShowing()) return;
+  transfer.phase = "";
+  setTransfer({ kind: "working", action: "import" }, true);
+  const result = await commit();
+  setTransfer(result.ok ? { kind: "imported", owner: result.owner } : { kind: "error", message: result.error });
+  await refresh();
+  void refreshFeed();
+  if (isGameShowing() ? state.overlayName === "settings" : state.screenName === "settings") renderSettings();
+}
+
+function cancelImport(): void {
+  void window.odm.localImportCancel?.();
+  setTransfer({ kind: "none" });
+}
+
+function transferSection(): HTMLElement | null {
+  const bridge = window.odm;
+  if (!bridge.localExportWorld || !bridge.localImportPick || !bridge.localImportCommit) return null;
+  if (state.local.state === "unavailable") return null;
+  const { card, body } = section(
+    "download",
+    "Move your world",
+    "Save your whole world to one file, or replace it with one saved on another device. Keys and sign-ins never travel: enter your AI key again on the new device.",
+  );
+  const exportButton = button("secondary", "Export world", () => void exportWorld(), "download");
+  const importButton = button("secondary", "Import world", () => void pickWorld(), "upload");
+  body.append(
+    row("Every campaign, account, picture and narration in one file", exportButton),
+    row("Replace this world with one from a file", importButton),
+  );
+  const status = el("div", "memory-status");
+  status.setAttribute("aria-live", "polite");
+  body.append(status);
+
+  let shownNote: TransferNote | null = null;
+  const paint = (): void => {
+    exportButton.disabled = transfer.busy || state.local.firstRun;
+    importButton.disabled = transfer.busy;
+    if (shownNote === transfer.note) return;
+    shownNote = transfer.note;
+    const nodes = transferNote(transfer.note);
+    const line = el("div", transfer.shown === transfer.note ? "memory-line settled" : "memory-line");
+    transfer.shown = transfer.note;
+    line.append(...nodes);
+    status.replaceChildren(...(nodes.length ? [line] : []));
+  };
+  transfer.repaint = () => {
+    if (card.isConnected) paint();
+  };
+  paint();
   return card;
 }
 
@@ -494,6 +646,7 @@ export function renderSettings(): void {
     deckSection(),
     appSection(),
     deviceSection(),
+    transferSection(),
     memorySection(),
     worldsSection(),
     signInsSection(),

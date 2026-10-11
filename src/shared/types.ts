@@ -4,6 +4,7 @@
 
 import type { DeckChoice, DeckInfo, FieldRect } from "./deck";
 import type { StoryMemory, StoryMemoryStatus } from "./story-memory";
+import type { WorldPreview } from "./world-transfer";
 
 export type SignupMode = "open" | "invite" | "closed";
 
@@ -346,6 +347,9 @@ export type ShellEvent =
   | { kind: "tunnel-status"; status: TunnelStatus }
   | { kind: "local-ai-progress"; status: LocalAiStatus }
   | { kind: "update-progress"; progress: UpdateProgress }
+  // What the device world's server is doing while it packs or checks a
+  // world archive (src/shared/world-transfer.ts).
+  | { kind: "world-transfer"; phase: string }
   // After every feed refresh, including the ones a local-status or
   // tunnel-status change sets off.
   | { kind: "home-feed"; feed: HomeFeed };
@@ -491,6 +495,14 @@ export interface OdmBridge {
   // phone dictates with its own recognizer, so it leaves these out.
   localSpeechStatus?(): Promise<Result<{ speech: LocalSpeechStatus }>>;
   localSpeechInstall?(): Promise<Result<{ speech: LocalSpeechStatus }>>;
+  // Moving the device world to another device (src/shared/world-transfer.ts):
+  // pack it into one file the person saves (saved is false when they close
+  // the save dialog), or check a file they pick (preview is null when they
+  // close the picker) and, once they agree, swap it in and sign its owner in.
+  localExportWorld?(): Promise<Result<{ saved: boolean; file: string; bytes: number }>>;
+  localImportPick?(): Promise<Result<{ preview: WorldPreview | null }>>;
+  localImportCommit?(): Promise<Result<{ owner: string }>>;
+  localImportCancel?(): Promise<void>;
   appInfo(): Promise<AppInfo>;
   // The Steam Deck layout switch in Settings; answers with the info as it
   // stands after the change. Desktop only.

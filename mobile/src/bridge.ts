@@ -691,6 +691,7 @@ async function loadLocalProfile(): Promise<LocalProfile | null> {
 
 const localWorld = createLocalWorld({
   plugin: LocalWorld,
+  fetchJson,
   loadProfile: loadLocalProfile,
   async saveProfile(profile) {
     if (profile) {
@@ -705,6 +706,10 @@ const localWorld = createLocalWorld({
   tokenIsValid,
   patchAdminSettings,
   getAdminSettings,
+  async plantSession(origin, token) {
+    await clearPortalCookies(origin);
+    await CapacitorCookies.setCookie({ url: origin, key: "odm_session", value: token });
+  },
   async open(origin, token, joinCode, path) {
     await clearPortalCookies(origin);
     await CapacitorCookies.setCookie({ url: origin, key: "odm_session", value: token });
@@ -1734,6 +1739,10 @@ const bridge: OdmBridge = {
   // server; a phone has none to start.
   localHarnessStatus: async () => ({ ok: false, error: "Agent programs run on a computer, not a phone." }),
   localPlay: (joinCode, path) => localWorld.play(cleanCode(joinCode), safeInnerPath(path)),
+  localExportWorld: () => localWorld.exportWorld(),
+  localImportPick: () => localWorld.importPick(),
+  localImportCommit: () => localWorld.importCommit(),
+  localImportCancel: () => localWorld.importCancel(),
   async shareStart() {
     const status = await shareTunnel.start();
     if (status.state !== "running") return fail(new Error(status.error || "Sharing failed."));
