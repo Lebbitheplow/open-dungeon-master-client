@@ -786,11 +786,16 @@ settings material and `UnofficialPackNotice.tsx` already says so in the UI.
     the look is unchanged; the window background fills the bars.
   - *Deprecated edge-to-edge APIs or parameters.* The app's own
     `statusBarColor` and `navigationBarColor` theme attributes are gone from
-    `styles.xml`. What remains is inside `@capgo/inappbrowser`'s
+    `styles.xml`. The other source was `@capgo/inappbrowser` 7.29.4's
     `WebViewDialog` (`setStatusBarColor`, `setNavigationBarColor`,
-    `setDecorFitsSystemWindows`, `FLAG_TRANSLUCENT_STATUS`), all behind
-    version checks and still present in the plugin's 8.x line, so this note
-    may stay until upstream migrates. Harmless at runtime.
+    `setDecorFitsSystemWindows`). Upstream replaced those in its 8.x line
+    with a `SystemUiChromeSupport` helper (androidx `WindowCompat` plus the
+    status bar color view), and 8.x needs Capacitor 8, so
+    `mobile/patches/@capgo+inappbrowser+7.29.4.patch` backports that helper
+    and `patch-package` applies it on every `npm ci`. Drop the patch when
+    the plugin moves to 8.x. Below Android 15 the bars now take the dialog
+    theme's default color instead of the toolbar color, which for the app's
+    near-black toolbar is invisible.
   - *Picture-in-picture.* An engagement suggestion aimed at video apps.
     Nothing in the app plays video that a corner window would serve. Skip.
   - *Resizability and orientation restrictions.* The merged release manifest
