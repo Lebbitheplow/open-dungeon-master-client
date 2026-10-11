@@ -25,6 +25,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(LocalWorldPlugin.class);
         registerPlugin(DownloadPlugin.class);
         registerPlugin(DictationPlugin.class);
+        registerPlugin(SecretStorePlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

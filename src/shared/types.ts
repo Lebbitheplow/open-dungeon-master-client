@@ -372,6 +372,9 @@ export interface OdmBridge {
   // Opens a host document (a PDF page set) with the system viewer
   // (phase 21). Absent where the platform's own viewer will do.
   openDocument?(path: string): Promise<boolean>;
+  // The desktop's game screens say which host they show, so a document the
+  // page asks to open is fetched with that host's session (doc:open).
+  gameMounted?(hostId: string): void;
   // The screens' theme (phase 29), so the shell's chrome and the OS
   // frame can follow the parchment or the night.
   setTheme?(mode: "dark" | "light"): Promise<void>;
@@ -425,6 +428,10 @@ export interface OdmBridge {
   // On by default; a host too old for it opens its own pages regardless.
   portalMode(): Promise<boolean>;
   setPortalMode(on: boolean): Promise<void>;
+  // How the desktop keeps saved sign-ins: absent on the phone, whose
+  // secrets sit in the Android Keystore.
+  credentialStorage?(): Promise<{ protection: "keyring" | "obscured" | "none"; keepSignIns: boolean }>;
+  setKeepSignIns?(keep: boolean): Promise<void>;
   // Story memory (src/shared/story-memory.ts): the embedding model the
   // device world searches its story with. Desktop only; null on a desktop
   // whose package carries no embedding runtime (Intel Macs), absent on the

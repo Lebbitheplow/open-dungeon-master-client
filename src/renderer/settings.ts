@@ -166,15 +166,25 @@ function deviceSection(): HTMLElement | null {
   return card;
 }
 
-// A switch in the same dress as the home screen's hide-offline toggle.
-function switchButton(on: boolean, onChange: (next: boolean) => void): HTMLElement {
+// A switch in the same dress as the home screen's hide-offline toggle. It
+// flips where it stands, so the knob slides across (.toggle's transition)
+// instead of a repaint swapping in one that is already there.
+function switchButton(initial: boolean, onChange: (next: boolean) => void): HTMLElement {
+  let on = initial;
   const btn = el("button", on ? "toggle on" : "toggle");
   btn.type = "button";
   btn.setAttribute("aria-pressed", String(on));
+  const label = document.createTextNode(on ? "On" : "Off");
   const track = el("span", "track");
   track.append(el("span", "knob"));
-  btn.append(document.createTextNode(on ? "On" : "Off"), track);
-  btn.addEventListener("click", () => onChange(!on));
+  btn.append(label, track);
+  btn.addEventListener("click", () => {
+    on = !on;
+    btn.classList.toggle("on", on);
+    btn.setAttribute("aria-pressed", String(on));
+    label.data = on ? "On" : "Off";
+    onChange(on);
+  });
   return btn;
 }
 
@@ -200,10 +210,44 @@ function worldsSection(): HTMLElement | null {
     switchButton(portalOn ?? true, (next) => {
       portalOn = next;
       void window.odm.setPortalMode(next);
-      renderSettings();
     }),
   );
   body.append(line);
+  return card;
+}
+
+// Saved sign-ins (desktop only; the phone keeps them in the Android
+// Keystore). Where the computer has no keyring the app can use, the tokens
+// are only scrambled: the card says so, and offers to keep sign-ins for
+// this run only.
+let credentials: { protection: "keyring" | "obscured" | "none"; keepSignIns: boolean } | null = null;
+
+function signInsSection(): HTMLElement | null {
+  const ask = window.odm.credentialStorage;
+  if (!ask) return null;
+  if (credentials === null) {
+    void ask().then((answer) => {
+      credentials = answer;
+      if (state.screenName === "settings") renderSettings();
+    });
+    return null;
+  }
+  const { card, body } = section(
+    "key",
+    "Saved sign-ins",
+    credentials.protection === "keyring"
+      ? "Kept encrypted with this computer's keyring."
+      : "This computer has no keyring the app can use, so saved sign-ins are only scrambled, not encrypted: anyone who can read your files could use them.",
+  );
+  body.append(
+    row(
+      "Stay signed in to servers after the app closes. Off: a server where you typed your own password asks for it again next time. Your own world and room-code accounts stay signed in either way, since only this app holds their passwords.",
+      switchButton(credentials.keepSignIns, (next) => {
+        if (credentials) credentials.keepSignIns = next;
+        void window.odm.setKeepSignIns?.(next);
+      }),
+    ),
+  );
   return card;
 }
 
@@ -452,6 +496,7 @@ export function renderSettings(): void {
     deviceSection(),
     memorySection(),
     worldsSection(),
+    signInsSection(),
     homeSection(),
     helpSection(),
     serversNote(),
