@@ -33,6 +33,7 @@ import type { IconName } from "./dom.js";
 import { renderLocalAi } from "./local-ai.js";
 import { playLocal, shareRow } from "./local.js";
 import { connectServer, openTyped, renderAdd, scanInvite, signInTo } from "./servers.js";
+import { submitJoin } from "./submit-join.js";
 import {
   DEVICE,
   hideOffline,
@@ -805,16 +806,10 @@ function joinPanel(): { panel: HTMLElement; focus: () => void } {
   if (window.odm.scanInvite) form.append(ghostButton("Scan a QR code", (btn) => void scanInvite(btn, error), "qr"));
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    join.disabled = true;
-    error.textContent = "";
-    void openTyped(field.value).then((message) => {
-      join.disabled = false;
-      if (message) {
-        error.textContent = message;
-        sigil.classList.remove("tt-shake");
-        void sigil.offsetWidth;
-        sigil.classList.add("tt-shake");
-      }
+    void submitJoin(() => openTyped(field.value), join, error, () => {
+      sigil.classList.remove("tt-shake");
+      void sigil.offsetWidth;
+      sigil.classList.add("tt-shake");
     });
   });
   panel.append(form, error);

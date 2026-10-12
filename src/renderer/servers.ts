@@ -8,6 +8,7 @@ import { landingPath } from "../shared/open-path.js";
 import { backLink, formCard, intro, joinBanner, show } from "./chrome.js";
 import { button, el, input } from "./dom.js";
 import { tryOpenNative } from "./game-screen.js";
+import { submitJoin } from "./submit-join.js";
 import { forgetObjectUrls } from "./game/object-urls.js";
 import { renderHome } from "./home.js";
 import { connectAt, hostVersions, refresh, state } from "./state.js";
@@ -225,14 +226,7 @@ export function renderAdd(prefill: string): void {
   form.append(originLabel, error, submit);
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    submit.disabled = true;
-    error.textContent = "";
-    void openTyped(originField.value).then((message) => {
-      if (message) {
-        submit.disabled = false;
-        error.textContent = message;
-      }
-    });
+    void submitJoin(() => openTyped(originField.value), submit, error);
   });
   const hint = el(
     "p",
