@@ -232,8 +232,19 @@ export class ComfyManager {
       [path.join(this.appDir, "main.py"), "--listen", "127.0.0.1", "--port", String(PORT)],
       { cwd: this.appDir, stdio: ["ignore", log, log] },
     );
-    fs.closeSync(log);
     this.child = child;
+    let launchFailed = false;
+    const launchFailure = new Promise<never>((_resolve, reject) => {
+      child.once("error", (err) => {
+        launchFailed = true;
+        if (this.child === child) {
+          this.child = null;
+          this.error = `The image server could not start: ${err.message}`;
+          this.onChange();
+        }
+        reject(err);
+      });
+    });
     child.once("exit", () => {
       if (this.child === child) {
         this.child = null;
@@ -241,12 +252,21 @@ export class ComfyManager {
         this.onChange();
       }
     });
+    fs.closeSync(log);
     // Torch imports are slow on first boot; the health poll is patient. The
     // first image request simply waits if the player beats the server up.
-    const deadline = Date.now() + 60_000;
-    while (Date.now() < deadline && child.exitCode === null) {
-      if (await this.portInUse()) break;
-      await new Promise((resolve) => setTimeout(resolve, 500));
+    try {
+      await Promise.race([launchFailure, (async () => {
+        const deadline = Date.now() + 60_000;
+        while (Date.now() < deadline && child.exitCode === null && !launchFailed) {
+          if (await this.portInUse()) break;
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+      })()]);
+    } catch (err) {
+      this.error = err instanceof Error ? `The image server could not start: ${err.message}` : String(err);
+      this.onChange();
+      throw err;
     }
   }
 
@@ -255,13 +275,17 @@ export class ComfyManager {
     this.child = null;
     this.externalServer = false;
     if (child && child.exitCode === null) {
-      child.kill("SIGTERM");
       await new Promise<void>((resolve) => {
-        const killer = setTimeout(() => child.kill("SIGKILL"), 8000);
-        child.once("exit", () => {
+        const done = (): void => {
           clearTimeout(killer);
+          child.off("exit", done);
+          child.off("error", done);
           resolve();
-        });
+        };
+        child.once("exit", done);
+        child.once("error", done);
+        const killer = setTimeout(() => { child.kill("SIGKILL"); done(); }, 8000);
+        child.kill("SIGTERM");
       });
     }
   }

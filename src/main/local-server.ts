@@ -4,6 +4,7 @@ import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { lanOrigin } from "../shared/lan";
 import type { LocalStatus } from "../shared/types";
 import { materializeRunTree } from "./run-tree";
@@ -203,21 +204,21 @@ export class LocalServer {
     return port;
   }
 
-  private async waitHealthy(child: ChildProcess): Promise<void> {
+  private async waitHealthy(child: ChildProcess, signal: AbortSignal): Promise<void> {
     const deadline = Date.now() + HEALTH_TIMEOUT_MS;
-    while (Date.now() < deadline) {
+    while (Date.now() < deadline && !signal.aborted) {
       if (child.exitCode !== null) {
         throw new Error("The local server exited during startup (see local-server.log).");
       }
       try {
         const res = await fetch(`${this.origin}/api/health`, {
-          signal: AbortSignal.timeout(2000),
+          signal: AbortSignal.any([signal, AbortSignal.timeout(2000)]),
         });
         if (res.ok) return;
       } catch {
         // Not up yet.
       }
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await delay(500, undefined, { signal }).catch(() => undefined);
     }
     throw new Error("The local server did not become healthy in time.");
   }
@@ -310,15 +311,29 @@ export class LocalServer {
         },
         stdio: ["ignore", log, log],
       });
-      fs.closeSync(log);
       this.child = child;
+      const launchFailure = new Promise<never>((_resolve, reject) => {
+        child.once("error", (err) => {
+          if (this.child === child) {
+            this.child = null;
+            this.setState("error", `The local server could not start: ${err.message}`);
+          }
+          reject(err);
+        });
+      });
       child.once("exit", () => {
         if (this.child === child) {
           this.child = null;
           this.setState("error", "The local server stopped unexpectedly (see local-server.log).");
         }
       });
-      await this.waitHealthy(child);
+      fs.closeSync(log);
+      const startupAbort = new AbortController();
+      try {
+        await Promise.race([this.waitHealthy(child, startupAbort.signal), launchFailure]);
+      } finally {
+        startupAbort.abort();
+      }
       this.setState("running");
     } catch (err) {
       await this.stop().catch(() => undefined);
@@ -340,13 +355,17 @@ export class LocalServer {
     this.child = null;
     this.port = 0;
     if (child && child.exitCode === null) {
-      child.kill("SIGTERM");
       await new Promise<void>((resolve) => {
-        const killer = setTimeout(() => child.kill("SIGKILL"), 5000);
-        child.once("exit", () => {
+        const done = (): void => {
           clearTimeout(killer);
+          child.off("exit", done);
+          child.off("error", done);
           resolve();
-        });
+        };
+        child.once("exit", done);
+        child.once("error", done);
+        const killer = setTimeout(() => { child.kill("SIGKILL"); done(); }, 5000);
+        child.kill("SIGTERM");
       });
     }
     this.setState("stopped");

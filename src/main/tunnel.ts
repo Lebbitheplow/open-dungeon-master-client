@@ -204,6 +204,7 @@ export class QuickTunnel {
     const log = fs.createWriteStream(this.logFile, { flags: "a" });
     child.stdout?.on("data", (chunk) => log.write(chunk));
     child.stderr?.on("data", (chunk) => log.write(chunk));
+    child.once("error", () => log.end());
     child.once("exit", () => log.end());
   }
 
@@ -231,6 +232,10 @@ export class QuickTunnel {
       };
       child.stdout?.on("data", scan);
       child.stderr?.on("data", scan);
+      child.once("error", (err) => {
+        log.end();
+        finish(new Error(`The tunnel helper could not start: ${err.message}`));
+      });
       child.once("exit", () => {
         log.end();
         finish(new Error("cloudflared exited during startup (see tunnel.log)."));
@@ -250,7 +255,7 @@ export class QuickTunnel {
   ): Promise<void> {
     const deadline = Date.now() + budgetMs;
     while (Date.now() < deadline) {
-      if (child.exitCode !== null) throw new Error("The tunnel closed while warming up.");
+      if (this.child !== child || child.exitCode !== null) throw new Error("The tunnel closed while warming up.");
       try {
         const response = await fetch(
           `https://cloudflare-dns.com/dns-query?name=${host}&type=A`,
@@ -275,7 +280,7 @@ export class QuickTunnel {
   ): Promise<void> {
     const deadline = Date.now() + budgetMs;
     while (Date.now() < deadline) {
-      if (child.exitCode !== null) throw new Error("The tunnel closed while warming up.");
+      if (this.child !== child || child.exitCode !== null) throw new Error("The tunnel closed while warming up.");
       try {
         const response = await fetch(url, { signal: AbortSignal.timeout(4000) });
         if (response.ok) return;
@@ -304,13 +309,22 @@ export class QuickTunnel {
       : ["tunnel", "--no-autoupdate", "--url", `http://127.0.0.1:${localPort}`];
     const child = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
     this.child = child;
+    const launchFailure = new Promise<never>((_resolve, reject) => {
+      child.once("error", (err) => {
+        if (this.child === child) {
+          this.child = null;
+          if (this.state === "running") this.setState("error", `The tunnel helper failed: ${err.message}`);
+        }
+        reject(new Error(`The tunnel helper could not start: ${err.message}`));
+      });
+    });
     this.session = session;
     this.mode = session ? "named" : "quick";
     if (session) {
       this.url = session.url;
       this.attachLog(child);
     } else {
-      this.url = await this.captureUrl(child);
+      this.url = await Promise.race([this.captureUrl(child), launchFailure]);
     }
     child.once("exit", () => {
       if (this.child === child) {
@@ -328,19 +342,19 @@ export class QuickTunnel {
       // to an anonymous trycloudflare address on either was the bug: the
       // host was handed a worse address than the one already minted. Give
       // the edge a short moment, then hand over the name regardless.
-      await this.waitDns(new URL(this.url).hostname, child, WARMUP_WAIT_MS).catch(
+      await Promise.race([this.waitDns(new URL(this.url).hostname, child, WARMUP_WAIT_MS).catch(
         () => undefined,
-      );
-      await this.waitReachable(`${this.url}/api/health`, child, WARMUP_WAIT_MS).catch(
+      ), launchFailure]);
+      await Promise.race([this.waitReachable(`${this.url}/api/health`, child, WARMUP_WAIT_MS).catch(
         () => undefined,
-      );
+      ), launchFailure]);
       if (child.exitCode !== null) {
         throw new Error("The tunnel helper stopped as it started.");
       }
       return;
     }
-    await this.waitDns(new URL(this.url).hostname, child);
-    await this.waitReachable(`${this.url}/api/health`, child);
+    await Promise.race([this.waitDns(new URL(this.url).hostname, child), launchFailure]);
+    await Promise.race([this.waitReachable(`${this.url}/api/health`, child), launchFailure]);
   }
 
   // Tears down a half-started attempt without touching the public state, so
@@ -349,13 +363,17 @@ export class QuickTunnel {
     const child = this.child;
     this.child = null;
     if (child && child.exitCode === null) {
-      child.kill("SIGTERM");
       await new Promise<void>((resolve) => {
-        const killer = setTimeout(() => child.kill("SIGKILL"), 5000);
-        child.once("exit", () => {
+        const done = (): void => {
           clearTimeout(killer);
+          child.off("exit", done);
+          child.off("error", done);
           resolve();
-        });
+        };
+        child.once("exit", done);
+        child.once("error", done);
+        const killer = setTimeout(() => { child.kill("SIGKILL"); done(); }, 5000);
+        child.kill("SIGTERM");
       });
     }
   }
