@@ -925,6 +925,7 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
         str(input?.password, 100),
       );
       adoptLocalGrant(grant);
+      await syncPublicUrl();
       return { ok: true, status: localStatus() };
     } catch (err) {
       return fail(err);
@@ -1188,6 +1189,9 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     if (!entry) {
       return { ok: false, needsLogin: true, error: "Sign in to your local account." };
     }
+    // The first sync can clean broker records without a token. Run again
+    // after renewing the login so the world's saved publicUrl is healed.
+    await syncPublicUrl();
     await applySessionCookie(
       partitionFor(LOCAL_SERVER_ID),
       local.origin,

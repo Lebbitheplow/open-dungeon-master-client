@@ -24,7 +24,7 @@ test("Stop waits for an in-flight publish and leaves the registry and settings o
       registryUrl = "https://share.example";
       return { published: ["ABCD2345"], refused: [] };
     },
-    drop: async () => { registryUrl = ""; },
+    drop: async () => { registryUrl = ""; return []; },
     publishedCodes: () => publishedCodes,
     setPublishedCodes: (codes) => { publishedCodes = [...codes]; },
     secretFor: () => "secret",
