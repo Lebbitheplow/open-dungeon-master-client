@@ -82,6 +82,7 @@ export function installCommands(
 export class ComfyManager {
   private child: ChildProcess | null = null;
   private externalServer = false;
+  private ready = false;
   private error = "";
 
   constructor(
@@ -116,7 +117,7 @@ export class ComfyManager {
     const installed = this.installed();
     return {
       installed,
-      running: this.externalServer || (this.child !== null && this.child.exitCode === null),
+      running: this.externalServer || (this.ready && this.child !== null && this.child.exitCode === null),
       checkpoint: installed ? CHECKPOINT.file : "",
       error: this.error,
     };
@@ -211,7 +212,7 @@ export class ComfyManager {
       const response = await fetch(`${ORIGIN}/system_stats`, {
         signal: AbortSignal.timeout(1500),
       });
-      return response.status > 0;
+      return response.ok;
     } catch {
       return false;
     }
@@ -223,6 +224,7 @@ export class ComfyManager {
       // Someone already runs ComfyUI here (a hand-managed install). Theirs
       // wins; nothing to manage.
       this.externalServer = true;
+      this.error = "";
       return;
     }
     const python = venvPython(this.rootDir, process.platform);
@@ -234,9 +236,11 @@ export class ComfyManager {
     );
     fs.closeSync(log);
     this.child = child;
+    this.ready = false;
     child.once("exit", () => {
       if (this.child === child) {
         this.child = null;
+        this.ready = false;
         this.error = "The image server stopped (see comfy.log).";
         this.onChange();
       }
@@ -244,9 +248,28 @@ export class ComfyManager {
     // Torch imports are slow on first boot; the health poll is patient. The
     // first image request simply waits if the player beats the server up.
     const deadline = Date.now() + 60_000;
-    while (Date.now() < deadline && child.exitCode === null) {
-      if (await this.portInUse()) break;
-      await new Promise((resolve) => setTimeout(resolve, 500));
+    let healthy = false;
+    try {
+      while (Date.now() < deadline && child.exitCode === null) {
+        if (await this.portInUse()) {
+          healthy = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+      if (!healthy || this.child !== child || child.exitCode !== null) {
+        throw new Error(child.exitCode === null
+          ? "The image server did not become healthy in time (see comfy.log)."
+          : "The image server exited during startup (see comfy.log).");
+      }
+      this.ready = true;
+      this.error = "";
+      this.onChange();
+    } catch (err) {
+      await this.stop();
+      this.error = err instanceof Error ? err.message : String(err);
+      this.onChange();
+      throw err;
     }
   }
 
@@ -254,6 +277,7 @@ export class ComfyManager {
     const child = this.child;
     this.child = null;
     this.externalServer = false;
+    this.ready = false;
     if (child && child.exitCode === null) {
       child.kill("SIGTERM");
       await new Promise<void>((resolve) => {
