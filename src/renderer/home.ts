@@ -472,8 +472,8 @@ function menu(primary: HomeHost | null, focusJoin: () => void): HTMLElement {
     // the room code in the Join box is the way in there.
     if (primary.canCreate) {
       items.push(
-        { label: "New campaign", glyph: "tab-campaigns", tour: "tile-new-campaign", onClick: (btn) => openHost(primary, "/?new=1", btn) },
-        { label: "Quick start", glyph: "tab-story", tour: "tile-quick-start", onClick: (btn) => openHost(primary, "/?new=starter", btn) },
+        { label: "New campaign", glyph: "ui-new", tour: "tile-new-campaign", onClick: (btn) => openHost(primary, "/?new=1", btn) },
+        { label: "Quick start", glyph: "ui-quickstart", tour: "tile-quick-start", onClick: (btn) => openHost(primary, "/?new=starter", btn) },
       );
     }
     items.push(
@@ -482,12 +482,12 @@ function menu(primary: HomeHost | null, focusJoin: () => void): HTMLElement {
       { label: "Rulebook", glyph: "system-rules", tour: "tile-rulebook", onClick: (btn) => openHost(primary, "/rulebook", btn) },
     );
   }
-  items.push({ label: "Join with a code", glyph: "tab-handout", tour: "tile-join", onClick: focusJoin });
+  items.push({ label: "Join with a code", glyph: "ui-join", tour: "tile-join", onClick: focusJoin });
   items.push({ label: "Add a server", glyph: "system-share", tour: "tile-add-server", onClick: () => renderAdd(state.joinIntent?.origin ?? "") });
   // Story AI is chosen on the world's first run; the door only makes sense
   // once that world exists.
   if (state.local.state !== "unavailable" && !state.local.firstRun) {
-    items.push({ label: "Story AI", glyph: "tab-story", tour: "tile-story-ai", onClick: () => renderLocalAi(true) });
+    items.push({ label: "Story AI", glyph: "ui-ai", tour: "tile-story-ai", onClick: () => renderLocalAi(true) });
   }
   items.forEach((item, index) => {
     const btn = el("button", "tt-menu-item");
