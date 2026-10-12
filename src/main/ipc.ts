@@ -60,7 +60,7 @@ import {
 import { commitWorldImport, discardWorldTransfer, exportFileName, runWorldJob } from "../shared/world-transfer";
 import { LOCAL_SERVER_ID, type ServerStore, type StoredServer } from "./servers";
 import { dropTables, ownedTableCodes, publishTables, resolveTable } from "./table-registry";
-import { refusedAfter } from "../shared/broker";
+import { createPublicUrlSync } from "./public-url-sync";
 import { portalEligible } from "../shared/portal-logic";
 import { relocateWorld } from "../shared/relocate";
 import {
@@ -300,36 +300,21 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     refusedCodes = next;
     if (changed && localPageShowing()) win.sendToGame("odm:share-status", shellShareStatus());
   };
-  const syncPublicUrl = async (): Promise<void> => {
-    const token = store.token(LOCAL_SERVER_ID);
-    if (!token || !local.origin) return;
-    const status = tunnel.status();
-    const live = status.state === "running" ? status.url : "";
-    // Without a tunnel, the Wi-Fi address while sharing on it: invite links
-    // and QR codes made inside the game then point where a friend at the
-    // table can reach. The table registry only learns public addresses.
-    await patchAdminSettings(local.origin, token, { publicUrl: live || local.lanOrigin }).catch(() => undefined);
-    if (live) {
-      const codes = await ownedTableCodes(local.origin, token);
-      const { published, refused } = await publishTables({
-        codes,
-        url: live,
-        secretFor: (code) => store.tableSecret(code),
-      });
-      setRefusedCodes(refusedAfter(refusedCodes, { codes, published, refused }));
-      // A code refused by the registry (claimed from another device) stays
-      // in the list so it is at least dropped with the rest later.
-      const before = store.publishedCodes();
-      store.setPublishedCodes([...new Set([...published, ...before])]);
-      return;
-    }
-    setRefusedCodes([]);
-    const stale = store.publishedCodes();
-    store.setPublishedCodes([]);
-    if (stale.length > 0) {
-      await dropTables({ codes: stale, secretFor: (code) => store.tableSecret(code) });
-    }
-  };
+  const syncPublicUrl = createPublicUrlSync({
+    token: () => store.token(LOCAL_SERVER_ID),
+    origin: () => local.origin,
+    lanOrigin: () => local.lanOrigin,
+    status: () => tunnel.status(),
+    patch: patchAdminSettings,
+    owned: ownedTableCodes,
+    publish: publishTables,
+    drop: dropTables,
+    publishedCodes: () => store.publishedCodes(),
+    setPublishedCodes: (codes) => store.setPublishedCodes(codes),
+    secretFor: (code) => store.tableSecret(code),
+    refusedCodes: () => refusedCodes,
+    setRefusedCodes,
+  });
   // Sharing is not a moment but a span: a campaign opened while shared gets
   // its code published too, and the registry's claim is refreshed, by
   // running the publish half again every so often for as long as the
