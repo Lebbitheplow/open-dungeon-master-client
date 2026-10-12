@@ -63,6 +63,11 @@ const bridge: OdmBridge = {
   steamKeyboard: (open, field, multiline) => ipcRenderer.invoke("deck:keyboard", open, field, multiline),
   updateCheck: () => ipcRenderer.invoke("update:check"),
   updateInstall: () => ipcRenderer.invoke("update:install"),
+  localVerify: () => ipcRenderer.invoke("local:verify"),
+  localRepair: () => ipcRenderer.invoke("local:repair"),
+  clearCaches: () => ipcRenderer.invoke("caches:clear"),
+  diagnosticSummary: () => ipcRenderer.invoke("diag:summary"),
+  showLogs: () => ipcRenderer.invoke("diag:show-logs"),
   onEvent: (listener) => {
     ipcRenderer.on("odm:event", (_event, payload: ShellEvent) => listener(payload));
   },

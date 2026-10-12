@@ -66,9 +66,11 @@ import { relocateWorld } from "../shared/relocate";
 import {
   applyPortalCookies,
   applySessionCookie,
+  clearCaches,
   clearPartition,
   partitionFor,
 } from "./session-cookies";
+import { diagnosticSummary, redactHome } from "../shared/diagnostics";
 import type { QuickTunnel } from "./tunnel";
 import {
   parseStoryMemory,
@@ -1270,6 +1272,72 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     } catch (err) {
       return fail(err);
     }
+  });
+
+  // Troubleshooting (Settings): the server files the device world runs
+  // from, checked against the ones this build shipped (every byte) and
+  // unpacked again with everything the player made kept; the files cached
+  // from servers, cleared with sign-ins and storage left alone; a summary
+  // for a bug report (src/shared/diagnostics.ts); the folder the logs are
+  // in. None of it touches the world's database, its key or its packs.
+  shellIpc.handle("local:verify", async () => {
+    try {
+      return { ok: true, report: await local.verify(true) };
+    } catch (err) {
+      return fail(err);
+    }
+  });
+  shellIpc.handle("local:repair", async () => {
+    try {
+      const result = await local.repair();
+      win.sendEvent({ kind: "local-status", status: localStatus() });
+      return { ok: true, ...result };
+    } catch (err) {
+      return fail(err);
+    }
+  });
+  shellIpc.handle("caches:clear", async () => {
+    try {
+      const partitions = [partitionFor(LOCAL_SERVER_ID), ...store.list().map((entry) => partitionFor(entry.id))];
+      return { ok: true, sessions: await clearCaches(partitions) };
+    } catch (err) {
+      return fail(err);
+    }
+  });
+  shellIpc.handle("diag:summary", async () => {
+    const world = local.diagnostics();
+    const status = localStatus();
+    const home = os.homedir();
+    const text = diagnosticSummary({
+      app: {
+        version: app.getVersion(),
+        installKind: updater.kind,
+        platform: process.platform,
+        arch: process.arch,
+        os: `${os.type()} ${os.release()}`,
+        runtime: `Electron ${process.versions.electron}`,
+      },
+      payload: world.payload,
+      runTree: world.runTree,
+      world: {
+        state: status.state,
+        error: status.error,
+        firstRun: status.firstRun,
+        dbPresent: world.dbPresent,
+        keyPresent: world.keyPresent,
+        packs: world.packs,
+      },
+      servers: store.list().length,
+      verify: await local.verify(false).catch(() => null),
+      paths: { userData: redactHome(app.getPath("userData"), home), log: redactHome(local.logFile, home) },
+    });
+    return { text };
+  });
+  shellIpc.handle("diag:show-logs", async () => {
+    // The world's log, highlighted; the data folder itself before the
+    // world has ever written one.
+    if (fs.existsSync(local.logFile)) shell.showItemInFolder(local.logFile);
+    else await shell.openPath(app.getPath("userData"));
   });
 
   shellIpc.handle("local-ai:scan", async () => {

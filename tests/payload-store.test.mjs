@@ -16,6 +16,7 @@ import { MARKER, PayloadStore, lockPatience } from "../dist/main/payload-store.j
 lockPatience.attempts = 30;
 lockPatience.delayMs = 20;
 const root = typeof process.getuid === "function" && process.getuid() === 0;
+const noChmod = process.platform === "win32" ? "a folder nobody may write into cannot be made with chmod on Windows" : false;
 
 function write(root, files) {
   for (const [rel, text] of Object.entries(files)) {
@@ -160,7 +161,7 @@ test("the Android shell carries the same folders across an upgrade as the deskto
   assert.deepEqual([...block[1].matchAll(/"([^"]+)"/g)].map((match) => match[1]), PRESERVED);
 });
 
-test("a swap waits out a lock on the tree, as Windows holds one for a moment", async () => {
+test("a swap waits out a lock on the tree, as Windows holds one for a moment", { skip: noChmod }, async () => {
   const { dir, run, store, cleanup } = world();
   try {
     write(run, { ...payload("1"), "public/uploads/face.png": "face" });
@@ -180,7 +181,7 @@ test("a swap waits out a lock on the tree, as Windows holds one for a moment", a
   }
 });
 
-test("a replaced tree that cannot be removed yet is left for the next start, not a failed one", async () => {
+test("a replaced tree that cannot be removed yet is left for the next start, not a failed one", { skip: noChmod }, async () => {
   const { run, store, cleanup } = world();
   const locked = path.join(store.old, "locked");
   try {
