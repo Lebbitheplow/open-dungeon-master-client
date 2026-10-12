@@ -18,6 +18,8 @@ const bridge: OdmBridge = {
   discordLogin: (input) => ipcRenderer.invoke("servers:discord-login", input),
   connect: (serverId: string, joinCode?: string, path?: string) =>
     ipcRenderer.invoke("servers:connect", serverId, joinCode, path),
+  prepareRemote: (serverId: string, joinCode?: string) =>
+    ipcRenderer.invoke("servers:prepare-native", serverId, joinCode),
   removeServer: (serverId: string) => ipcRenderer.invoke("servers:remove", serverId),
   deleteAccount: (input) => ipcRenderer.invoke("servers:delete-account", input),
   homeFeed: () => ipcRenderer.invoke("home:feed"),
