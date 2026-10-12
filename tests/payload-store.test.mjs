@@ -9,7 +9,13 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { PRESERVED } from "../dist/main/local-server.js";
-import { MARKER, PayloadStore } from "../dist/main/payload-store.js";
+import { MARKER, PayloadStore, lockPatience } from "../dist/main/payload-store.js";
+
+// The retries that wait out a Windows file lock, shortened for the tests
+// below that stand in for one with a folder nobody may write into.
+lockPatience.attempts = 30;
+lockPatience.delayMs = 20;
+const root = typeof process.getuid === "function" && process.getuid() === 0;
 
 function write(root, files) {
   for (const [rel, text] of Object.entries(files)) {
@@ -152,6 +158,45 @@ test("the Android shell carries the same folders across an upgrade as the deskto
   const block = java.match(/PRESERVED = \{([^}]*)\}/);
   assert.ok(block, "PayloadStore.java names its PRESERVED folders");
   assert.deepEqual([...block[1].matchAll(/"([^"]+)"/g)].map((match) => match[1]), PRESERVED);
+});
+
+test("a swap waits out a lock on the tree, as Windows holds one for a moment", async () => {
+  const { dir, run, store, cleanup } = world();
+  try {
+    write(run, { ...payload("1"), "public/uploads/face.png": "face" });
+    await store.upgrade(async (fresh) => {
+      write(fresh, payload("2"));
+      // Renaming the live tree aside needs the parent writable; take that
+      // away for the swap's first tries and give it back while it waits.
+      fs.chmodSync(dir, 0o500);
+      setTimeout(() => fs.chmodSync(dir, 0o700), 150);
+    });
+    assert.equal(read(path.join(run, "server.js")), "2");
+    assert.equal(read(path.join(run, "public/uploads/face.png")), "face");
+    for (const stray of [store.fresh, store.old, store.keep]) assert.ok(!fs.existsSync(stray), stray);
+  } finally {
+    fs.chmodSync(dir, 0o700);
+    cleanup();
+  }
+});
+
+test("a replaced tree that cannot be removed yet is left for the next start, not a failed one", async () => {
+  const { run, store, cleanup } = world();
+  const locked = path.join(store.old, "locked");
+  try {
+    write(run, payload("2"));
+    write(locked, { "chunk.js": "old" });
+    fs.chmodSync(locked, 0o500);
+    await store.recover();
+    assert.equal(read(path.join(run, "server.js")), "2", "the live tree is untouched");
+    if (!root) assert.ok(fs.existsSync(store.old), "the old tree waits for a start that can remove it");
+    fs.chmodSync(locked, 0o700);
+    await store.recover();
+    assert.ok(!fs.existsSync(store.old));
+  } finally {
+    if (fs.existsSync(locked)) fs.chmodSync(locked, 0o700);
+    cleanup();
+  }
 });
 
 test("recovery with nothing to do is a no-op", async () => {

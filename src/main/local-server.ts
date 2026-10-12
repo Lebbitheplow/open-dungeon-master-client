@@ -9,6 +9,7 @@ import type { LocalStatus } from "../shared/types";
 import { materializeRunTree } from "./run-tree";
 import { openLog } from "./log-files";
 import { PayloadStore } from "./payload-store";
+import { reapStaleServer } from "./stale-server";
 
 // Runs the bundled Open Dungeon Master server (a Next.js standalone build
 // produced by scripts/bundle-server.mjs) as a child process on localhost,
@@ -106,6 +107,11 @@ export class LocalServer {
   }
   private get dataDir(): string {
     return path.join(this.userDataDir, "data");
+  }
+  // The running child's pid, so a start after a crash can end the server
+  // the last one left behind before it touches the tree (stale-server.ts).
+  private get pidFile(): string {
+    return path.join(this.userDataDir, "local-server.pid");
   }
   private get dbPath(): string {
     return path.join(this.dataDir, "odm.sqlite");
@@ -283,6 +289,7 @@ export class LocalServer {
   private async doStart(): Promise<void> {
     this.setState("starting");
     try {
+      await reapStaleServer(this.pidFile, path.join(this.runDir, "server.js"));
       await this.syncRunTree();
       fs.mkdirSync(this.dataDir, { recursive: true });
       this.port = await this.pickPort();
@@ -320,6 +327,7 @@ export class LocalServer {
       });
       fs.closeSync(log);
       this.child = child;
+      if (child.pid) fs.writeFileSync(this.pidFile, String(child.pid));
       child.once("exit", () => {
         if (this.child === child) {
           this.child = null;
@@ -357,6 +365,7 @@ export class LocalServer {
         });
       });
     }
+    fs.rmSync(this.pidFile, { force: true });
     this.setState("stopped");
   }
 }
