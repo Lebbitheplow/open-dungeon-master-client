@@ -224,13 +224,18 @@ export class QuickTunnel {
         () => finish(new Error("The tunnel never reported its address (see tunnel.log).")),
         URL_WAIT_MS,
       );
-      const scan = (chunk: Buffer): void => {
+      // Output chunks can split the scheme or hostname. Keep only enough
+      // recent text for one DNS name, independently for each stream.
+      const tails = { stdout: "", stderr: "" };
+      const scan = (stream: keyof typeof tails) => (chunk: Buffer): void => {
         log.write(chunk);
-        const match = QUICK_URL_SHAPE.exec(chunk.toString());
+        const output = tails[stream] + chunk.toString();
+        const match = QUICK_URL_SHAPE.exec(output);
         if (match) finish(null, match[0]);
+        tails[stream] = output.slice(-512);
       };
-      child.stdout?.on("data", scan);
-      child.stderr?.on("data", scan);
+      child.stdout?.on("data", scan("stdout"));
+      child.stderr?.on("data", scan("stderr"));
       child.once("exit", () => {
         log.end();
         finish(new Error("cloudflared exited during startup (see tunnel.log)."));
