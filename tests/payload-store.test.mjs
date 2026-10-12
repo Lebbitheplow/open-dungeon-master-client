@@ -8,9 +8,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+import { PRESERVED } from "../dist/main/local-server.js";
 import { MARKER, PayloadStore } from "../dist/main/payload-store.js";
-
-const PRESERVED = ["public/uploads", "public/generated", "public/generated-audio", "public/ambience", "models"];
 
 function write(root, files) {
   for (const [rel, text] of Object.entries(files)) {
@@ -130,6 +129,29 @@ test("an unpack without a marker is dropped, and fills only gaps in the live tre
   } finally {
     cleanup();
   }
+});
+
+test("the installed world packs and the rest of the server's data folder survive an upgrade", async () => {
+  const { run, store, cleanup } = world();
+  try {
+    write(run, { ...payload("1"), "data/worlds/hollow_marsh.json": '{"id":"hollow_marsh"}', "data/ambience-lock.json": "{}" });
+    await store.upgrade(async (dir) => write(dir, payload("2")));
+    assert.equal(read(path.join(run, "server.js")), "2");
+    assert.equal(read(path.join(run, "data/worlds/hollow_marsh.json")), '{"id":"hollow_marsh"}');
+    assert.equal(read(path.join(run, "data/ambience-lock.json")), "{}");
+  } finally {
+    cleanup();
+  }
+});
+
+test("the Android shell carries the same folders across an upgrade as the desktop", () => {
+  const java = fs.readFileSync(
+    new URL("../mobile/android/app/src/main/java/com/opendungeonmaster/app/PayloadStore.java", import.meta.url),
+    "utf8",
+  );
+  const block = java.match(/PRESERVED = \{([^}]*)\}/);
+  assert.ok(block, "PayloadStore.java names its PRESERVED folders");
+  assert.deepEqual([...block[1].matchAll(/"([^"]+)"/g)].map((match) => match[1]), PRESERVED);
 });
 
 test("recovery with nothing to do is a no-op", async () => {

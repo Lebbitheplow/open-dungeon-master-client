@@ -24,12 +24,20 @@ const DEFAULT_PORT = 3210;
 
 // Player-made data living inside the server tree that must survive a payload
 // upgrade. The database itself lives outside the tree (SQLITE_DB_PATH).
-const PRESERVED = [
+// data/ is the server's own run-time folder (its Docker volume): the world
+// packs an admin installs land in data/worlds and the sound library's lock
+// beside them, and no payload ships anything under it (the prune drops it),
+// so the whole folder moves across. Until it was listed here every upgrade
+// left the world with only the bundled Saltmarch.
+// PayloadStore.java carries the same list for Android; a test holds the two
+// together.
+export const PRESERVED = [
   "public/uploads",
   "public/generated",
   "public/generated-audio",
   "public/ambience",
   "models",
+  "data",
 ];
 
 function readPayloadInfo(dir: string): PayloadInfo | null {
