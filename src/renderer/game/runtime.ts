@@ -7,6 +7,7 @@
 import type { HostClient, StreamStop } from "../api/host.js";
 import type { SseEvent } from "../../shared/sse.js";
 import { hostRelativePath } from "../../shared/host-fetch.js";
+import { rewriteCssUrls, rootRelativeCssUrls } from "../../shared/css-urls.js";
 import { localAsset } from "./local-assets.js";
 import { forgetObjectUrls, hold, keepObjectUrlsFor, objectUrlFor } from "./object-urls.js";
 import { canStreamAudio, liveAudioUrl } from "./live-audio.js";
@@ -43,6 +44,49 @@ let mediaPatched = false;
 
 function isRootRelative(url: string): boolean {
   return url.startsWith("/") && !url.startsWith("//");
+}
+
+// Server pages sometimes paint root-relative artwork through inline CSS
+// instead of an <img> (the campaign-setting cards' cover plates, a tile
+// swatch, a map thumbnail). Inside the apps those paths point nowhere
+// (Electron's file:// disk root, the Capacitor page's own origin), so each
+// takes the road fixMedia gives a media element: the app's own copy when the
+// shell bundled it, the host directly for a public path, and an object URL
+// fetched with the token for a protected one (client PR #30, widened from
+// bundled assets to every host path).
+const backgroundsWritten = new WeakMap<Element, string>();
+
+function fixBackgroundImage(element: Element): void {
+  if (!(element instanceof HTMLElement)) return;
+  const value = element.style.backgroundImage;
+  // Our own rewrite comes back through the observer; nothing to do twice.
+  if (!value || backgroundsWritten.get(element) === value) return;
+  if (!rootRelativeCssUrls(value).length) return;
+  const client = active;
+  const protectedPaths: string[] = [];
+  const fixed = rewriteCssUrls(value, (hostPath) => {
+    const local = localAsset(hostPath);
+    if (local) return local;
+    if (!client) return null;
+    if (!mustFetch(client) && PUBLIC_PREFIXES.some((prefix) => hostPath.startsWith(prefix))) return `${client.origin}${hostPath}`;
+    protectedPaths.push(hostPath);
+    return null;
+  });
+  backgroundsWritten.set(element, fixed);
+  if (fixed !== value) element.style.backgroundImage = fixed;
+  if (!client) return;
+  for (const hostPath of protectedPaths) {
+    void objectUrlFor(client, hostPath).then((url) => {
+      // The page may have painted something else meanwhile; only the value
+      // this call wrote is swapped.
+      const current = element.style.backgroundImage;
+      if (!url || current !== backgroundsWritten.get(element) || !current.includes(hostPath)) return;
+      hold(element, url);
+      const swapped = rewriteCssUrls(current, (path) => (path === hostPath ? url : null));
+      backgroundsWritten.set(element, swapped);
+      element.style.backgroundImage = swapped;
+    });
+  }
 }
 
 // A page's fetch, whether it passes a string, a URL or a Request. A Request
@@ -272,7 +316,9 @@ function patchMediaSetters(): void {
 
 function scan(root: Node): void {
   if (root instanceof Element) {
+    fixBackgroundImage(root);
     if (root.matches(MEDIA_SELECTOR)) fixMedia(root);
+    for (const node of root.querySelectorAll("[style]")) fixBackgroundImage(node);
     for (const node of root.querySelectorAll(MEDIA_SELECTOR)) fixMedia(node);
   }
 }
@@ -282,6 +328,9 @@ function scan(root: Node): void {
 function onMutations(records: MutationRecord[]): void {
   const added = new Set<Node>();
   for (const record of records) {
+    if (record.type === "attributes" && record.attributeName === "style" && record.target instanceof Element) {
+      fixBackgroundImage(record.target);
+    }
     if (record.type === "attributes" && record.target instanceof Element && record.target.matches(MEDIA_SELECTOR)) {
       fixMedia(record.target);
     }
@@ -411,7 +460,7 @@ export function installRuntime(client: HostClient): void {
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: [...MEDIA_ATTRS, ...SVG_IMAGE_ATTRS],
+    attributeFilter: [...MEDIA_ATTRS, ...SVG_IMAGE_ATTRS, "style"],
   });
   scan(document.body);
 }
