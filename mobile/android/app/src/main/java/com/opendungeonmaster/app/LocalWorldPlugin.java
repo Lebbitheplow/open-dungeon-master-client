@@ -150,6 +150,9 @@ public class LocalWorldPlugin extends Plugin {
 
     private static final String PACKED_NAME = "odm-world-[0-9TZ-]+\\.tar\\.gz";
 
+    // Free space left over after a picked archive is copied in.
+    private static final long IMPORT_HEADROOM_BYTES = 256L * 1024 * 1024;
+
     private static void copy(InputStream in, OutputStream out) throws IOException {
         byte[] buffer = new byte[64 * 1024];
         for (int read; (read = in.read(buffer)) != -1; ) out.write(buffer, 0, read);
@@ -161,6 +164,16 @@ public class LocalWorldPlugin extends Plugin {
         StringBuilder name = new StringBuilder("import-");
         for (byte b : bytes) name.append(String.format("%02x", b));
         return name.append(".tar.gz").toString();
+    }
+
+    /** The picked file's size as its provider declares it, or -1 when it cannot say. */
+    private long declaredSize(Uri uri) {
+        try (Cursor cursor = getContext().getContentResolver().query(uri, new String[] { OpenableColumns.SIZE }, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst() && !cursor.isNull(0)) return cursor.getLong(0);
+        } catch (RuntimeException ignored) {
+            // A provider that cannot say; the copy finds out.
+        }
+        return -1;
     }
 
     private String displayName(Uri uri, String fallback) {
@@ -205,6 +218,14 @@ public class LocalWorldPlugin extends Plugin {
             File target = new File(dir, name);
             try {
                 if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException("Could not make room for the file.");
+                // The copy and the world it unpacks into both need room; a
+                // file that cannot fit is refused before it fills the phone.
+                long size = declaredSize(uri);
+                if (size > 0 && size > dir.getUsableSpace() - IMPORT_HEADROOM_BYTES) {
+                    long needMb = (size + IMPORT_HEADROOM_BYTES) / (1024 * 1024);
+                    long freeMb = dir.getUsableSpace() / (1024 * 1024);
+                    throw new IOException("Not enough room on this phone for that file: it needs about " + needMb + " MB and " + freeMb + " MB is free.");
+                }
                 try (InputStream in = getContext().getContentResolver().openInputStream(uri);
                      OutputStream out = new FileOutputStream(target)) {
                     if (in == null) throw new IOException("The file could not be opened.");
