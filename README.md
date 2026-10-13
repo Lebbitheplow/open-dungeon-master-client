@@ -274,8 +274,10 @@ npm run smoke-relocate          # the server tree survives a move of the data fo
 node scripts/smoke-tunnel.mjs   # a real share through the broker and cloudflared
 ```
 
-There is no pull request CI beyond a security scan, so run these before opening a
-pull request.
+Every pull request runs [.github/workflows/ci.yml](.github/workflows/ci.yml): lint,
+the desktop build and tests, the mobile type check and tests, the main process's
+file-handling tests on Windows, and the Android unit tests. The smoke runs above are
+not part of it, so run them before opening a pull request.
 
 ### Desktop packages
 
@@ -301,6 +303,7 @@ npm ci
 mkdir -p runtime
 gh release download node-android-v24.20.0 --pattern '*.tar.gz' --dir runtime
 gh release download cloudflared-android-2026.8.3 --pattern '*.tar.gz' --dir runtime
+(cd runtime && sha256sum -c ../runtime.sha256)   # the digests the release build checks
 tar -C runtime -xzf runtime/node-android-v24.20.0.tar.gz
 tar -C runtime -xzf runtime/cloudflared-android-2026.8.3.tar.gz
 

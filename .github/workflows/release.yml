@@ -19,6 +19,9 @@
 #
 # electron-builder publishes to a draft release; the final publish job flips
 # it live once every required artifact is uploaded.
+#
+# Actions are pinned to the commit their v4 tag named, the same ones
+# ci.yml uses.
 name: release
 on:
   push:
@@ -46,10 +49,10 @@ jobs:
     outputs:
       server_sha: ${{ steps.server.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           path: client
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: Lebbitheplow/open-dungeon-master
           path: open-dungeon-master
@@ -59,7 +62,7 @@ jobs:
       - name: The server commit this release ships
         id: server
         run: echo "sha=$(git -C open-dungeon-master rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
       - name: Install client dependencies
@@ -84,7 +87,7 @@ jobs:
         run: |
           find vendor/server -type l -delete
           tar -C vendor -czf server-payload.tgz server
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: server-payload
           path: client/server-payload.tgz
@@ -113,17 +116,17 @@ jobs:
             rebuild: true
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: Lebbitheplow/open-dungeon-master
           path: open-dungeon-master
           ref: ${{ needs.payload.outputs.server_sha }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
       - run: npm ci
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: server-payload
       - name: Unpack the server payload and recreate the module aliases
@@ -178,13 +181,13 @@ jobs:
     # release of everything else.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: Lebbitheplow/open-dungeon-master
           path: open-dungeon-master
           ref: ${{ needs.payload.outputs.server_sha }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
       - name: Install flatpak-builder and runtimes
@@ -197,7 +200,7 @@ jobs:
             org.freedesktop.Sdk//24.08 \
             org.electronjs.Electron2.BaseApp//24.08
       - run: npm ci
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: server-payload
       - name: Unpack the server payload and recreate the module aliases
@@ -234,16 +237,16 @@ jobs:
       NODE_ANDROID_RELEASE: node-android-v24.20.0
       CLOUDFLARED_ANDROID_RELEASE: cloudflared-android-2026.8.3
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: Lebbitheplow/open-dungeon-master
           path: open-dungeon-master
           ref: ${{ needs.payload.outputs.server_sha }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: 21
@@ -252,7 +255,7 @@ jobs:
       - name: Install mobile dependencies
         working-directory: mobile
         run: npm ci
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: server-payload
       - name: Unpack the server payload and recreate the module aliases
@@ -267,14 +270,19 @@ jobs:
             "$built"*) echo "server $here" ;;
             *) echo "::error::payload is server $built, screens are server $here"; exit 1 ;;
           esac
+      # Both run as native code inside the APK, so each tarball must be the
+      # one mobile/runtime.sha256 names before it is unpacked: a release
+      # asset replaced since stops the build here. A new runtime release
+      # changes the tag above and its line in that file together.
       - name: Fetch the Node runtime and cloudflared for Android
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p mobile/runtime
           gh release download "$NODE_ANDROID_RELEASE" --pattern '*.tar.gz' --dir mobile/runtime
-          tar -C mobile/runtime -xzf "mobile/runtime/$NODE_ANDROID_RELEASE.tar.gz"
           gh release download "$CLOUDFLARED_ANDROID_RELEASE" --pattern '*.tar.gz' --dir mobile/runtime
+          (cd mobile/runtime && sha256sum --strict -c ../runtime.sha256)
+          tar -C mobile/runtime -xzf "mobile/runtime/$NODE_ANDROID_RELEASE.tar.gz"
           tar -C mobile/runtime -xzf "mobile/runtime/$CLOUDFLARED_ANDROID_RELEASE.tar.gz"
           ls mobile/runtime/node-android mobile/runtime/cloudflared-android
       # The web assets come first: the payload leaves out the art they
@@ -332,16 +340,16 @@ jobs:
     needs: payload
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: Lebbitheplow/open-dungeon-master
           path: open-dungeon-master
           ref: ${{ needs.payload.outputs.server_sha }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: 21
