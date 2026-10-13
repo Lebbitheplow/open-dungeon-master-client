@@ -56,7 +56,7 @@ function audioSection(): HTMLElement {
   const { card, body } = section(
     "sliders",
     "Audio and dice",
-    "The microphone and output this device uses, how loud each part of the table is, and the dice on it. Changes reach a call or a table already in progress.",
+    "The microphone and output this device uses, the key that holds the table's mic, how loud each part of the table is, and the dice on it. Changes reach a call or a table already in progress.",
   );
   const host = el("div", "game-root device-settings");
   host.append(spinner());

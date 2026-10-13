@@ -99,6 +99,7 @@ export function renderHelp(): void {
       "At the table",
       `Once you are in a campaign, the Help button in its header explains every control, and offers guided tours of the table: one for players and one for the Dungeon Master's console. Each runs once on its own and can be replayed from Help.`,
       `The dice button in the campaign header turns the 3D dice on or off; when on, every roll the server makes tumbles across the screen before the result lands in the chat.`,
+      `Hold the microphone beside Send to speak your turn instead of typing it. A key can hold it too: choose one as the Dictation key under Audio and dice in Settings, and its name appears on the mic. Hold it in the message box, or anywhere at the table outside another field, and let go when you are done; the words wait in the box until you press Send.`,
     ),
     isAndroid
       ? null
@@ -113,7 +114,7 @@ export function renderHelp(): void {
     section(
       "gear",
       "Settings",
-      `Settings gathers what belongs to the app itself: the microphone, playback and dice, updates, sharing your world, Story AI,${isAndroid ? "" : " the language your world's story memory reads (pick Many languages when your table plays in Italian, Spanish or another language),"} the hide-offline switch for the title screen's save slots, the tour, and Troubleshooting: a check and a repair of the app's own server files, cached files cleared, and a summary to copy into a bug report, none of which touches anything you made. Your account, avatar and password live on each server, under its own Settings page.`,
+      `Settings gathers what belongs to the app itself: the microphone and its dictation key, playback and dice, updates, sharing your world, Story AI,${isAndroid ? "" : " the language your world's story memory reads (pick Many languages when your table plays in Italian, Spanish or another language),"} the hide-offline switch for the title screen's save slots, the tour, and Troubleshooting: a check and a repair of the app's own server files, cached files cleared, and a summary to copy into a bug report, none of which touches anything you made. Your account, avatar and password live on each server, under its own Settings page.`,
     ),
   );
 }
