@@ -256,7 +256,19 @@ export interface AppInfo {
   // The reset this start carried out (src/main/reset.ts): where the
   // previous data went, and what could not be moved. Desktop only.
   reset?: { aside: string; left: string[] } | null;
+  // A Linux install Steam is there to take as a non-Steam game
+  // (src/main/steam-shortcut.ts). Desktop only.
+  addToSteam?: boolean;
 }
+
+// Adding the app to Steam. "needs-restart": Steam is open and would write
+// its old list back on the way out, so nothing was changed; the same call
+// with restart true closes Steam, adds the app and opens Steam again.
+// moved: where an AppImage went to keep one name through updates.
+export type SteamAddResult =
+  | { ok: true; state: "added" | "updated"; persona: string; restarted: boolean; moved: string }
+  | { ok: true; state: "needs-restart" }
+  | { ok: false; error: string };
 
 export interface UpdateStatus {
   current: string;
@@ -563,6 +575,9 @@ export interface OdmBridge {
   // Steam's on-screen keyboard over a text field (field in CSS pixels of
   // this window), or put away. A no-op unless Steam runs the session.
   steamKeyboard?(open: boolean, field?: FieldRect, multiline?: boolean): Promise<void>;
+  // This install into the Steam library as a non-Steam game, with its
+  // artwork (Settings, Steam Deck and controllers). Desktop only.
+  addToSteam?(restart: boolean): Promise<SteamAddResult>;
   updateCheck(): Promise<Result<{ update: UpdateStatus }>>;
   updateInstall(): Promise<Result>;
   onEvent(listener: (event: ShellEvent) => void): void;

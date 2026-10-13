@@ -61,6 +61,7 @@ const bridge: OdmBridge = {
   appInfo: () => ipcRenderer.invoke("app:info"),
   setDeckChoice: (choice) => ipcRenderer.invoke("deck:set-choice", choice),
   steamKeyboard: (open, field, multiline) => ipcRenderer.invoke("deck:keyboard", open, field, multiline),
+  addToSteam: (restart: boolean) => ipcRenderer.invoke("steam:add", restart),
   updateCheck: () => ipcRenderer.invoke("update:check"),
   updateInstall: () => ipcRenderer.invoke("update:install"),
   localVerify: () => ipcRenderer.invoke("local:verify"),
