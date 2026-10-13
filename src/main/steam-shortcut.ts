@@ -187,8 +187,20 @@ function startsThisApp(fields: readonly VdfEntry[], wish: ShortcutWish): boolean
 const str = (value: string): VdfNode => ({ type: "string", value });
 const int = (value: number): VdfNode => ({ type: "int32", value: value | 0 });
 
-// Adds this app to the list, or brings its existing entry up to date (found
-// by app id, or by starting the same program). Changes the list in place.
+type VdfMapEntry = { key: string; node: Extract<VdfNode, { type: "map" }> };
+
+// This app's entry in the list: by app id, or by starting the same program.
+function findOurShortcut(entries: readonly VdfEntry[], wish: ShortcutWish): VdfMapEntry | undefined {
+  const ownId = shortcutAppId(wish.target.exe, wish.name);
+  const maps = entries.filter((entry): entry is VdfMapEntry => entry.node.type === "map");
+  return (
+    maps.find((entry) => intOf(entry.node.entries, "appid") >>> 0 === ownId) ??
+    maps.find((entry) => startsThisApp(entry.node.entries, wish))
+  );
+}
+
+// Adds this app to the list, or brings its existing entry up to date.
+// Changes the list in place.
 export function upsertShortcut(root: VdfEntry[], wish: ShortcutWish): { appid: number; added: boolean } {
   let list = findEntry(root, "shortcuts");
   if (!list) {
@@ -198,10 +210,7 @@ export function upsertShortcut(root: VdfEntry[], wish: ShortcutWish): { appid: n
   if (list.node.type !== "map") throw new Error("Its shortcut list is not a list.");
   const entries = list.node.entries;
   const ownId = shortcutAppId(wish.target.exe, wish.name);
-  const maps = entries.filter((entry): entry is { key: string; node: Extract<VdfNode, { type: "map" }> } => entry.node.type === "map");
-  const match =
-    maps.find((entry) => intOf(entry.node.entries, "appid") >>> 0 === ownId) ??
-    maps.find((entry) => startsThisApp(entry.node.entries, wish));
+  const match = findOurShortcut(entries, wish);
   if (match) {
     const fields = match.node.entries;
     const appid = intOf(fields, "appid") >>> 0 || ownId;
@@ -244,6 +253,13 @@ export function upsertShortcut(root: VdfEntry[], wish: ShortcutWish): { appid: n
     },
   });
   return { appid: ownId, added: true };
+}
+
+// The first-launch offer is for a Steam Deck (or anything running SteamOS)
+// in Desktop Mode, started from the desktop: in Game Mode, or started by
+// Steam, the app is in the library already.
+export function deckOffersSteam(deck: { device: boolean; gameMode: boolean; steam: boolean }): boolean {
+  return deck.device && !deck.gameMode && !deck.steam;
 }
 
 // What the add needs from the machine, behind an interface so the tests
@@ -303,6 +319,34 @@ async function findAccount(root: string): Promise<{ dir: string; persona: string
     if (time > newest.time) newest = { id, time };
   }
   return { dir: path.join(userdata, newest.id), persona: "" };
+}
+
+// Is this app in the Steam library already? "unavailable" when there is no
+// Steam this app can add to, no account in it, or a list the add would
+// refuse to change: nothing worth offering then.
+export async function steamShortcutState(place: InstallPlace, home: string): Promise<"found" | "missing" | "unavailable"> {
+  const target = steamTarget(place);
+  const root = target ? await findSteamRoot(home) : "";
+  const account = root ? await findAccount(root) : null;
+  if (!target || !account) return "unavailable";
+  const bytes = await readFile(path.join(account.dir, "config", "shortcuts.vdf")).catch((err: NodeJS.ErrnoException) =>
+    err.code === "ENOENT" ? Buffer.alloc(0) : null,
+  );
+  if (!bytes) return "unavailable";
+  let list: VdfEntry[];
+  try {
+    list = parseBinaryVdf(bytes);
+  } catch {
+    return "unavailable";
+  }
+  if (bytes.length > 0 && !serializeBinaryVdf(list).equals(bytes)) return "unavailable";
+  const shortcuts = findEntry(list, "shortcuts");
+  if (!shortcuts) return "missing";
+  if (shortcuts.node.type !== "map") return "unavailable";
+  // An AppImage a previous add renamed is named by its stable path.
+  const formerPaths = place.appImagePath ? [place.appImagePath, stableAppImagePath(place.appImagePath)] : [];
+  const wish = { name: SHORTCUT_NAME, target, formerPaths, gridDir: "" };
+  return findOurShortcut(shortcuts.node.entries, wish) ? "found" : "missing";
 }
 
 const BY_HAND = "Add it from Steam instead: Games, then Add a Non-Steam Game to My Library.";

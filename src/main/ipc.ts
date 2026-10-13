@@ -73,7 +73,7 @@ import {
 import { RESET_PHRASE, diagnosticSummary, redactHome } from "../shared/diagnostics";
 import { requestReset, type ResetOutcome } from "./reset";
 import { systemSteamHost } from "./steam-host";
-import { addToSteam, canAddToSteam, steamPresent } from "./steam-shortcut";
+import { addToSteam, canAddToSteam, deckOffersSteam, steamPresent, steamShortcutState, type InstallPlace } from "./steam-shortcut";
 import type { QuickTunnel } from "./tunnel";
 import {
   parseStoryMemory,
@@ -1243,18 +1243,19 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
   }));
   // Add to Steam (src/main/steam-shortcut.ts): a Linux install into the
   // library of the account last signed in to Steam, with its artwork.
+  const steamPlace = (): InstallPlace => ({
+    kind: updater.kind,
+    execPath: process.execPath,
+    appImagePath: process.env.APPIMAGE ?? "",
+    flatpakId: process.env.FLATPAK_ID ?? "",
+  });
   shellIpc.handle("steam:add", async (_event, restart: unknown) => {
     if (!canAddToSteam(updater.kind, process.platform)) {
       return { ok: false, error: "Only the Linux app can add itself to Steam." };
     }
     const result = await addToSteam(
       {
-        place: {
-          kind: updater.kind,
-          execPath: process.execPath,
-          appImagePath: process.env.APPIMAGE ?? "",
-          flatpakId: process.env.FLATPAK_ID ?? "",
-        },
+        place: steamPlace(),
         home: os.homedir(),
         artDir: app.isPackaged ? path.join(process.resourcesPath, "steam") : path.join(app.getAppPath(), "build", "steam"),
         launchedBySteam: Boolean(deck?.steam),
@@ -1267,6 +1268,14 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     if (result.ok && result.state !== "needs-restart" && result.moved) process.env.APPIMAGE = result.moved;
     return result;
   });
+  // The same, offered once at first launch on a Deck in Desktop Mode, while
+  // the app is not in the library already (src/renderer/steam.ts).
+  shellIpc.handle("steam:offer", async () => {
+    if (!deck || !deckOffersSteam(deck) || !canAddToSteam(updater.kind, process.platform)) return false;
+    if (store.steamOfferAnswered()) return false;
+    return (await steamShortcutState(steamPlace(), os.homedir())) === "missing";
+  });
+  shellIpc.handle("steam:offer-answered", () => store.answerSteamOffer());
   shellIpc.handle("deck:set-choice", (_event, raw: unknown) => {
     if (!deck) return undefined;
     const choice = parseDeckChoice(raw);

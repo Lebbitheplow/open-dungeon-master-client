@@ -578,6 +578,10 @@ export interface OdmBridge {
   // This install into the Steam library as a non-Steam game, with its
   // artwork (Settings, Steam Deck and controllers). Desktop only.
   addToSteam?(restart: boolean): Promise<SteamAddResult>;
+  // The same offered once at first launch, on a Steam Deck in Desktop Mode:
+  // whether to offer it now, and that the player answered.
+  steamOffer?(): Promise<boolean>;
+  answerSteamOffer?(): Promise<void>;
   updateCheck(): Promise<Result<{ update: UpdateStatus }>>;
   updateInstall(): Promise<Result>;
   onEvent(listener: (event: ShellEvent) => void): void;

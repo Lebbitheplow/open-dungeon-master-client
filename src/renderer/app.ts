@@ -19,6 +19,7 @@ import { renderAdd, renderAuth } from "./servers.js";
 import { gameBack, isGameShowing, preloadGame, tryOpenNative } from "./game-screen.js";
 import { renderSettings, worldTransferPhase } from "./settings.js";
 import { refresh, refreshFeed, state, tunnelWatchers } from "./state.js";
+import { closeSteamOffer, isSteamOfferOpen, maybeOfferSteam } from "./steam.js";
 import { endTour, isTourActive, maybeStartAppTour } from "./tour.js";
 
 const { drawer, scrim } = createDrawer();
@@ -33,13 +34,14 @@ function rerenderHome(): void {
 }
 
 // The way back, for Android's back gesture and a controller's B: a running
-// tour ends first, then the update popup, an open drawer and a shell
-// screen over a world close; then the world's previous page, and any
+// tour ends first, then the update popup, the Add to Steam offer, an open
+// drawer and a shell screen over a world close; then the world's previous page, and any
 // inner screen returns home. layersOnly stops after the closing part. At
 // home, atRoot decides what back means.
 function goBack(layersOnly: boolean, atRoot: () => void): void {
   if (isTourActive()) endTour();
   else if (isUpdatePopupOpen()) closeUpdatePopup();
+  else if (isSteamOfferOpen()) closeSteamOffer();
   else if (isDrawerOpen()) closeDrawer();
   else if (closeOverlay() || layersOnly) return;
   else if (isGameShowing() && gameBack()) return;
@@ -219,6 +221,7 @@ void refresh().then(async () => {
   renderHome();
   void refreshFeed();
   maybeStartAppTour();
+  maybeOfferSteam();
   // Once the home screen is up, the game bundle loads in the background so
   // entering a world does not start with a blank page.
   setTimeout(preloadGame, 1000);

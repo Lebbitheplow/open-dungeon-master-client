@@ -2,9 +2,14 @@
 // src/main/steam-shortcut.ts): the row, Steam's restart question while
 // Steam is open, and what happened. The note lives outside the card like
 // the Troubleshooting note, since Settings repaints on every status event of
-// the world.
+// the world. The same add is offered once in a popup at first launch on a
+// Steam Deck in Desktop Mode.
+import { isUpdatePopupOpen } from "./chrome.js";
 import { button, el, spinner } from "./dom.js";
+import { isDrawerOpen } from "./drawer.js";
+import { isGameShowing } from "./game-screen.js";
 import { state } from "./state.js";
+import { appTourSeen, isTourActive } from "./tour.js";
 import type { SteamAddResult } from "../shared/types.js";
 
 type SteamNote =
@@ -14,15 +19,22 @@ type SteamNote =
   | { kind: "done"; text: string }
   | { kind: "error"; message: string };
 
-const steam: { note: SteamNote; repaint: (() => void) | null; shown: SteamNote | null } = {
+const steam: {
+  note: SteamNote;
+  repaint: (() => void) | null;
+  popupPaint: (() => void) | null;
+  shown: SteamNote | null;
+} = {
   note: { kind: "none" },
   repaint: null,
+  popupPaint: null,
   shown: null,
 };
 
 function setNote(note: SteamNote): void {
   steam.note = note;
   steam.repaint?.();
+  steam.popupPaint?.();
 }
 
 // A fresh visit to Settings starts without the last answer.
@@ -51,7 +63,9 @@ async function add(restart: boolean): Promise<void> {
   else setNote({ kind: "done", text: doneText(result) });
 }
 
-function noteNodes(note: SteamNote): HTMLElement[] {
+// The note's lines. Settings draws Steam's restart question with its own
+// buttons; the popup keeps its buttons in its footer (inline false).
+function noteNodes(note: SteamNote, inline = true): HTMLElement[] {
   switch (note.kind) {
     case "none":
       return [];
@@ -62,15 +76,14 @@ function noteNodes(note: SteamNote): HTMLElement[] {
       return [line];
     }
     case "confirm": {
+      const question = el("p", "", "Steam is open. It has to close and open again to take the new game, so anything running in Steam, a game or a download, stops too.");
+      if (!inline) return [question];
       const actions = el("div", "transfer-actions");
       actions.append(
         button("primary", "Restart Steam and add", () => void add(true), "refresh"),
         button("secondary", "Not now", () => setNote({ kind: "none" })),
       );
-      return [
-        el("p", "", "Steam is open. It has to close and open again to take the new game, so anything running in Steam, a game or a download, stops too."),
-        actions,
-      ];
+      return [question, actions];
     }
     case "done":
       return [el("p", "hint", note.text)];
@@ -109,4 +122,101 @@ export function steamRows(): HTMLElement[] {
   };
   paint();
   return [line, status];
+}
+
+// ---------- the first-launch offer ----------
+
+// The popup over the title screen. Every way out (Not now, Done, B, Escape,
+// a click beside it) answers the offer, which is then never made again;
+// Settings keeps the button. It stays up while an add is running.
+let offer: HTMLElement | null = null;
+
+export function isSteamOfferOpen(): boolean {
+  return offer !== null;
+}
+
+export function closeSteamOffer(): void {
+  if (!offer || steam.note.kind === "working") return;
+  offer.remove();
+  offer = null;
+  steam.popupPaint = null;
+  void window.odm.answerSteamOffer?.();
+}
+
+function showSteamOffer(): void {
+  if (offer) return;
+  steam.note = { kind: "none" };
+  const scrim = el("div", "update-popup-scrim");
+  scrim.setAttribute("role", "alertdialog");
+  scrim.setAttribute("aria-modal", "true");
+  scrim.setAttribute("aria-label", "Add to Steam");
+  const card = el("section", "update-popup card ornate");
+  const status = el("div", "memory-status");
+  status.setAttribute("aria-live", "polite");
+  const actions = el("div", "update-popup-actions");
+  card.append(
+    el("p", "eyebrow", "Steam Deck"),
+    el("h2", "", "Play from Game Mode"),
+    el(
+      "p",
+      "sub",
+      "Add Open Dungeon Master to your Steam library, with its artwork, and it starts from Game Mode like any other game. Settings keeps this button if you would rather wait.",
+    ),
+    status,
+    actions,
+  );
+  scrim.append(card);
+  scrim.addEventListener("click", (event) => {
+    if (event.target === scrim) closeSteamOffer();
+  });
+  scrim.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeSteamOffer();
+  });
+
+  const paint = (): void => {
+    const note = steam.note;
+    const nodes = noteNodes(note, false);
+    const holder = el("div", "memory-line");
+    holder.append(...nodes);
+    status.replaceChildren(...(nodes.length ? [holder] : []));
+    const notNow = (): HTMLButtonElement => button("quiet", "Not now", () => closeSteamOffer());
+    let primary: HTMLButtonElement | null = null;
+    if (note.kind === "none") primary = button("primary", "Add to Steam", () => void add(false), "gamepad");
+    else if (note.kind === "confirm") primary = button("primary", "Restart Steam and add", () => void add(true), "refresh");
+    else if (note.kind === "done") primary = button("primary", "Done", () => closeSteamOffer(), "check");
+    if (note.kind === "working") actions.replaceChildren();
+    else if (note.kind === "error") actions.replaceChildren(button("secondary", "Close", () => closeSteamOffer()));
+    else if (note.kind === "done") actions.replaceChildren(primary as HTMLButtonElement);
+    else actions.replaceChildren(notNow(), primary as HTMLButtonElement);
+    (primary ?? actions.querySelector("button") ?? card).focus();
+  };
+  steam.popupPaint = paint;
+  offer = scrim;
+  document.body.append(scrim);
+  paint();
+}
+
+// At first launch: once the main process says the offer is due, it waits
+// for a quiet title screen (the tour over, no update popup, no menu open,
+// no world in front) and then appears.
+export function maybeOfferSteam(): void {
+  const due = window.odm.steamOffer;
+  if (!due) return;
+  void due()
+    .then((wanted) => {
+      if (!wanted) return;
+      const timer = setInterval(() => {
+        const quiet =
+          state.screenName === "home" &&
+          !isGameShowing() &&
+          appTourSeen() &&
+          !isTourActive() &&
+          !isUpdatePopupOpen() &&
+          !isDrawerOpen();
+        if (!quiet) return;
+        clearInterval(timer);
+        showSteamOffer();
+      }, 1000);
+    })
+    .catch(() => undefined);
 }
