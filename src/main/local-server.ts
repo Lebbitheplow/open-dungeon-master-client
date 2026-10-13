@@ -9,6 +9,7 @@ import type { LocalStatus } from "../shared/types";
 import { materializeRunTree } from "./run-tree";
 import { openLog } from "./log-files";
 import { PayloadStore } from "./payload-store";
+import { reapStaleServer } from "./stale-server";
 
 // Runs the bundled Open Dungeon Master server (a Next.js standalone build
 // produced by scripts/bundle-server.mjs) as a child process on localhost,
@@ -24,12 +25,20 @@ const DEFAULT_PORT = 3210;
 
 // Player-made data living inside the server tree that must survive a payload
 // upgrade. The database itself lives outside the tree (SQLITE_DB_PATH).
-const PRESERVED = [
+// data/ is the server's own run-time folder (its Docker volume): the world
+// packs an admin installs land in data/worlds and the sound library's lock
+// beside them, and no payload ships anything under it (the prune drops it),
+// so the whole folder moves across. Until it was listed here every upgrade
+// left the world with only the bundled Saltmarch.
+// PayloadStore.java carries the same list for Android; a test holds the two
+// together.
+export const PRESERVED = [
   "public/uploads",
   "public/generated",
   "public/generated-audio",
   "public/ambience",
   "models",
+  "data",
 ];
 
 function readPayloadInfo(dir: string): PayloadInfo | null {
@@ -98,6 +107,11 @@ export class LocalServer {
   }
   private get dataDir(): string {
     return path.join(this.userDataDir, "data");
+  }
+  // The running child's pid, so a start after a crash can end the server
+  // the last one left behind before it touches the tree (stale-server.ts).
+  private get pidFile(): string {
+    return path.join(this.userDataDir, "local-server.pid");
   }
   private get dbPath(): string {
     return path.join(this.dataDir, "odm.sqlite");
@@ -275,6 +289,7 @@ export class LocalServer {
   private async doStart(): Promise<void> {
     this.setState("starting");
     try {
+      await reapStaleServer(this.pidFile, path.join(this.runDir, "server.js"));
       await this.syncRunTree();
       fs.mkdirSync(this.dataDir, { recursive: true });
       this.port = await this.pickPort();
@@ -312,6 +327,7 @@ export class LocalServer {
       });
       fs.closeSync(log);
       this.child = child;
+      if (child.pid) fs.writeFileSync(this.pidFile, String(child.pid));
       child.once("exit", () => {
         if (this.child === child) {
           this.child = null;
@@ -349,6 +365,7 @@ export class LocalServer {
         });
       });
     }
+    fs.rmSync(this.pidFile, { force: true });
     this.setState("stopped");
   }
 }
