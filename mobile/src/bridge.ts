@@ -9,7 +9,7 @@ import { Directory, Filesystem } from "@capacitor/filesystem";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { Preferences } from "@capacitor/preferences";
 import { plainPreferences, secretStore } from "./secret-store";
-import { loadServerSecrets, migrateSecret, storeServerSecrets, withoutSecrets } from "./secret-store-core";
+import { loadServerSecrets, migrateSecret, readServerList, storeServerSecrets, withoutSecrets } from "./secret-store-core";
 import { Share } from "@capacitor/share";
 import { BackgroundColor, InAppBrowser, ToolBarType } from "@capgo/inappbrowser";
 import { createWebBluetooth } from "./ble-polyfill-core";
@@ -117,14 +117,9 @@ const TIMEOUT_MS = 10_000;
 let knownServerIds: string[] = [];
 
 async function loadServers(): Promise<StoredServer[]> {
-  let parsed: StoredServer[] = [];
-  try {
-    const { value } = await Preferences.get({ key: SERVERS_KEY });
-    const raw = value ? (JSON.parse(value) as StoredServer[]) : [];
-    parsed = Array.isArray(raw) ? raw : [];
-  } catch {
-    return [];
-  }
+  // A damaged list is kept under a dated key before it reads as empty, so
+  // the next save cannot write over the only copy (secret-store-core.ts).
+  const parsed = await readServerList<StoredServer>(plainPreferences, SERVERS_KEY);
   // Each entry's token and made-up password come from the secret store; a
   // list saved before the store existed has them moved in, and is saved
   // again without them.
