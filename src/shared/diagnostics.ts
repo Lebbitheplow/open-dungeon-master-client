@@ -32,6 +32,10 @@ export interface DiagnosticFacts {
 // How many wrong files the summary names before it counts the rest.
 const NAMED_FILES = 20;
 
+// The word a player types to start over (Settings, Troubleshooting): the
+// one action there that takes the world out of the app's hands.
+export const RESET_PHRASE = "RESET";
+
 export function redactHome(file: string, home: string): string {
   if (!home || !file.startsWith(home)) return file;
   return `~${file.slice(home.length)}`;

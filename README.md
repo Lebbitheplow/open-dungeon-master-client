@@ -228,11 +228,15 @@ deletes anything you made:
   names no accounts, keys or campaign text, and shortens paths to `~`.
 - **Show logs** opens the folder with `local-server.log` and `tunnel.log`.
   Read a log before sharing it; the world's own output goes there.
-
-To start over with an empty world, close the app and move the data folder
-aside yourself; the app makes a new one at the next start, and moving the old
-one back restores everything. Deleting that folder is the one thing that loses
-a world.
+- **Reset the app** is the one row that takes your world out of the app's
+  hands, so it sits last, asks you to type `RESET`, and still deletes nothing:
+  the app stops your world, restarts, and on the way back in renames its data
+  folder to `open-dungeon-master-client.set-aside-<date>` beside the old place
+  and starts from an empty one. Local AI engines you installed stay. To bring
+  the old world back, close the app, remove the new data folder and rename the
+  set-aside one back; to let it go, remove the set-aside folder yourself. On
+  Android the system's own Clear storage for the app does the same, and that
+  one does delete.
 
 ## Building from source
 

@@ -70,7 +70,8 @@ import {
   clearPartition,
   partitionFor,
 } from "./session-cookies";
-import { diagnosticSummary, redactHome } from "../shared/diagnostics";
+import { RESET_PHRASE, diagnosticSummary, redactHome } from "../shared/diagnostics";
+import { requestReset, type ResetOutcome } from "./reset";
 import type { QuickTunnel } from "./tunnel";
 import {
   parseStoryMemory,
@@ -91,6 +92,12 @@ export interface ShellContext {
   updater: Updater;
   // What src/shared/deck.ts found at start; absent where nobody asked.
   deck?: DeckInfo;
+  // Starts the app again once this process is gone (index.ts); the reset
+  // leaves this way. Absent in a harness, which has nowhere to go.
+  relaunch?: () => void;
+  // The reset this start carried out (src/main/reset.ts), if any, so the
+  // Troubleshooting card can say where the previous data went.
+  reset?: ResetOutcome | null;
 }
 
 export interface ShellIpc {
@@ -1229,6 +1236,7 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     installKind: updater.kind,
     update: updater.lastFound(),
     deck,
+    reset: ctx.reset ? { aside: redactHome(ctx.reset.aside, os.homedir()), left: ctx.reset.left } : null,
   }));
   shellIpc.handle("deck:set-choice", (_event, raw: unknown) => {
     if (!deck) return undefined;
@@ -1332,6 +1340,26 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
       paths: { userData: redactHome(app.getPath("userData"), home), log: redactHome(local.logFile, home) },
     });
     return { text };
+  });
+  // Starting over (src/main/reset.ts). The typed word guards it; the share,
+  // the engines and the world are stopped first so nothing holds the folder,
+  // then the marker is written and the app restarts to carry it out.
+  shellIpc.handle("app:reset", async (_event, phrase: unknown) => {
+    if (str(phrase, 16).trim() !== RESET_PHRASE) return fail(new Error(`Type ${RESET_PHRASE} to confirm.`));
+    try {
+      await shutdownShare();
+      await localAi.stop().catch(() => undefined);
+      await local.stop();
+      requestReset(app.getPath("userData"));
+      if (ctx.relaunch) ctx.relaunch();
+      else {
+        app.relaunch();
+        app.quit();
+      }
+      return { ok: true };
+    } catch (err) {
+      return fail(err);
+    }
   });
   shellIpc.handle("diag:show-logs", async () => {
     // The world's log, highlighted; the data folder itself before the

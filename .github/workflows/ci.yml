@@ -94,6 +94,7 @@ jobs:
           tests/run-tree.test.mjs
           tests/stale-server.test.mjs
           tests/local-server.test.mjs
+          tests/reset.test.mjs
           tests/diagnostics.test.mjs
           tests/prune-server-payload.test.mjs
 

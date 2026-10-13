@@ -68,6 +68,7 @@ const bridge: OdmBridge = {
   clearCaches: () => ipcRenderer.invoke("caches:clear"),
   diagnosticSummary: () => ipcRenderer.invoke("diag:summary"),
   showLogs: () => ipcRenderer.invoke("diag:show-logs"),
+  resetApp: (phrase: string) => ipcRenderer.invoke("app:reset", phrase),
   onEvent: (listener) => {
     ipcRenderer.on("odm:event", (_event, payload: ShellEvent) => listener(payload));
   },

@@ -253,6 +253,9 @@ export interface AppInfo {
   update?: UpdateStatus | null;
   // The Steam Deck layout (src/shared/deck.ts). Desktop only.
   deck?: DeckInfo;
+  // The reset this start carried out (src/main/reset.ts): where the
+  // previous data went, and what could not be moved. Desktop only.
+  reset?: { aside: string; left: string[] } | null;
 }
 
 export interface UpdateStatus {
@@ -550,6 +553,10 @@ export interface OdmBridge {
   clearCaches?(): Promise<Result<{ sessions: number }>>;
   diagnosticSummary?(): Promise<{ text: string }>;
   showLogs?(): Promise<void>;
+  // Starting over: everything the app keeps set aside (never deleted) and
+  // the app restarted empty, once the typed word matches RESET_PHRASE.
+  // Desktop only; the phone's system settings clear an app's storage.
+  resetApp?(phrase: string): Promise<Result>;
   // The Steam Deck layout switch in Settings; answers with the info as it
   // stands after the change. Desktop only.
   setDeckChoice?(choice: DeckChoice): Promise<DeckInfo>;

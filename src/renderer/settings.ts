@@ -13,7 +13,7 @@ import {
   showOverlay,
   updateControls,
 } from "./chrome.js";
-import { button, chip, copyText, el, icon, spinner } from "./dom.js";
+import { button, chip, copyText, el, icon, input, spinner } from "./dom.js";
 import type { IconName } from "./dom.js";
 import { isGameShowing, mountDeviceSettings } from "./game-screen.js";
 import { offlineToggle, renderHome } from "./home.js";
@@ -24,7 +24,7 @@ import { DEVICE, isAndroid, refresh, refreshFeed, state } from "./state.js";
 import { PAD_LEGEND, deckStatusLine, type DeckChoice } from "../shared/deck.js";
 import type { StoryMemory, StoryMemoryStatus } from "../shared/story-memory.js";
 import { describePreview, formatBytes, type WorldPreview } from "../shared/world-transfer.js";
-import { describeVerify } from "../shared/diagnostics.js";
+import { RESET_PHRASE, describeVerify } from "../shared/diagnostics.js";
 import { startAppTour } from "./tour.js";
 
 function section(iconName: IconName, title: string, detail: string): {
@@ -594,7 +594,9 @@ type TroubleNote =
   | { kind: "none" }
   | { kind: "working"; what: string }
   | { kind: "done"; text: string }
-  | { kind: "error"; message: string };
+  | { kind: "error"; message: string }
+  // The reset's question, with the typed word that answers it.
+  | { kind: "reset-confirm" };
 
 const trouble: { note: TroubleNote; busy: boolean; repaint: (() => void) | null; shown: TroubleNote | null } = {
   note: { kind: "none" },
@@ -622,7 +624,37 @@ function troubleNote(note: TroubleNote): HTMLElement[] {
       return [el("p", "hint", note.text)];
     case "error":
       return [el("p", "error tt-shake", note.message)];
+    case "reset-confirm": {
+      const [label, field] = input(`Type ${RESET_PHRASE} to confirm`, "text");
+      const go = button("quiet danger", "Set aside and restart", () => void resetApp(field.value), "trash");
+      go.disabled = true;
+      field.addEventListener("input", () => {
+        go.disabled = field.value.trim() !== RESET_PHRASE;
+      });
+      const keep = button("secondary", "Keep everything", () => setTrouble({ kind: "none" }));
+      const actions = el("div", "transfer-actions");
+      actions.append(go, keep);
+      return [
+        el("p", "", "Set aside everything this app keeps on this computer, and restart it empty?"),
+        el(
+          "p",
+          "hint",
+          "Your world and its key, installed worlds, pictures and narration, saved servers and sign-ins all go. Nothing is deleted: they wait in a dated folder beside the app's data folder until you remove it yourself, and the README says how to bring them back. Local AI engines you installed stay.",
+        ),
+        label,
+        actions,
+      ];
+    }
   }
+}
+
+async function resetApp(phrase: string): Promise<void> {
+  const reset = window.odm.resetApp;
+  if (!reset || trouble.busy || isGameShowing()) return;
+  setTrouble({ kind: "working", what: "Putting your world to sleep and setting its folder aside" }, true);
+  const result = await reset(phrase);
+  // On success the app restarts and this screen is gone.
+  if (!result.ok) setTrouble({ kind: "error", message: result.error });
 }
 
 async function checkFiles(): Promise<void> {
@@ -726,13 +758,34 @@ function troubleshootingSection(): HTMLElement | null {
   if (bridge.showLogs) {
     add("Open the folder that holds the app's log files", button("secondary", "Show logs", () => void bridge.showLogs?.(), "scroll"));
   }
+  // The one row that takes the world out of the app's hands sits last,
+  // in red, held while a table is open, and asks for a typed word.
+  let resetButton: HTMLButtonElement | null = null;
+  if (bridge.resetApp) {
+    resetButton = button("quiet danger", "Reset the app", () => setTrouble({ kind: "reset-confirm" }), "trash");
+    add(
+      "Start over: set everything this app keeps on this computer aside (nothing is deleted) and restart it empty",
+      resetButton,
+      isGameShowing() ? "Leave the table first." : "",
+    );
+  }
   const status = el("div", "memory-status");
   status.setAttribute("aria-live", "polite");
   body.append(status);
+  const came = state.appInfo?.reset;
+  if (came) {
+    body.append(
+      el(
+        "p",
+        "hint",
+        `This start set your previous data aside at ${came.aside}.${came.left.length ? ` Left behind, still held open: ${came.left.join(", ")}.` : ""} Bring it back or remove it as the README says.`,
+      ),
+    );
+  }
 
   let shownNote: TroubleNote | null = null;
   const paint = (): void => {
-    for (const btn of buttons) btn.disabled = trouble.busy || (btn === repairButton && isGameShowing());
+    for (const btn of buttons) btn.disabled = trouble.busy || ((btn === repairButton || btn === resetButton) && isGameShowing());
     if (shownNote === trouble.note) return;
     shownNote = trouble.note;
     const nodes = troubleNote(trouble.note);
