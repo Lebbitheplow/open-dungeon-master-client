@@ -7,7 +7,10 @@
 // torn file back, keeps the player's folders, and wakes the world again
 // only when it was awake. The stand-in is a Node script answering
 // /api/health, started the way the real server is (process.execPath in Node
-// mode, which is node itself under the test runner).
+// mode, which is node itself under the test runner). It loads one of its
+// packages through a hashed alias the way the real server loads its
+// externals (run-tree.ts), so a start whose aliases do not reach their
+// packages fails the way server issue #280 did.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -16,9 +19,12 @@ import { test } from "node:test";
 import { LocalServer } from "../dist/main/local-server.js";
 import { writePayloadManifest } from "../dist/main/payload-manifest.js";
 import { MARKER } from "../dist/main/payload-store.js";
+import { ALIASES_FILE, MODULES_DIR } from "../dist/main/run-tree.js";
 
+const ALIAS = "stemmer-0123456789abcdef";
 const SERVER = `
 const http = require("node:http");
+require("${ALIAS}");
 if (process.env.ODM_TEST_EXIT) process.exit(Number(process.env.ODM_TEST_EXIT));
 http
   .createServer((req, res) => {
@@ -35,6 +41,10 @@ async function world() {
   fs.mkdirSync(payload, { recursive: true });
   fs.writeFileSync(path.join(payload, "server.js"), SERVER);
   fs.writeFileSync(path.join(payload, "helper.js"), HELPER);
+  fs.mkdirSync(path.join(payload, MODULES_DIR, "stemmer"), { recursive: true });
+  fs.writeFileSync(path.join(payload, MODULES_DIR, "stemmer", "package.json"), '{"name":"stemmer","main":"index.js"}');
+  fs.writeFileSync(path.join(payload, MODULES_DIR, "stemmer", "index.js"), "module.exports = 'stem';\n");
+  fs.writeFileSync(path.join(payload, ALIASES_FILE), JSON.stringify({ [ALIAS]: "stemmer" }));
   fs.writeFileSync(path.join(payload, MARKER), JSON.stringify({ serverVersion: "1.0.0", builtAt: "2026-10-12T00:00:00.000Z" }));
   await writePayloadManifest(payload);
   const userData = path.join(dir, "user-data");
@@ -45,6 +55,7 @@ async function world() {
     payload,
     userData,
     run,
+    alias: path.join(run, "node_modules", ALIAS),
     local,
     cleanup: async () => {
       await local.stop().catch(() => undefined);
@@ -62,7 +73,9 @@ test("a start unpacks the payload and the world answers; stopped, it is asleep",
     assert.equal(w.local.running, true);
     assert.match(w.local.origin, /^http:\/\/127\.0\.0\.1:\d+$/);
     assert.equal(read(path.join(w.run, "server.js")), SERVER);
-    assert.deepEqual(await w.local.verify(true), { unpacked: true, listed: 2, missing: [], changed: [], hashed: true });
+    assert.ok(fs.lstatSync(w.alias).isSymbolicLink(), "the alias is a link in the run tree");
+    assert.equal(fs.realpathSync.native(w.alias), fs.realpathSync.native(path.join(w.run, "node_modules", "stemmer")), "and reaches its package where the tree runs");
+    assert.deepEqual(await w.local.verify(true), { unpacked: true, listed: 5, missing: [], changed: [], hashed: true });
     const facts = w.local.diagnostics();
     assert.equal(facts.payload.builtAt, facts.runTree.builtAt);
     assert.equal(facts.keyPresent, true, "the database key is minted at the first start");
@@ -123,7 +136,7 @@ test("a repair puts a torn file back, keeps the player's folders, and wakes the 
     fs.writeFileSync(path.join(w.run, "public", "uploads", "face.png"), "face");
     const awake = await w.local.repair();
     assert.deepEqual(awake, {
-      found: { unpacked: true, listed: 2, missing: [], changed: ["helper.js"], hashed: false },
+      found: { unpacked: true, listed: 5, missing: [], changed: ["helper.js"], hashed: false },
       started: true,
     });
     assert.equal(w.local.running, true);
@@ -132,7 +145,7 @@ test("a repair puts a torn file back, keeps the player's folders, and wakes the 
 
     await w.local.stop();
     const asleep = await w.local.repair();
-    assert.deepEqual(asleep, { found: { unpacked: true, listed: 2, missing: [], changed: [], hashed: false }, started: false });
+    assert.deepEqual(asleep, { found: { unpacked: true, listed: 5, missing: [], changed: [], hashed: false }, started: false });
     assert.equal(w.local.running, false);
     assert.equal(read(path.join(w.run, "public", "uploads", "face.png")), "face");
   } finally {
@@ -149,6 +162,32 @@ test("a start asked for during a repair waits for the rebuilt tree", async () =>
     await Promise.all([repairing, starting]);
     assert.equal(w.local.running, true);
     assert.equal(read(path.join(w.run, "server.js")), SERVER);
+  } finally {
+    await w.cleanup();
+  }
+});
+
+// A world unpacked by 0.17.3 to 0.17.5 on Windows: its aliases were linked
+// while the tree was still local-server.new, and a junction keeps the
+// absolute path it was made with, so after the rename every alias named a
+// folder that no longer existed and the server could not load its externals
+// (server issue #280). The next start mends them before launching.
+test("a world whose aliases were made in local-server.new starts after all", async () => {
+  const w = await world();
+  try {
+    await w.local.start();
+    await w.local.stop();
+    try {
+      fs.unlinkSync(w.alias);
+    } catch {
+      fs.rmdirSync(w.alias);
+    }
+    fs.symlinkSync(path.join(`${w.run}.new`, "node_modules", "stemmer"), w.alias, "junction");
+    assert.ok(!fs.existsSync(path.join(w.alias, "index.js")), "the alias points at the folder the upgrade renamed away");
+    await w.local.start();
+    assert.equal(w.local.running, true);
+    assert.equal(fs.realpathSync.native(w.alias), fs.realpathSync.native(path.join(w.run, "node_modules", "stemmer")));
+    assert.equal(read(path.join(w.run, "server.js")), SERVER, "the tree was mended, not rebuilt");
   } finally {
     await w.cleanup();
   }

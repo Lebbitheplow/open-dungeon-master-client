@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { lanOrigin } from "../shared/lan";
 import type { LocalStatus, RepairResult, VerifyReport } from "../shared/types";
-import { materializeRunTree } from "./run-tree";
+import { linkModuleAliases, materializeRunTree } from "./run-tree";
 import { openLog } from "./log-files";
 import { verifyRunTree } from "./payload-manifest";
 import { PayloadStore } from "./payload-store";
@@ -187,16 +187,30 @@ export class LocalServer {
     const store = new PayloadStore(this.runDir, PRESERVED);
     await store.recover();
     const current = readPayloadInfo(this.runDir);
-    if (current && current.builtAt === fresh.builtAt) return false;
+    if (current && current.builtAt === fresh.builtAt) {
+      this.linkAliases();
+      return false;
+    }
     await this.rebuildRunTree();
     return true;
   }
 
   // Unpacks the bundled payload over the run tree whatever the build stamps
   // say, keeping PRESERVED (payload-store.ts finishes or unwinds anything an
-  // earlier run left first).
+  // earlier run left first), and links the aliases once the tree is in place.
   private async rebuildRunTree(): Promise<void> {
     await new PayloadStore(this.runDir, PRESERVED).upgrade((dir) => materializeRunTree(this.payloadDir, dir, this.rendererDir));
+    this.linkAliases();
+  }
+
+  // The hashed-id aliases the server's externals load through, made in the
+  // run tree's final place and checked before every start: a junction made
+  // while the tree was still local-server.new (0.17.3 to 0.17.5 on Windows)
+  // points nowhere once the tree is renamed, and is replaced here (run-tree.ts
+  // says more). A tree already in place that needed none is the common case.
+  private linkAliases(): void {
+    const made = linkModuleAliases(this.runDir);
+    if (made) console.log(`[local-server] linked ${made} module alias${made === 1 ? "" : "es"} in ${this.runDir}`);
   }
 
   // The run tree checked against the bundled payload's manifest
