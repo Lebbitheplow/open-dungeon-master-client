@@ -36,6 +36,8 @@ export interface WorldStatus {
   // works it out and hands it to the server). Absent on an older native
   // side, whose worlds do not ask for one.
   setupCode?: string;
+  // Whether the world answers on the Wi-Fi (WorldRuntime.setLanSharing).
+  sharedOnLan?: boolean;
 }
 
 // What the native side reports on its own (LocalWorldPlugin's worldEvent):
@@ -70,6 +72,9 @@ export interface LocalWorldPlugin {
   // world started again when it was awake or had failed; and the facts for
   // the summary. Absent on an older native side.
   repair?(): Promise<WorldStatus & { started: boolean }>;
+  // Sharing on the Wi-Fi (WorldRuntime.setLanSharing): a running world
+  // restarts on the same port. Absent on an older native side.
+  lanSharing?(options: { on: boolean }): Promise<WorldStatus>;
   diagnostics?(): Promise<WorldDiagnostics>;
   // Moving the world (LocalWorldPlugin.java): copy a picked archive beside
   // the world's database ({ name: "" } when the picker is closed), or copy a
@@ -503,6 +508,23 @@ export function createLocalWorld(deps: LocalWorldDeps) {
     }
   }
 
+  // Wi-Fi sharing, as on the desktop (src/main/ipc.ts setLanSharing): the
+  // world answers on the phone alone until the player shares it on the
+  // Wi-Fi. In-game invites follow the address (publish).
+  async function setLanSharing(on: boolean): Promise<Result<{ status: LocalStatus }>> {
+    const plugin = deps.plugin;
+    if (!plugin.lanSharing) return fail(new Error("This version of the app cannot share on the Wi-Fi."));
+    try {
+      await plugin.lanSharing({ on });
+      await publish(deps.currentShareUrl?.() ?? "");
+      return { ok: true, status: await status() };
+    } catch (err) {
+      return fail(err);
+    } finally {
+      await announce();
+    }
+  }
+
   async function diagnostics(): Promise<WorldDiagnostics | null> {
     const plugin = deps.plugin;
     if (!plugin.diagnostics) return null;
@@ -525,6 +547,7 @@ export function createLocalWorld(deps: LocalWorldDeps) {
     importCommit,
     importCancel,
     repair,
+    setLanSharing,
     diagnostics,
   };
 }

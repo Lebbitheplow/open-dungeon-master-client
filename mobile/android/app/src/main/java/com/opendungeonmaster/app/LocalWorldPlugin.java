@@ -136,6 +136,27 @@ public class LocalWorldPlugin extends Plugin {
         worker.start();
     }
 
+    /**
+     * Shares the world on the Wi-Fi ({ on: true }) or stops ({ on: false });
+     * a running world restarts on the same port (WorldRuntime.setLanSharing).
+     * Resolves the status, whose lanOrigin is the address friends there use.
+     */
+    @PluginMethod
+    public void lanSharing(PluginCall call) {
+        boolean on = Boolean.TRUE.equals(call.getBoolean("on", false));
+        Thread worker = new Thread(() -> {
+            try {
+                runtime().setLanSharing(on);
+                call.resolve(toJS(runtime().status()));
+            } catch (IOException e) {
+                call.reject(e.getMessage() != null ? e.getMessage() : "Could not share the world on the Wi-Fi.");
+            } catch (RuntimeException e) {
+                call.reject("Could not share the world on the Wi-Fi: " + e.getMessage());
+            }
+        }, "odm-world-lan");
+        worker.start();
+    }
+
     /** The facts behind Troubleshooting's summary (WorldRuntime.diagnostics). */
     @PluginMethod
     public void diagnostics(PluginCall call) {

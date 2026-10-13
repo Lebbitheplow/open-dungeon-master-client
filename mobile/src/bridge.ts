@@ -1007,14 +1007,16 @@ listeners.add((event) => {
 });
 
 // The phone's own world goes to sleep a little after the game web view
-// closes, unless it is shared, the app's own screens are on it, or a web
-// view is up again. Waking it later is what every door here does anyway.
+// closes, unless it is shared (online or on the Wi-Fi), the app's own
+// screens are on it, or a web view is up again. Waking it later is what
+// every door here does anyway.
 const idleWorld = createIdleStopper({
   graceMs: IDLE_STOP_GRACE_MS,
-  inspect: () => {
+  inspect: async () => {
     const tunnel = shareTunnel.snapshot().state;
+    const onWifi = !!(await localWorld.status().catch(() => null))?.lanOrigin;
     return {
-      shared: tunnel === "running" || tunnel === "starting",
+      shared: tunnel === "running" || tunnel === "starting" || onWifi,
       nativeWorldOpen: window.odmMountedHostId === LOCAL_HOST_ID,
       webViewOpen: gameWebViewOpen,
       ownWorldLeft: closedOwnWorld,
@@ -1779,10 +1781,10 @@ const bridge: OdmBridge = {
     return { ok: true, tunnel: status };
   },
   shareStop: async () => ({ ok: true, tunnel: await shareTunnel.stop() }),
-  // The phone's world answers on its Wi-Fi from the moment it runs; there
-  // is no switch to turn, so both answer with where it already is.
-  lanStart: async () => ({ ok: true, status: await localWorld.status() }),
-  lanStop: async () => ({ ok: true, status: await localWorld.status() }),
+  // The phone's world answers on the phone alone until it is shared on
+  // the Wi-Fi, as on the desktop (local-world.ts setLanSharing).
+  lanStart: () => localWorld.setLanSharing(true),
+  lanStop: () => localWorld.setLanSharing(false),
   localAiScan: async () => fail(new Error("Local AI is desktop-only.")),
   localAiInstall: async () => fail(new Error("Local AI is desktop-only.")),
   localAiInstallComfy: async () => fail(new Error("Local AI is desktop-only.")),

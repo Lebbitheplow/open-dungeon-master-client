@@ -141,7 +141,7 @@ export function shareRow(): HTMLElement {
     return row;
   }
   const lan = state.local.lanOrigin;
-  if (lan && !isAndroid) {
+  if (lan) {
     // Sharing on this Wi-Fi: the address friends at the table type or scan.
     // Online sharing can still be opened on top of it.
     row.append(badge("Shared on this Wi-Fi", true));
@@ -182,12 +182,10 @@ export function shareRow(): HTMLElement {
   }
   const idle = lan
     ? `On your Wi-Fi at ${lan}. Share online and friends anywhere can join with a campaign's room code.`
-    : isAndroid
-      ? "Share online while the app runs and friends anywhere can join with a campaign's room code."
-      : "Share on this Wi-Fi for a table in the same room, no internet needed. Share online and friends anywhere can join with a campaign's room code.";
+    : `Share on this Wi-Fi for a table in the same room, no internet needed. Share online${isAndroid ? " while the app runs" : ""} and friends anywhere can join with a campaign's room code.`;
   const line = el("span", "status-line", state.lanError || (tunnel.state === "error" ? tunnel.error : idle));
   row.append(line);
-  if (!isAndroid && state.local.state !== "unavailable") {
+  if (state.local.state !== "unavailable") {
     row.append(
       button("secondary", state.lanError ? "Try Wi-Fi again" : "Share on this Wi-Fi", (btn) => {
         btn.disabled = true;
