@@ -374,6 +374,18 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
+      # The flatpak job may fail without holding the release back. Its
+      # installs are then not offered this version (src/main/updater.ts
+      # releaseHasAsset), and the run says so here.
+      - name: Say when the release has no flatpak bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          bundles=$(gh release view "${GITHUB_REF_NAME}" --json assets -q '[.assets[].name | select(endswith(".flatpak"))] | length')
+          if [ "$bundles" = 0 ]; then
+            echo "::warning::${GITHUB_REF_NAME} has no flatpak bundle; flatpak installs are not offered this version until one is uploaded."
+          fi
       - name: Publish the draft release
         env:
           GH_TOKEN: ${{ github.token }}
