@@ -448,3 +448,12 @@ test("the registry is parsed once, re-read when the file changes, and never shar
   listed.name = "changed by a caller";
   assert.equal(store.get(entry.id).name, "A");
 });
+
+test("the first-launch offer to add the app to Steam is answered once and stays answered", () => {
+  const { store, dir } = freshStore();
+  assert.equal(store.steamOfferAnswered(), false);
+  store.answerSteamOffer();
+  assert.equal(store.steamOfferAnswered(), true);
+  const again = new ServerStore(path.join(dir, "servers.json"), crypt);
+  assert.equal(again.steamOfferAnswered(), true, "a later start reads the answer back");
+});

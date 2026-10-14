@@ -62,6 +62,9 @@ interface RegistryFile {
   // The Steam Deck layout forced on or off in Settings; absent means auto
   // (on on a Deck and in Steam's Game Mode).
   deckLayout?: "on" | "off";
+  // The first-launch offer to add the app to Steam was answered; it is
+  // made once, and Settings keeps the button after it.
+  steamOfferAnswered?: true;
   // Per room code, the secret that claims it in the broker's table
   // registry. Kept so the same code can be pointed at next session's
   // address; nobody else can move a table this shell claimed.
@@ -461,6 +464,16 @@ export class ServerStore {
     const registry = this.load();
     if (choice === "auto") delete registry.deckLayout;
     else registry.deckLayout = choice;
+    this.save(registry);
+  }
+
+  steamOfferAnswered(): boolean {
+    return this.load().steamOfferAnswered === true;
+  }
+
+  answerSteamOffer(): void {
+    const registry = this.load();
+    registry.steamOfferAnswered = true;
     this.save(registry);
   }
 

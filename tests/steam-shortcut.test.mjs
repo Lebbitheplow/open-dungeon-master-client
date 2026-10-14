@@ -12,10 +12,12 @@ import {
   SHORTCUT_NAME,
   addToSteam,
   canAddToSteam,
+  deckOffersSteam,
   mergeLaunchOptions,
   mostRecentAccount,
   shortcutAppId,
   stableAppImagePath,
+  steamShortcutState,
   steamTarget,
   upsertShortcut,
 } from "../dist/main/steam-shortcut.js";
@@ -440,5 +442,46 @@ test("the shipped artwork is every file Steam is given, at the sizes Steam draws
       assert.ok(meta.width <= 1280 && meta.height <= 720, "Steam's logo box");
     }
     if (art.source === "icon.png") assert.equal(meta.width, meta.height);
+  }
+});
+
+test("the first-launch offer is for a Deck in Desktop Mode started from the desktop", () => {
+  assert.equal(deckOffersSteam({ device: true, gameMode: false, steam: false }), true);
+  assert.equal(deckOffersSteam({ device: true, gameMode: true, steam: true }), false, "Game Mode: Steam started it");
+  assert.equal(deckOffersSteam({ device: true, gameMode: false, steam: true }), false, "a Steam shortcut started it");
+  assert.equal(deckOffersSteam({ device: false, gameMode: false, steam: false }), false, "a desktop has the Settings button only");
+});
+
+test("the offer is due only while the app is missing from a library it could join", async () => {
+  const steam = await fakeHome({ list: list(EMULATOR) });
+  const versioned = path.join(steam.home, "open-dungeon-master-client-0.17.6-x86_64.AppImage");
+  await writeFile(versioned, "appimage");
+  const place = { kind: "appimage", execPath: "/tmp/.mount_x/odm", appImagePath: versioned, flatpakId: "" };
+  try {
+    assert.equal(await steamShortcutState(place, steam.home), "missing");
+    await addToSteam(request(steam.home, { place }), steam.host);
+    const stable = path.join(steam.home, STABLE_APPIMAGE_NAME);
+    assert.equal(await steamShortcutState({ ...place, appImagePath: stable }, steam.home), "found", "the renamed file is the one in Steam");
+    assert.equal(await steamShortcutState(place, steam.home), "found", "a new versioned download still finds the stable shortcut");
+    assert.equal(await steamShortcutState({ ...place, kind: "dev" }, steam.home), "unavailable");
+    await writeFile(path.join(steam.account, "config", "shortcuts.vdf"), vdf(0x00, "shortcuts", 0x05, "wide", "x", 0x08, 0x08));
+    assert.equal(await steamShortcutState(place, steam.home), "unavailable", "a list the add would refuse");
+  } finally {
+    await steam.cleanup();
+  }
+  const empty = await mkdtemp(path.join(os.tmpdir(), "odm-steam-"));
+  try {
+    assert.equal(await steamShortcutState({ kind: "portable", execPath: "/opt/odm/odm", appImagePath: "", flatpakId: "" }, empty), "unavailable");
+  } finally {
+    await rm(empty, { recursive: true, force: true });
+  }
+});
+
+test("a fresh Steam with no list yet is a library the app is missing from", async () => {
+  const steam = await fakeHome();
+  try {
+    assert.equal(await steamShortcutState(request(steam.home).place, steam.home), "missing");
+  } finally {
+    await steam.cleanup();
   }
 });
