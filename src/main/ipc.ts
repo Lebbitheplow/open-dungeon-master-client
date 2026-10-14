@@ -945,6 +945,7 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
         str(input?.password, 100),
       );
       adoptLocalGrant(grant);
+      await syncPublicUrl();
       return { ok: true, status: localStatus() };
     } catch (err) {
       return fail(err);
@@ -1227,6 +1228,11 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     // An image stack removed while the world slept left it wired to a
     // ComfyUI that is gone; unwired here, in the background.
     if (!localAi.status().comfy.installed) void unwireImageAi(local.origin, token, localAi.comfy.origin());
+    // The first sync can clean broker records without a token. Run again
+    // after renewing the login so the world's saved publicUrl is healed; in
+    // the background, since a broker that is slow to answer must not hold
+    // the world closed (the syncs run one after another either way).
+    void syncPublicUrl();
     await applySessionCookie(
       partitionFor(LOCAL_SERVER_ID),
       local.origin,

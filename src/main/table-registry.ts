@@ -85,14 +85,17 @@ export async function publishTables(input: {
 export async function dropTables(input: {
   codes: readonly string[];
   secretFor: (code: string) => string;
-}): Promise<void> {
+}): Promise<string[]> {
   ledger.clear();
+  const failed: string[] = [];
   for (const code of input.codes) {
-    await send(tableEndpoint(brokerBase(), code), {
+    const response = await send(tableEndpoint(brokerBase(), code), {
       method: "DELETE",
       headers: { "x-table-secret": input.secretFor(code) },
     });
+    if (!response?.ok) failed.push(code);
   }
+  return failed;
 }
 
 // Where a table is right now, or "" when no host has it online.
