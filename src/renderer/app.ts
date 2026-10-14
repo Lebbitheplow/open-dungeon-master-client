@@ -13,6 +13,7 @@ import {
 } from "./chrome.js";
 import { closeDrawer, createDrawer, isDrawerOpen, toggleDrawer } from "./drawer.js";
 import { startGamepad } from "./gamepad.js";
+import { showShellToast } from "./toast.js";
 import { renderHome } from "./home.js";
 import { aiProgress } from "./local-ai.js";
 import { renderAdd, renderAuth } from "./servers.js";
@@ -184,6 +185,7 @@ startGamepad({
     const multiline = field instanceof HTMLTextAreaElement || field.isContentEditable;
     void window.odm.steamKeyboard(true, { x: box.left, y: box.top, width: box.width, height: box.height }, multiline);
   },
+  notice: showShellToast,
 });
 
 // Escape closes a shell screen laid over a world (the drawer's own
