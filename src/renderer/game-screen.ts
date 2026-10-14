@@ -220,12 +220,17 @@ function shellHostApi(hostId: string, origin: string, current: () => GameMount |
 // Draws the host natively at path. Returns false when the host is too old
 // for it or the shell has no live session there; the caller then opens the
 // web view the way it always did.
-export async function tryOpenNative(hostId: string, path: string, serverVersion: string): Promise<boolean> {
+export async function tryOpenNative(
+  hostId: string,
+  path: string,
+  serverVersion: string,
+  validatedSession?: { origin: string; token: string },
+): Promise<boolean> {
   if (!nativeEligible(serverVersion).ok) return false;
   // The bundle and the session do not depend on each other; the bundle's
   // failure is swallowed only once the session says the door is open.
   const loading = loadBundle().catch(() => null);
-  const session = await window.odm.hostSession(hostId);
+  const session = validatedSession ?? await window.odm.hostSession(hostId);
   if (!session) return false;
   const game = await loading;
   if (!game) return false;

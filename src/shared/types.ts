@@ -158,6 +158,10 @@ export type ConnectResult =
   | { ok: true; firstSetup?: boolean; needsName?: boolean }
   | { ok: false; needsLogin: boolean; error: string };
 
+export type NativeRemotePreparation =
+  | { ok: true; session: { origin: string; token: string }; version: string }
+  | { ok: false; needsLogin: boolean; error: string; origin: string };
+
 // A tunnel sharing the local world at a public https address. "named" means
 // a broker-issued play-CODE address; "quick" is the trycloudflare fallback.
 export interface TunnelStatus {
@@ -468,6 +472,8 @@ export interface OdmBridge {
   // instead of the root; a join code takes precedence. Sanitized in
   // src/shared/open-path.ts before it touches a URL.
   connect(serverId: string, joinCode?: string, path?: string): Promise<ConnectResult>;
+  // Desktop validates remote identity and session before opening native screens.
+  prepareRemote?(serverId: string, joinCode?: string): Promise<NativeRemotePreparation>;
   // Android only: the back gesture on the home screen leaves the app.
   leaveApp?(): Promise<void>;
   // Feeds a pasted invite link (odm:// or the https /j shape) or a bare

@@ -68,6 +68,7 @@ import {
 } from "./odm-api";
 import { commitWorldImport, discardWorldTransfer, exportFileName, runWorldJob } from "../shared/world-transfer";
 import { LOCAL_SERVER_ID, type ServerStore, type StoredServer } from "./servers";
+import { prepareRemoteConnection } from "./remote-preparation";
 import { dropTables, ownedTableCodes, publishTables, resolveTable } from "./table-registry";
 import { createPublicUrlSync } from "./public-url-sync";
 import { portalEligible } from "../shared/portal-logic";
@@ -453,79 +454,17 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     }
   });
 
-  const connectRemote = async (
-    id: string,
-    joinCode: string,
-    path = "",
-  ): Promise<ConnectResult> => {
-    const saved = store.get(id);
-    if (!saved || saved.id === LOCAL_SERVER_ID) {
-      return { ok: false, needsLogin: false, error: "Unknown server." };
-    }
-    let entry = saved;
-    const notOnline = (): ConnectResult => ({
-      ok: false,
-      needsLogin: false,
-      error: `${entry.name} is not online right now. Ask the host to share their world, then try again.`,
-    });
-    // Who answers at the address on file, before anything secret is sent
-    // there. A tunnel hostname is handed out per session and can later
-    // belong to somebody else's world, and a world one of the apps hosts
-    // answers at a new address every time it is shared again. Only a world
-    // that proves it is the one this entry belongs to gets the session.
-    let probe = await probeServer(entry.origin).catch(() => null);
-    const strangerOnFile =
-      probe !== null && !!entry.instanceId && probe.instanceId !== entry.instanceId;
-    if (!probe || strangerOnFile) {
-      // Nothing there, or the wrong world: ask the registry where this
-      // world's room codes point today (src/shared/relocate.ts). Without
-      // this a player returning to a world that had been shared again was
-      // told to sign in, and on a device world the only door that screen
-      // offered was a new account: a second character and no way back.
-      const moved = await relocate(entry);
-      if (moved.origin === entry.origin) return notOnline();
-      entry = moved;
-      probe = await probeServer(entry.origin).catch(() => null);
-      if (!probe) return notOnline();
-    }
-    let token = store.token(id);
-    let session = token ? await sessionState(entry.origin, token) : "rejected";
-    if (session === "unreachable") return notOnline();
-    if (session === "rejected") {
-      // An account the app made up a password for (joined by room code)
-      // must never be asked for it: nobody was ever told what it is. Renew
-      // the session with the stored one instead, and only fall back to the
-      // sign-in form for accounts a person chose a password for.
-      const secret = store.secret(id);
-      token = null;
-      if (secret) {
-        try {
-          const grant = await loginForToken(entry.origin, entry.username, secret);
-          store.upsert({
-            id: entry.id,
-            origin: entry.origin,
-            name: entry.name,
-            username: grant.username,
-            token: grant.token,
-            tokenExpiresAt: grant.expiresAt,
-          });
-          token = grant.token;
-          session = "ok";
-        } catch {
-          // The password no longer works (changed, or the account is gone).
-        }
-      }
-    }
-    if (!token) {
-      return {
-        ok: false,
-        needsLogin: true,
-        error: probe.deviceWorld
-          ? "Your seat at this world could not be reopened. Join again with a name, and ask the host to remove the old one."
-          : "Your session expired. Sign in again.",
-      };
-    }
-    await attachRemote(entry, token, joinCode, path, probe);
+  const prepareRemote = (id: string) => prepareRemoteConnection(id, {
+    store,
+    probe: probeServer,
+    relocate,
+    sessionState,
+    login: loginForToken,
+  });
+  const connectRemote = async (id: string, joinCode: string, path = ""): Promise<ConnectResult> => {
+    const prepared = await prepareRemote(id);
+    if (!prepared.ok) return prepared;
+    await attachRemote(prepared.entry, prepared.token, joinCode, path, prepared.probe);
     return { ok: true };
   };
 
@@ -843,6 +782,22 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     }
   });
 
+  shellIpc.handle("servers:prepare-native", async (_event, id: unknown, joinCode: unknown) => {
+    const serverId = str(id, 64);
+    const prepared = await prepareRemote(serverId);
+    if (!prepared.ok) {
+      return { ...prepared, origin: store.get(serverId)?.origin ?? "" };
+    }
+    store.touch(serverId);
+    const code = joinCodeOf(joinCode);
+    if (code) store.rememberJoinCode(serverId, code);
+    store.setInstanceId(serverId, prepared.probe.instanceId);
+    return {
+      ok: true,
+      session: { origin: prepared.entry.origin, token: prepared.token },
+      version: prepared.probe.version,
+    };
+  });
   shellIpc.handle("servers:connect", (_event, id: unknown, joinCode: unknown, path: unknown) =>
     connectRemote(str(id, 64), joinCodeOf(joinCode), safeInnerPath(path)),
   );

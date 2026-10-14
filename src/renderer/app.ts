@@ -215,12 +215,20 @@ const tableCampaign = tableQuery.get("campaign") ?? "";
 
 void refresh().then(async () => {
   if (tableHost && tableCampaign) {
-    // The host's version gates the native screens; the device world
-    // answers from its status, a remote host from a probe.
-    const server = state.servers.find((entry) => entry.id === tableHost);
-    const probed = server ? await window.odm.probeServer(server.origin).catch(() => null) : null;
-    const version = probed?.ok ? probed.probe.version : state.local.serverVersion;
-    const opened = await tryOpenNative(tableHost, `/campaigns/${encodeURIComponent(tableCampaign)}/table`, version).catch(() => false);
+    const tablePath = `/campaigns/${encodeURIComponent(tableCampaign)}/table`;
+    let opened = false;
+    if (tableHost !== "local" && window.odm.prepareRemote) {
+      const prepared = await window.odm.prepareRemote(tableHost).catch(() => null);
+      if (prepared?.ok) {
+        opened = await tryOpenNative(tableHost, tablePath, prepared.version, prepared.session).catch(() => false);
+      }
+    } else {
+      // The device world and Android keep their existing native entry path.
+      const server = state.servers.find((entry) => entry.id === tableHost);
+      const probed = server ? await window.odm.probeServer(server.origin).catch(() => null) : null;
+      const version = probed?.ok ? probed.probe.version : state.local.serverVersion;
+      opened = await tryOpenNative(tableHost, tablePath, version).catch(() => false);
+    }
     if (opened) return;
   }
   renderHome();
