@@ -98,10 +98,17 @@ export interface AiSetup {
   // "harness": an agent program already installed and signed in on this
   // computer (Claude Code, Codex, opencode, Grok Build) narrates instead.
   harness?: { id: HarnessId; model: string; utilityModel: string };
-  // The provider's paid Fast tier (server issue 255), for the models that
-  // have one; the server asks for it only where the model does.
+  // The provider's paid Fast tier (server issue 255), for the storyteller.
+  // On OpenAI the server asks for it for any named model, at the premium
+  // price, so each role is chosen on its own: utilityFast is the utility
+  // model's.
   fast?: boolean;
+  utilityFast?: boolean;
 }
+
+// The storyteller models an OpenAI key lists, as the device world's server
+// reads them (its guided setup's listing), with the catalog's pick.
+export type AiModelsResult = Result<{ models: Array<{ id: string; label: string }>; recommended: string }>;
 
 export type HarnessId = "claude" | "codex" | "opencode" | "grok";
 
@@ -138,8 +145,9 @@ export interface SavedAi {
   utilityModel: string;
   // Set when the device narrates with an agent program.
   harnessId?: string;
-  // The storyteller runs at the provider's Fast tier.
+  // The storyteller runs at the provider's Fast tier, and the utility model.
   fast?: boolean;
+  utilityFast?: boolean;
 }
 
 // firstSetup: the shell just auto-provisioned the local profile, so the
@@ -507,8 +515,12 @@ export interface OdmBridge {
     password: string;
   }): Promise<Result<{ status: LocalStatus }>>;
   localLogin(input: { username: string; password: string }): Promise<Result<{ status: LocalStatus }>>;
-  localConfigureAi(setup: AiSetup): Promise<Result>;
+  // notice: what the player still has to pick, and where, once the key is
+  // saved (a picture or transcription model the key's list does not settle).
+  localConfigureAi(setup: AiSetup): Promise<Result<{ notice?: string }>>;
   localAiSaved(): Promise<SavedAi>;
+  // The storyteller models the key lists ("" for the one already saved).
+  localAiModels(apiKey: string): Promise<AiModelsResult>;
   // The agent programs the device world's server can start. Desktop only;
   // the phone answers that there is no such thing on a phone.
   localHarnessStatus(refresh?: boolean): Promise<HarnessStatusResult>;
@@ -525,7 +537,7 @@ export interface OdmBridge {
   // settings to it failed and needs a hand.
   localAiInstall(tierId: string): Promise<Result<{ status: LocalAiStatus; warning: string }>>;
   localAiInstallComfy(): Promise<Result<{ status: LocalAiStatus; warning: string }>>;
-  localAiUninstall(component: "text" | "images"): Promise<Result<{ status: LocalAiStatus }>>;
+  localAiUninstall(component: "text" | "images"): Promise<Result<{ status: LocalAiStatus; warning?: string }>>;
   localAiStatus(): Promise<LocalAiStatus>;
   // Speech-to-text for dictation in the device world. Desktop only: the
   // phone dictates with its own recognizer, so it leaves these out.

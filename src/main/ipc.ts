@@ -26,7 +26,15 @@ import {
   trustedTunnelOrigin,
   type JoinLink,
 } from "../shared/deep-link";
-import { NO_SAVED_AI, harnessPatch, openAiPatch, savedAiFrom } from "../shared/ai-setup";
+import {
+  NO_SAVED_AI,
+  STORY_MODELS_PATH,
+  harnessPatch,
+  saveOpenAiDoor,
+  savedAiFrom,
+  storyModelsFrom,
+  storyModelsRequest,
+} from "../shared/ai-setup";
 import {
   STEAM_KEYBOARD_CLOSE,
   parseDeckChoice,
@@ -40,7 +48,7 @@ import { coverRequestUrl, type HostInput } from "../shared/home-feed-logic";
 import { landingPath, safeInnerPath } from "../shared/open-path";
 import { createDesktopHomeFeed, fetchCoverImage } from "./home-feed";
 import type { LocalAiManager } from "./local-ai/manager";
-import { wireImageAi, wireTextAi } from "./local-ai/wiring";
+import { unwireImageAi, wireImageAi, wireTextAi } from "./local-ai/wiring";
 import type { LocalServer } from "./local-server";
 import {
   deleteAccount,
@@ -48,6 +56,7 @@ import {
   getAdminSettings,
   getHarnessStatus,
   patchAdminSettings,
+  postAdmin,
   probeServer,
   registerAccount,
   sessionState,
@@ -975,20 +984,36 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
         return { ok: true };
       }
       if (setup?.choice !== "openai") return { ok: true };
-      const saved = savedAiFrom(await getAdminSettings(local.origin, token).catch(() => null));
-      const built = openAiPatch(
+      const origin = local.origin;
+      const saved = await saveOpenAiDoor(
         {
           choice: "openai",
           apiKey: str(setup.apiKey, 400),
           model: str(setup.model, 200),
           utilityModel: str(setup.utilityModel, 200),
           fast: setup.fast === true,
+          utilityFast: setup.utilityFast === true,
         },
-        saved,
+        {
+          settings: () => getAdminSettings(origin, token),
+          patch: (patch) => patchAdminSettings(origin, token, patch),
+          post: (pathname, body) => postAdmin(origin, token, pathname, body),
+        },
       );
-      if ("error" in built) return fail(new Error(built.error));
-      await patchAdminSettings(local.origin, token, built.patch);
-      return { ok: true };
+      if ("error" in saved) return fail(new Error(saved.error));
+      return { ok: true, ...(saved.notice ? { notice: saved.notice } : {}) };
+    } catch (err) {
+      return fail(err);
+    }
+  });
+
+  // The storyteller models the OpenAI key lists, for the door's model
+  // fields: the typed key, or the device's saved one when none is typed.
+  shellIpc.handle("local:ai-models", async (_event, apiKey: unknown) => {
+    try {
+      const token = store.token(LOCAL_SERVER_ID);
+      if (!token || !local.origin) return fail(new Error("Set up the local account first."));
+      return storyModelsFrom(await postAdmin(local.origin, token, STORY_MODELS_PATH, storyModelsRequest(str(apiKey, 400))));
     } catch (err) {
       return fail(err);
     }
@@ -1212,6 +1237,9 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     if (!entry) {
       return { ok: false, needsLogin: true, error: "Sign in to your local account." };
     }
+    // An image stack removed while the world slept left it wired to a
+    // ComfyUI that is gone; unwired here, in the background.
+    if (!localAi.status().comfy.installed) void unwireImageAi(local.origin, token, localAi.comfy.origin());
     await applySessionCookie(
       partitionFor(LOCAL_SERVER_ID),
       local.origin,
@@ -1418,9 +1446,17 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
 
   shellIpc.handle("local-ai:uninstall", async (_event, component: unknown) => {
     try {
-      if (str(component, 10) === "images") await localAi.uninstallComfy();
-      else await localAi.uninstallText();
-      return { ok: true, status: localAi.status() };
+      let warning = "";
+      if (str(component, 10) === "images") {
+        await localAi.uninstallComfy();
+        // A running world stops painting with it now; a sleeping one is
+        // put right at its next start (local:play).
+        const token = store.token(LOCAL_SERVER_ID);
+        if (token && local.origin) warning = await unwireImageAi(local.origin, token, localAi.comfy.origin());
+      } else {
+        await localAi.uninstallText();
+      }
+      return { ok: true, status: localAi.status(), warning };
     } catch (err) {
       return fail(err);
     }
