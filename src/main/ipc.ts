@@ -900,7 +900,9 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
         str(input?.password, 100),
       );
       adoptLocalGrant(grant);
-      await syncPublicUrl();
+      // In the background: the sign-in has succeeded whatever the broker
+      // says, and a slow DELETE must not hold it (or fail it).
+      void syncPublicUrl();
       return { ok: true, status: localStatus() };
     } catch (err) {
       return fail(err);

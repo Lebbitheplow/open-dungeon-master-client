@@ -93,7 +93,10 @@ export async function dropTables(input: {
       method: "DELETE",
       headers: { "x-table-secret": input.secretFor(code) },
     });
-    if (!response?.ok) failed.push(code);
+    // Kept for the next sync only when trying again can help: no answer, or
+    // the broker failing. A code the broker refuses (claimed by another
+    // host, 409) or cannot read (400) answers the same way next time.
+    if (!response || response.status >= 500 || response.status === 429) failed.push(code);
   }
   return failed;
 }

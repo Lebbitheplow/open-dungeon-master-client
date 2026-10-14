@@ -44,6 +44,8 @@ async function setupShutdown() {
     "../shared/deep-link": { joinLinkFromArgv: () => null },
     "./local-ai/manager": { LocalAiManager: class { stop() { aiStops++; return ai.promise; } } },
     "./local-server": { LocalServer: class { stop() { localStops++; return local.promise; } } },
+    // A reset the previous run asked for (src/main/reset.ts): none here.
+    "./reset": { applyPendingReset: async () => null },
     "./ipc": { registerIpc: () => ({ shutdownShare() { shareStops++; return share.promise; } }) },
     "./servers": { LOCAL_SERVER_ID: "local", ServerStore: class { storyMemory() { return ""; } deckChoice() { return ""; } } },
     "../shared/story-memory": { storyMemorySupported: () => false },

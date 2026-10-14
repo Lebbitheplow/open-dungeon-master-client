@@ -98,23 +98,30 @@ test("an in-flight publish followed by Stop patches settings before a slow faile
   assert.deepEqual(saved, []);
 });
 
-test("broker deletion reports only codes that did not receive success", async () => {
+test("broker deletion keeps only codes worth trying again", async () => {
   const originalFetch = globalThis.fetch;
   const requests = [];
+  // A failing broker, then success, then a code another host claimed (409),
+  // then no answer at all.
+  const answers = [{ ok: false, status: 503 }, { ok: true, status: 200 }, { ok: false, status: 409 }, null];
   globalThis.fetch = async (_url, init) => {
     requests.push({ method: init.method, secret: init.headers["x-table-secret"] });
-    return { ok: requests.length === 2 };
+    const answer = answers[requests.length - 1];
+    if (!answer) throw new TypeError("fetch failed");
+    return answer;
   };
   try {
     const failed = await dropTables({
-      codes: ["ABCD2345", "EFGH6789"],
+      codes: ["ABCD2345", "EFGH6789", "JKMN2345", "PQRS6789"],
       secretFor: (code) => `secret-${code}`,
     });
     assert.deepEqual(requests, [
       { method: "DELETE", secret: "secret-ABCD2345" },
       { method: "DELETE", secret: "secret-EFGH6789" },
+      { method: "DELETE", secret: "secret-JKMN2345" },
+      { method: "DELETE", secret: "secret-PQRS6789" },
     ]);
-    assert.deepEqual(failed, ["ABCD2345"]);
+    assert.deepEqual(failed, ["ABCD2345", "PQRS6789"], "a 409 answers the same next time and is not kept");
   } finally {
     globalThis.fetch = originalFetch;
   }
