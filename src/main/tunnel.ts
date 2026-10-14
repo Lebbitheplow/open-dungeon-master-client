@@ -80,7 +80,7 @@ export class QuickTunnel {
   private url = "";
   private mode: TunnelStatus["mode"] = "";
   private session: BrokerSession | null = null;
-  private stopRequested = false;
+  private startGeneration = 0;
   private error = "";
   private readonly listeners = new Set<() => void>();
 
@@ -361,31 +361,48 @@ export class QuickTunnel {
   }
 
   private async doStart(localPort: number): Promise<TunnelStatus> {
-    this.stopRequested = false;
+    const generation = ++this.startGeneration;
+    const cancelled = (): boolean => generation !== this.startGeneration;
+    const requireActive = (): void => {
+      if (cancelled()) throw new Error("stopped");
+    };
     this.setState("starting");
     try {
       const bin = await this.ensureBinary();
+      requireActive();
       const session = await this.requestBrokerSession(localPort);
+      if (cancelled()) {
+        if (session) {
+          this.session = session;
+          await this.releaseBrokerSession();
+        }
+        throw new Error("stopped");
+      }
       if (session) {
         try {
           await this.launch(bin, localPort, session);
+          requireActive();
           this.setState("running");
           return this.status();
         } catch {
-          if (this.stopRequested) throw new Error("stopped");
+          requireActive();
           // The broker answered but its tunnel never came up (bad token,
           // stuck DNS, edge trouble). A quick tunnel is better than an
           // error, so release the session and try again anonymously.
           await this.killChild();
           await this.releaseBrokerSession();
+          requireActive();
         }
       }
+      requireActive();
       await this.launch(bin, localPort, null);
+      requireActive();
       this.setState("running");
     } catch (err) {
-      const requested = this.stopRequested;
+      const requested = cancelled();
+      const failedGeneration = this.startGeneration;
       await this.stop().catch(() => undefined);
-      if (!requested) {
+      if (!requested && this.startGeneration === failedGeneration + 1) {
         this.setState("error", err instanceof Error ? err.message : String(err));
       }
     }
@@ -393,7 +410,7 @@ export class QuickTunnel {
   }
 
   async stop(): Promise<void> {
-    this.stopRequested = true;
+    this.startGeneration++;
     this.url = "";
     this.mode = "";
     await this.killChild();
