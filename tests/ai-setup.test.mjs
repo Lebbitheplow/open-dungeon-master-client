@@ -4,14 +4,20 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
-  DEFAULT_MODEL,
   FAST_COST_NOTE,
+  MEDIA_MODELS_PATH,
   NO_SAVED_AI,
+  STORY_MODELS_PATH,
   harnessFastModel,
   harnessPatch,
+  mediaNotice,
   openAiFastModel,
   openAiPatch,
+  saveOpenAiDoor,
   savedAiFrom,
+  savedMediaModels,
+  storyModelsFrom,
+  storyModelsRequest,
 } from "../dist/shared/ai-setup.js";
 
 const repo = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -24,13 +30,22 @@ const openAiConfig = (text) => ({
 });
 
 test("one key covers the storyteller, the utility model and the pictures", () => {
-  const built = openAiPatch(setup(" sk-1 "), NO_SAVED_AI);
+  const built = openAiPatch(setup(" sk-1 ", "my-storyteller"), NO_SAVED_AI);
   assert.equal(built.patch.text.customApiKey, "sk-1");
   assert.equal(built.patch.text.utilityApiKey, "sk-1");
   assert.equal(built.patch.images.openaiApiKey, "sk-1");
   assert.equal(built.patch.images.defaultBackend, "openai");
-  assert.equal(built.patch.text.customModel, DEFAULT_MODEL);
-  assert.equal(built.patch.text.utilityModel, DEFAULT_MODEL, "a blank utility model follows the storyteller");
+  assert.equal(built.patch.text.customModel, "my-storyteller");
+  assert.equal(built.patch.text.utilityModel, "my-storyteller", "a blank utility model follows the storyteller");
+});
+
+// The server names no model (its PR 298), and neither does the door: the
+// storyteller is the player's pick from what the key lists.
+test("no storyteller model is invented: a blank one is refused", () => {
+  assert.deepEqual(openAiPatch(setup("sk-1", "  "), NO_SAVED_AI), { error: "Choose the Dungeon Master model from the ones your key lists." });
+  assert.deepEqual(openAiPatch(setup("", ""), { keySaved: true, model: "", utilityModel: "" }), {
+    error: "Choose the Dungeon Master model from the ones your key lists.",
+  });
 });
 
 test("a blank key is refused until the device holds one, then it means keep", () => {
@@ -164,4 +179,109 @@ test("the door's Fast models are the server's", { skip: !fs.existsSync(serverSpe
     }
   }
   assert.equal(FAST_COST_NOTE, server.FAST_COST_NOTE, "the price is said in the same words");
+});
+
+// ---- the picture and transcription models, from the key's own list ----
+
+// The device world's server as the door sees it: the masked settings, every
+// PATCH, and the model listings it answers (POST /api/admin/models), each
+// with the `recommended` the server's registry gives.
+function fakeWorld({ settings = null, recommended = {}, refuse = [] } = {}) {
+  const patches = [];
+  const asked = [];
+  return {
+    patches,
+    asked,
+    world: {
+      settings: async () => settings,
+      patch: async (patch) => {
+        patches.push(patch);
+      },
+      post: async (path, body) => {
+        asked.push({ path, body });
+        if (refuse.includes(body.role)) throw new Error("This world's server does not know that role.");
+        return { reachable: true, models: [], recommended: recommended[body.role] ?? "" };
+      },
+    },
+  };
+}
+
+test("the door saves the picture and transcription models the key's list recommends", async () => {
+  const fake = fakeWorld({ recommended: { image: "listed-painter", dictation: "listed-ears" } });
+  const saved = await saveOpenAiDoor(setup("sk-1", "my-storyteller"), fake.world);
+  assert.deepEqual(saved, { notice: "" });
+  assert.equal(fake.patches[0].text.customModel, "my-storyteller", "the key and the storyteller first");
+  assert.deepEqual(fake.patches[1], { images: { openaiModel: "listed-painter" }, speech: { sttOpenaiModel: "listed-ears" } });
+  // Listed after the key is saved, on the device world's own route, for the
+  // key the world now holds (no key travels in the listing).
+  assert.deepEqual(fake.asked, [
+    { path: MEDIA_MODELS_PATH, body: { action: "list", role: "image", provider: "images" } },
+    { path: MEDIA_MODELS_PATH, body: { action: "list", role: "dictation", provider: "speech", baseUrl: "https://api.openai.com/v1" } },
+  ]);
+});
+
+test("a picture or transcription model the device already saved is kept", async () => {
+  const settings = {
+    config: {
+      text: { provider: "custom", customBaseUrl: "https://api.openai.com/v1", customModel: "old", hasCustomApiKey: true },
+      images: { openaiModel: "chosen-painter" },
+      speech: { sttOpenaiModel: "" },
+    },
+  };
+  assert.deepEqual(savedMediaModels(settings), { pictures: "chosen-painter", dictation: "" });
+  const fake = fakeWorld({ settings, recommended: { image: "listed-painter", dictation: "listed-ears" } });
+  const saved = await saveOpenAiDoor(setup("", "my-storyteller"), fake.world);
+  assert.deepEqual(saved, { notice: "" });
+  assert.deepEqual(fake.patches[1], { speech: { sttOpenaiModel: "listed-ears" } }, "only the blank one is filled");
+  assert.ok(!fake.asked.some((request) => request.body.role === "image"), "a saved pick is not listed again");
+});
+
+test("with no obvious pick the field stays blank and the player is told where to pick", async () => {
+  const fake = fakeWorld({ recommended: { dictation: "listed-ears" } });
+  const saved = await saveOpenAiDoor(setup("sk-1", "my-storyteller"), fake.world);
+  assert.deepEqual(fake.patches[1], { speech: { sttOpenaiModel: "listed-ears" } });
+  assert.match(saved.notice, /Admin > Image generation/);
+  assert.doesNotMatch(saved.notice, /Admin > Speech/);
+  // A listing the world's server refuses (one older than the speech role)
+  // leaves that model blank too, and the key stays saved.
+  const older = fakeWorld({ recommended: { image: "listed-painter" }, refuse: ["dictation"] });
+  const kept = await saveOpenAiDoor(setup("sk-1", "my-storyteller"), older.world);
+  assert.deepEqual(older.patches[1], { images: { openaiModel: "listed-painter" } });
+  assert.match(kept.notice, /OpenAI transcription in Admin > Speech/);
+  const none = fakeWorld();
+  const both = await saveOpenAiDoor(setup("sk-1", "my-storyteller"), none.world);
+  assert.equal(none.patches.length, 1, "nothing to write when nothing was picked");
+  assert.match(both.notice, /picture or transcription model/);
+  assert.equal(mediaNotice([]), "");
+});
+
+test("a refused save writes nothing", async () => {
+  const fake = fakeWorld({ recommended: { image: "listed-painter" } });
+  assert.deepEqual(await saveOpenAiDoor(setup("", "my-storyteller"), fake.world), { error: "Enter the API key." });
+  assert.deepEqual(await saveOpenAiDoor(setup("sk-1", ""), fake.world), { error: "Choose the Dungeon Master model from the ones your key lists." });
+  assert.equal(fake.patches.length, 0);
+  assert.equal(fake.asked.length, 0);
+});
+
+test("the storyteller models are the key's own, from the world's setup listing", () => {
+  assert.equal(STORY_MODELS_PATH, "/api/admin/setup");
+  assert.deepEqual(storyModelsRequest(" sk-typed "), { action: "models", provider: "openai", apiKey: "sk-typed" });
+  assert.deepEqual(
+    storyModelsFrom({ ok: true, models: [{ id: "model-a", label: "Model A" }, { id: "model-b" }, { id: "" }, { label: "no id" }], recommended: "model-b" }),
+    { ok: true, models: [{ id: "model-a", label: "Model A" }, { id: "model-b", label: "model-b" }], recommended: "model-b" },
+  );
+  assert.equal(storyModelsFrom({ ok: true, models: [{ id: "model-a" }], recommended: "not-listed" }).recommended, "", "only a listed model is recommended");
+  assert.deepEqual(storyModelsFrom({ ok: false, error: "api.openai.com turned the key down." }), { ok: false, error: "api.openai.com turned the key down." });
+  assert.equal(storyModelsFrom(null).ok, false);
+});
+
+// The listings the door asks for are ones the server answers: the request
+// shapes are held to the server's own route schemas.
+test("the door's listings match the server's routes", { skip: !fs.existsSync(path.join(serverDir, "src", "app", "api", "admin", "models", "route.ts")) }, () => {
+  const models = fs.readFileSync(path.join(serverDir, "src", "app", "api", "admin", "models", "route.ts"), "utf8");
+  assert.match(models, /role: z\.enum\(\[[^\]]*"image"[^\]]*"dictation"/);
+  assert.match(models, /provider: z\.enum\(\[[^\]]*"images"[^\]]*"speech"/);
+  const setupRoute = fs.readFileSync(path.join(serverDir, "src", "app", "api", "admin", "setup", "route.ts"), "utf8");
+  assert.match(setupRoute, /action: z\.literal\("models"\)/);
+  assert.match(setupRoute, /provider: z\.enum\(\["openai"/);
 });

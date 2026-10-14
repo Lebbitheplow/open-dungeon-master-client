@@ -168,7 +168,7 @@ interface HttpReply {
 async function http(
   origin: string,
   pathname: string,
-  init: { method?: string; token?: string; body?: unknown } = {},
+  init: { method?: string; token?: string; body?: unknown; timeoutMs?: number } = {},
 ): Promise<HttpReply> {
   try {
     const response = await CapacitorHttp.request({
@@ -180,7 +180,7 @@ async function http(
       },
       data: init.body,
       connectTimeout: TIMEOUT_MS,
-      readTimeout: TIMEOUT_MS,
+      readTimeout: init.timeoutMs ?? TIMEOUT_MS,
     });
     return { status: response.status, data: response.data };
   } catch {
@@ -303,6 +303,14 @@ async function patchAdminSettings(origin: string, token: string, patch: object):
 async function getAdminSettings(origin: string, token: string): Promise<unknown> {
   const reply = await http(origin, "/api/admin/settings", { token });
   if (reply.status !== 200) throw new Error(errorText(reply, "Reading world settings failed."));
+  return reply.data;
+}
+
+// The model listings the OpenAI door asks (src/shared/ai-setup.ts). The
+// world's server asks the key's provider in turn, so it is given longer.
+async function postAdmin(origin: string, token: string, path: string, body: object): Promise<unknown> {
+  const reply = await http(origin, path, { method: "POST", token, body, timeoutMs: 30_000 });
+  if (reply.status !== 200) throw new Error(errorText(reply, "The world's server refused the request."));
   return reply.data;
 }
 
@@ -707,6 +715,7 @@ const localWorld = createLocalWorld({
   tokenIsValid,
   patchAdminSettings,
   getAdminSettings,
+  postAdmin,
   async plantSession(origin, token) {
     await clearPortalCookies(origin);
     await CapacitorCookies.setCookie({ url: origin, key: "odm_session", value: token });
@@ -1736,6 +1745,7 @@ const bridge: OdmBridge = {
     }),
   localConfigureAi: (setup) => localWorld.configureAi(setup),
   localAiSaved: () => localWorld.aiSaved(),
+  localAiModels: (apiKey) => localWorld.aiModels(String(apiKey ?? "")),
   // Agent programs (Claude Code, Codex, ...) are started by a desktop's own
   // server; a phone has none to start.
   localHarnessStatus: async () => ({ ok: false, error: "Agent programs run on a computer, not a phone." }),

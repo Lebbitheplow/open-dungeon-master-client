@@ -106,6 +106,10 @@ export interface AiSetup {
   utilityFast?: boolean;
 }
 
+// The storyteller models an OpenAI key lists, as the device world's server
+// reads them (its guided setup's listing), with the catalog's pick.
+export type AiModelsResult = Result<{ models: Array<{ id: string; label: string }>; recommended: string }>;
+
 export type HarnessId = "claude" | "codex" | "opencode" | "grok";
 
 // One agent program as the device world's server sees it (its
@@ -511,8 +515,12 @@ export interface OdmBridge {
     password: string;
   }): Promise<Result<{ status: LocalStatus }>>;
   localLogin(input: { username: string; password: string }): Promise<Result<{ status: LocalStatus }>>;
-  localConfigureAi(setup: AiSetup): Promise<Result>;
+  // notice: what the player still has to pick, and where, once the key is
+  // saved (a picture or transcription model the key's list does not settle).
+  localConfigureAi(setup: AiSetup): Promise<Result<{ notice?: string }>>;
   localAiSaved(): Promise<SavedAi>;
+  // The storyteller models the key lists ("" for the one already saved).
+  localAiModels(apiKey: string): Promise<AiModelsResult>;
   // The agent programs the device world's server can start. Desktop only;
   // the phone answers that there is no such thing on a phone.
   localHarnessStatus(refresh?: boolean): Promise<HarnessStatusResult>;

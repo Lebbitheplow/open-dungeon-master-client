@@ -26,7 +26,15 @@ import {
   trustedTunnelOrigin,
   type JoinLink,
 } from "../shared/deep-link";
-import { NO_SAVED_AI, harnessPatch, openAiPatch, savedAiFrom } from "../shared/ai-setup";
+import {
+  NO_SAVED_AI,
+  STORY_MODELS_PATH,
+  harnessPatch,
+  saveOpenAiDoor,
+  savedAiFrom,
+  storyModelsFrom,
+  storyModelsRequest,
+} from "../shared/ai-setup";
 import {
   STEAM_KEYBOARD_CLOSE,
   parseDeckChoice,
@@ -48,6 +56,7 @@ import {
   getAdminSettings,
   getHarnessStatus,
   patchAdminSettings,
+  postAdmin,
   probeServer,
   registerAccount,
   sessionState,
@@ -975,8 +984,8 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
         return { ok: true };
       }
       if (setup?.choice !== "openai") return { ok: true };
-      const saved = savedAiFrom(await getAdminSettings(local.origin, token).catch(() => null));
-      const built = openAiPatch(
+      const origin = local.origin;
+      const saved = await saveOpenAiDoor(
         {
           choice: "openai",
           apiKey: str(setup.apiKey, 400),
@@ -985,11 +994,26 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
           fast: setup.fast === true,
           utilityFast: setup.utilityFast === true,
         },
-        saved,
+        {
+          settings: () => getAdminSettings(origin, token),
+          patch: (patch) => patchAdminSettings(origin, token, patch),
+          post: (pathname, body) => postAdmin(origin, token, pathname, body),
+        },
       );
-      if ("error" in built) return fail(new Error(built.error));
-      await patchAdminSettings(local.origin, token, built.patch);
-      return { ok: true };
+      if ("error" in saved) return fail(new Error(saved.error));
+      return { ok: true, ...(saved.notice ? { notice: saved.notice } : {}) };
+    } catch (err) {
+      return fail(err);
+    }
+  });
+
+  // The storyteller models the OpenAI key lists, for the door's model
+  // fields: the typed key, or the device's saved one when none is typed.
+  shellIpc.handle("local:ai-models", async (_event, apiKey: unknown) => {
+    try {
+      const token = store.token(LOCAL_SERVER_ID);
+      if (!token || !local.origin) return fail(new Error("Set up the local account first."));
+      return storyModelsFrom(await postAdmin(local.origin, token, STORY_MODELS_PATH, storyModelsRequest(str(apiKey, 400))));
     } catch (err) {
       return fail(err);
     }

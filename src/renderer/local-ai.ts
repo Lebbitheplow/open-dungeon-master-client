@@ -386,12 +386,17 @@ function renderOpenAiForm(saved: SavedAi | null = null): void {
   const form = el("form");
   const [keyLabel, keyField] = input("API key", "password");
   keyField.placeholder = keySaved ? "Saved on this device. Blank keeps it." : "sk-...";
-  const [modelLabel, modelField] = input("Dungeon Master model", "text", saved?.model || "gpt-5.1");
-  const [utilityLabel, utilityField] = input(
-    "Utility model (cheaper, for summaries)",
-    "text",
-    saved?.utilityModel || "gpt-5-mini",
-  );
+  // No model is named by the app: both fields offer what the key lists, the
+  // storyteller's filled with the catalog's pick once the list arrives.
+  const [modelLabel, modelField] = input("Dungeon Master model", "text", saved?.model || "");
+  modelField.placeholder = "One of the models your key lists";
+  const [utilityLabel, utilityField] = input("Utility model (cheaper, for summaries)", "text", saved?.utilityModel || "");
+  utilityField.placeholder = "Blank uses the Dungeon Master model";
+  const listed = el("datalist");
+  listed.id = "openai-models";
+  modelField.setAttribute("list", listed.id);
+  utilityField.setAttribute("list", listed.id);
+  const listing = el("p", "hint", keySaved ? "" : "Enter the key to see the models it can use.");
   // Fast for each role on its own: OpenAI's API is asked for it for any
   // named model, at the premium price, so a choice for the storyteller does
   // not spend it on every summary too.
@@ -407,6 +412,43 @@ function renderOpenAiForm(saved: SavedAi | null = null): void {
   modelField.addEventListener("input", offerFast);
   utilityField.addEventListener("input", offerFast);
   offerFast();
+  // The key's models, as the device's server lists them; a later answer
+  // replaces an earlier one, and a stale one is dropped.
+  let ticket = 0;
+  const listModels = (apiKey: string) => {
+    const mine = (ticket += 1);
+    listing.textContent = "Listing the models your key can use…";
+    void window.odm
+      .localAiModels(apiKey)
+      .catch(() => ({ ok: false as const, error: "Your key's models could not be listed." }))
+      .then((result) => {
+        if (mine !== ticket || state.screenName !== "local-ai-openai") return;
+        if (!result.ok) {
+          listing.textContent = result.error;
+          return;
+        }
+        listed.replaceChildren(
+          ...result.models.map((model) => {
+            const option = el("option");
+            option.value = model.id;
+            if (model.label !== model.id) option.label = model.label;
+            return option;
+          }),
+        );
+        if (!modelField.value.trim() && result.recommended) {
+          modelField.value = result.recommended;
+          offerFast();
+        }
+        listing.textContent = result.models.length
+          ? `Your key lists ${result.models.length} models that can narrate. Pick one, or type another it serves.`
+          : "Your key lists no models that can narrate.";
+      });
+  };
+  keyField.addEventListener("change", () => {
+    const typed = keyField.value.trim();
+    if (typed) listModels(typed);
+  });
+  if (keySaved) listModels("");
   const error = el("p", "error");
   const submit = button("primary", "Save and play");
   submit.type = "submit";
@@ -416,12 +458,17 @@ function renderOpenAiForm(saved: SavedAi | null = null): void {
     "hint",
     "One key for this whole device: every campaign here uses it, new or old, for narration and for pictures.",
   );
-  form.append(keyLabel, modelLabel, utilityLabel, speed.row, utilitySpeed.row, scope, error, submit);
+  form.append(keyLabel, modelLabel, utilityLabel, listed, listing, speed.row, utilitySpeed.row, scope, error, submit);
   form.addEventListener("input", () => {
     openAiTouched = true;
   });
   form.addEventListener("submit", (event) => {
     event.preventDefault();
+    if (!modelField.value.trim()) {
+      error.textContent = "Choose the Dungeon Master model from the ones your key lists.";
+      modelField.focus();
+      return;
+    }
     submit.disabled = true;
     error.textContent = "";
     const setup: AiSetup = {
@@ -454,6 +501,21 @@ async function finishAi(setup: AiSetup): Promise<void> {
     renderError(result.error);
     return;
   }
+  // Saved, with a model the key's list did not settle: said once, with
+  // where to pick it, before the world opens.
+  if (result.notice) {
+    renderAiNotice(result.notice);
+    return;
+  }
   await playLocal(null);
   state.joinIntent = null;
+}
+
+function renderAiNotice(notice: string): void {
+  state.screenName = "local-ai-notice";
+  const card = formCard(el("p", "sub", notice));
+  const cont = button("primary", "Continue", () => void enterLocalWorld(), "play");
+  cont.classList.add("block");
+  card.append(cont);
+  show("narrow", intro("Your key is saved", ""), card);
 }
