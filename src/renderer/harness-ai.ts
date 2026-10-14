@@ -10,27 +10,11 @@ import { renderError } from "./servers.js";
 import { state } from "./state.js";
 import type { AiSetup, HarnessCard, HarnessStatusResult } from "../shared/types";
 import { harnessFastModel } from "../shared/ai-setup.js";
+import { harnessDescription, harnessStep, harnessTag } from "../shared/harness-card.js";
 import { speedChoice } from "./speed-choice.js";
 
 type Finish = (setup: AiSetup) => Promise<void>;
 type Back = () => void;
-
-function statusTag(card: HarnessCard): { text: string; tone: "ok" | "warn" | "off" } {
-  if (card.availability !== "ok") return { text: "not available here", tone: "off" };
-  if (!card.installed) return { text: "not installed", tone: "off" };
-  if (card.auth.state === "signed-out") return { text: "sign in needed", tone: "warn" };
-  return { text: "ready", tone: "ok" };
-}
-
-function describe(card: HarnessCard): string {
-  if (card.availability !== "ok" || !card.installed) {
-    return card.message ?? `${card.label} was not found on this computer.`;
-  }
-  const lockdown =
-    card.lockdown === "removed" ? "Its own tools are removed" : "Its own tools are boxed in";
-  const plan = card.auth.plan ? ` Signed in (${card.auth.plan}).` : "";
-  return `${card.version ? `Version ${card.version}. ` : ""}${lockdown}; it only touches the table's rules.${plan}`;
-}
 
 function copyLine(text: string): HTMLElement {
   const row = el("div", "status-line");
@@ -71,7 +55,7 @@ function drawPicker(
   choices.setAttribute("role", "radiogroup");
   choices.setAttribute("aria-label", "Agent program");
   for (const card of statuses) {
-    const tag = statusTag(card);
+    const tag = harnessTag(card);
     const btn = el("button", "panel ornate choice");
     btn.type = "button";
     btn.setAttribute("role", "radio");
@@ -80,7 +64,7 @@ function drawPicker(
     const text = el("span", "text");
     const heading = el("span", "title", card.label);
     heading.append(el("span", `tag ${tag.tone}`, tag.text));
-    text.append(heading, el("span", "desc", describe(card)));
+    text.append(heading, el("span", "desc", harnessDescription(card)));
     btn.append(text);
     btn.addEventListener("click", () => {
       for (const other of choices.querySelectorAll("[role=radio]")) {
@@ -112,11 +96,30 @@ function drawDetail(
   state.screenName = "local-ai-harness-detail";
   const again = () => renderHarnessPicker(finish, back, true);
   const backToList = backLink("Agents", () => drawPicker(statuses, current, finish, back));
-  if (card.availability !== "ok") {
+  const step = harnessStep(card);
+  if (step === "unavailable") {
     show("narrow", backToList, intro(card.label, ""), formCard(el("p", "error", card.message ?? "Not available here.")));
     return;
   }
-  if (!card.installed || card.auth.state === "signed-out") {
+  // Installed, but it cannot narrate as it is (opencode 1.x, or a config of
+  // its own the server could not read): what is wrong, the command that
+  // installs the version the server drives, and no model form to save a
+  // choice that would fail every turn.
+  if (step === "fix") {
+    show(
+      "narrow",
+      backToList,
+      intro(card.label, ""),
+      formCard(
+        el("p", "error", card.message ?? ""),
+        el("p", "hint", `Fix it in a terminal on this computer, then check again. ${card.label}'s install command:`),
+        copyLine(card.installHint ?? ""),
+        button("primary", "Check again", again, "refresh"),
+      ),
+    );
+    return;
+  }
+  if (step === "install" || step === "signIn") {
     const steps = formCard(
       el(
         "p",
@@ -196,5 +199,5 @@ function drawDetail(
         submit.disabled = false;
       });
   });
-  show("narrow", backToList, intro(`Narrate with ${card.label}`, describe(card)), formCard(form));
+  show("narrow", backToList, intro(`Narrate with ${card.label}`, harnessDescription(card)), formCard(form));
 }

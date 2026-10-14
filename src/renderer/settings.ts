@@ -25,6 +25,7 @@ import { PAD_LEGEND, deckStatusLine, type DeckChoice } from "../shared/deck.js";
 import type { StoryMemory, StoryMemoryStatus } from "../shared/story-memory.js";
 import { describePreview, formatBytes, type WorldPreview } from "../shared/world-transfer.js";
 import { RESET_PHRASE, describeVerify } from "../shared/diagnostics.js";
+import { forgetSteamNote, steamRows } from "./steam.js";
 import { startAppTour } from "./tour.js";
 
 function section(iconName: IconName, title: string, detail: string): {
@@ -56,7 +57,7 @@ function audioSection(): HTMLElement {
   const { card, body } = section(
     "sliders",
     "Audio and dice",
-    "The microphone and output this device uses, how loud each part of the table is, and the dice on it. Changes reach a call or a table already in progress.",
+    "The microphone and output this device uses, the key that holds the table's mic, how loud each part of the table is, and the dice on it. Changes reach a call or a table already in progress.",
   );
   const host = el("div", "game-root device-settings");
   host.append(spinner());
@@ -108,7 +109,7 @@ function deckSection(): HTMLElement | null {
     btn.setAttribute("aria-checked", String(deck.choice === choice));
     choices.append(btn);
   }
-  body.append(row("Deck layout. Auto turns it on on a Steam Deck and in Steam's Game Mode", choices));
+  body.append(row("Deck layout. Auto turns it on on a Steam Deck and in Steam's Game Mode", choices), ...steamRows());
   const legend = el("dl", "pad-legend");
   for (const entry of PAD_LEGEND) legend.append(el("dt", "", entry.control), el("dd", "", entry.does));
   body.append(el("span", "settings-label", "The controller, on every screen and at the table"), legend);
@@ -861,6 +862,7 @@ export function renderSettings(): void {
   if (again && memory.busy) return;
   if (!again && !memory.busy) memory.note = { kind: "none" };
   if (!again && !trouble.busy) trouble.note = { kind: "none" };
+  if (!again) forgetSteamNote();
   const sections = (): (HTMLElement | null)[] => [
     intro("Settings", "The app, your device world, and the way home."),
     audioSection(),
