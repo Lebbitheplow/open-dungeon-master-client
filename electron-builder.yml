@@ -58,7 +58,10 @@ flatpak:
   # would be narrower, but the flatpak 1.14 that builds this on Ubuntu
   # 24.04 does not know it. org.freedesktop.Flatpak lets the in-app updater
   # install the next bundle with `flatpak-spawn --host flatpak install` and
-  # start it again from the host.
+  # start it again from the host. --filesystem=home stays: downloads land
+  # in ~/Downloads directly (src/main/index.ts), world exports default to
+  # Documents, and an agent program the player installed under their home
+  # (Claude Code, Codex) only runs inside the sandbox through it.
   finishArgs:
     - --socket=wayland
     - --socket=x11

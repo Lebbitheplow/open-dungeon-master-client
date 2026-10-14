@@ -404,3 +404,42 @@ test("an older native side cannot repair, and says so", async () => {
   assert.equal(result.ok, false);
   assert.equal(await createLocalWorld(h.deps).diagnostics(), null);
 });
+
+test("sharing on the Wi-Fi restarts the world there and points in-game invites at it", async () => {
+  const h = harness({
+    world: { state: "running", origin: "http://127.0.0.1:3210", firstRun: false },
+    profile: { username: "kaleb", token: "tok", tokenExpiresAt: "2030-01-01T00:00:00.000Z", secret: "s" },
+    tokenValid: true,
+  });
+  h.world.lanOrigin = "";
+  const asked: boolean[] = [];
+  h.deps.plugin.lanSharing = async ({ on }) => {
+    asked.push(on);
+    h.world.lanOrigin = on ? "http://192.168.1.9:3210" : "";
+    h.world.sharedOnLan = on;
+    return { ...h.world };
+  };
+  const world = createLocalWorld(h.deps);
+  const on = await world.setLanSharing(true);
+  assert.ok(on.ok);
+  assert.equal(on.ok && on.status.lanOrigin, "http://192.168.1.9:3210");
+  assert.deepEqual(h.patches.at(-1), { publicUrl: "http://192.168.1.9:3210", voiceChat: { enabled: "on", mode: "mesh" } });
+  const off = await world.setLanSharing(false);
+  assert.ok(off.ok);
+  assert.equal(off.ok && off.status.lanOrigin, "");
+  assert.deepEqual(h.patches.at(-1), { publicUrl: "", voiceChat: { enabled: "on", mode: "mesh" } });
+  assert.deepEqual(asked, [true, false]);
+});
+
+test("a phone with no Wi-Fi address says so, and an older native side cannot share on the Wi-Fi", async () => {
+  const h = harness({ world: { state: "running", origin: "http://127.0.0.1:3210" } });
+  h.deps.plugin.lanSharing = async () => {
+    throw new Error("This phone is not on a Wi-Fi network right now.");
+  };
+  assert.deepEqual(await createLocalWorld(h.deps).setLanSharing(true), {
+    ok: false,
+    error: "This phone is not on a Wi-Fi network right now.",
+  });
+  const older = harness();
+  assert.equal((await createLocalWorld(older.deps).setLanSharing(true)).ok, false);
+});
