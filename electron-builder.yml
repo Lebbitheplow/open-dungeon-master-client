@@ -17,6 +17,10 @@ extraResources:
   # platform icons below are derived from the same file by electron-builder.
   - from: build/icon.png
     to: icon.png
+  # The Steam library artwork Add to Steam copies into Steam's grid folder
+  # (src/main/steam-shortcut.ts), rendered by scripts/make-steam-art.cjs.
+  - from: build/steam
+    to: steam
 asar: true
 # One 1024px source, rendered from build/icon.svg by scripts/make-icons.mjs;
 # electron-builder converts it to .icns and .ico itself.

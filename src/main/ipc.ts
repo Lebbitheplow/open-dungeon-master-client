@@ -81,6 +81,8 @@ import {
 } from "./session-cookies";
 import { RESET_PHRASE, diagnosticSummary, redactHome } from "../shared/diagnostics";
 import { requestReset, type ResetOutcome } from "./reset";
+import { systemSteamHost } from "./steam-host";
+import { addToSteam, canAddToSteam, steamPresent } from "./steam-shortcut";
 import type { QuickTunnel } from "./tunnel";
 import {
   parseStoryMemory,
@@ -1265,7 +1267,34 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     update: updater.lastFound(),
     deck,
     reset: ctx.reset ? { aside: redactHome(ctx.reset.aside, os.homedir()), left: ctx.reset.left } : null,
+    addToSteam: canAddToSteam(updater.kind, process.platform) && steamPresent(os.homedir()),
   }));
+  // Add to Steam (src/main/steam-shortcut.ts): a Linux install into the
+  // library of the account last signed in to Steam, with its artwork.
+  shellIpc.handle("steam:add", async (_event, restart: unknown) => {
+    if (!canAddToSteam(updater.kind, process.platform)) {
+      return { ok: false, error: "Only the Linux app can add itself to Steam." };
+    }
+    const result = await addToSteam(
+      {
+        place: {
+          kind: updater.kind,
+          execPath: process.execPath,
+          appImagePath: process.env.APPIMAGE ?? "",
+          flatpakId: process.env.FLATPAK_ID ?? "",
+        },
+        home: os.homedir(),
+        artDir: app.isPackaged ? path.join(process.resourcesPath, "steam") : path.join(app.getAppPath(), "build", "steam"),
+        launchedBySteam: Boolean(deck?.steam),
+        restart: restart === true,
+      },
+      systemSteamHost(Boolean(process.env.FLATPAK_ID)),
+    );
+    // A renamed AppImage is where the updater replaces the app from now on
+    // (index.ts reads the path when an update installs).
+    if (result.ok && result.state !== "needs-restart" && result.moved) process.env.APPIMAGE = result.moved;
+    return result;
+  });
   shellIpc.handle("deck:set-choice", (_event, raw: unknown) => {
     if (!deck) return undefined;
     const choice = parseDeckChoice(raw);

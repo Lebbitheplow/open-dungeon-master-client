@@ -183,7 +183,11 @@ function main(): void {
         platform: process.platform,
         arch: process.arch,
         execPath: process.execPath,
-        appImagePath: process.env.APPIMAGE ?? "",
+        // Read when an update installs: Add to Steam may have renamed the
+        // AppImage since start (src/main/steam-shortcut.ts).
+        get appImagePath() {
+          return process.env.APPIMAGE ?? "";
+        },
         downloadsDir: () => app.getPath("downloads"),
         open: async (file) => {
           const failure = await shell.openPath(file);

@@ -280,6 +280,13 @@ async function moveFile(from: string, to: string): Promise<void> {
   }
 }
 
+// Does an AppImage's file name carry a version? Such a file gives way to the
+// next version's file on update; any other name is kept (and so is a Steam
+// shortcut to it, src/main/steam-shortcut.ts).
+export function versionedAppImageName(name: string): boolean {
+  return /\d+\.\d+\.\d+/.test(name);
+}
+
 // The new AppImage takes the old one's place. Same rule as electron-updater:
 // a file the player renamed (no version in its name) keeps its name, a
 // versioned one is replaced by the new versioned file. The running AppImage
@@ -288,7 +295,7 @@ export async function replaceAppImage(current: string, downloaded: string): Prom
   const pathModule = await import("node:path");
   const { chmod, rm } = await import("node:fs/promises");
   const currentName = pathModule.basename(current);
-  const keepName = pathModule.basename(downloaded) === currentName || !/\d+\.\d+\.\d+/.test(currentName);
+  const keepName = pathModule.basename(downloaded) === currentName || !versionedAppImageName(currentName);
   const destination = keepName ? current : pathModule.join(pathModule.dirname(current), pathModule.basename(downloaded));
   await moveFile(downloaded, destination);
   await chmod(destination, 0o755);
