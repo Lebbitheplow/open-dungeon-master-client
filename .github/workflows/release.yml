@@ -428,8 +428,10 @@ jobs:
           node scripts/smoke-installed.mjs install previous/Open-Dungeon-Master-Setup-*.exe "$RUNNER_TEMP/odm"
           node scripts/smoke-installed.mjs world "$RUNNER_TEMP/odm/Open Dungeon Master.exe" seed "$RUNNER_TEMP/odm-world"
       - name: Install this build over it; the same world comes back whole
+        # The artifact keeps electron-builder's own name, "Open Dungeon Master
+        # Setup x.y.z.exe"; only the release asset is renamed with dashes.
         run: |
-          node scripts/smoke-installed.mjs install new/Open-Dungeon-Master-Setup-*.exe "$RUNNER_TEMP/odm"
+          node scripts/smoke-installed.mjs install new/*Setup*.exe "$RUNNER_TEMP/odm"
           node scripts/smoke-installed.mjs world "$RUNNER_TEMP/odm/Open Dungeon Master.exe" verify "$RUNNER_TEMP/odm-world"
       - name: A world in an empty profile starts on this build
         run: node scripts/smoke-installed.mjs world "$RUNNER_TEMP/odm/Open Dungeon Master.exe" start "$RUNNER_TEMP/odm-fresh"
