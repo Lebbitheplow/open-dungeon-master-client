@@ -422,7 +422,7 @@ export class ShellWindow {
       if (isShellCookieWrite()) return;
       if (cookie.domain && cookie.domain.replace(/^\./, "") !== host) return;
       if (this.currentOrigin !== origin) return;
-      this.onRevoked?.(origin);
+      this.onRevoked?.(this.portalHost || origin);
       this.showManager();
     };
     cookies.on("changed", listener);
