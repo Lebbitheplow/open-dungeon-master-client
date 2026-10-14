@@ -1203,8 +1203,8 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     void syncPublicUrl();
     // Whatever local AI is installed warms up in the background. The first
     // AI turn or image simply waits for the load if the player beats it.
-    void localAi.start();
-    void localAi.startComfy();
+    void localAi.start().catch(() => win.sendEvent({ kind: "local-ai-progress", status: localAi.status() }));
+    void localAi.startComfy().catch(() => win.sendEvent({ kind: "local-ai-progress", status: localAi.status() }));
     let token = store.token(LOCAL_SERVER_ID);
     if (token && !(await tokenIsValid(local.origin, token))) token = null;
     if (!token) {
@@ -1455,7 +1455,7 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
       if (token && local.origin && alias) {
         warning = await wireTextAi(local.origin, token, alias, utility);
       }
-      void localAi.start();
+      void localAi.start().catch(() => win.sendEvent({ kind: "local-ai-progress", status: localAi.status() }));
       return { ok: true, status: localAi.status(), warning };
     } catch (err) {
       return fail(err);
@@ -1475,7 +1475,7 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
           localAi.comfy.checkpointFile(),
         );
       }
-      void localAi.startComfy();
+      void localAi.startComfy().catch(() => win.sendEvent({ kind: "local-ai-progress", status: localAi.status() }));
       return { ok: true, status: localAi.status(), warning };
     } catch (err) {
       return fail(err);

@@ -301,8 +301,19 @@ export class LocalAiManager {
           },
         },
       );
-      fs.closeSync(log);
       this.child = child;
+      let launchFailed = false;
+      const launchFailure = new Promise<never>((_resolve, reject) => {
+        child.once("error", (err) => {
+          launchFailed = true;
+          if (this.child === child) {
+            this.child = null;
+            this.error = `The local AI server could not start: ${err.message}`;
+            this.emit();
+          }
+          reject(err);
+        });
+      });
       child.once("exit", () => {
         if (this.child === child) {
           this.child = null;
@@ -310,13 +321,20 @@ export class LocalAiManager {
           this.emit();
         }
       });
+      fs.closeSync(log);
       // Wait for the server process, not the model: the model loads in the
       // background and the first request simply waits for it.
-      const deadline = Date.now() + 30_000;
-      while (Date.now() < deadline && child.exitCode === null) {
-        if (await this.portInUse()) break;
-        await new Promise((resolve) => setTimeout(resolve, 500));
-      }
+      await Promise.race([launchFailure, (async () => {
+        const deadline = Date.now() + 30_000;
+        while (Date.now() < deadline && child.exitCode === null && !launchFailed) {
+          if (await this.portInUse()) break;
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+      })()]);
+    } catch (err) {
+      this.error = err instanceof Error ? `The local AI server could not start: ${err.message}` : String(err);
+      this.emit();
+      throw err;
     } finally {
       this.busy = "";
       this.emit();
@@ -330,13 +348,17 @@ export class LocalAiManager {
     this.child = null;
     this.externalServer = false;
     if (child && child.exitCode === null) {
-      child.kill("SIGTERM");
       await new Promise<void>((resolve) => {
-        const killer = setTimeout(() => child.kill("SIGKILL"), 8000);
-        child.once("exit", () => {
+        const done = (): void => {
           clearTimeout(killer);
+          child.off("exit", done);
+          child.off("error", done);
           resolve();
-        });
+        };
+        child.once("exit", done);
+        child.once("error", done);
+        const killer = setTimeout(() => { child.kill("SIGKILL"); done(); }, 8000);
+        child.kill("SIGTERM");
       });
     }
   }
