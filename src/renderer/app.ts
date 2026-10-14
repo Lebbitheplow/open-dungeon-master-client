@@ -16,7 +16,7 @@ import { startGamepad } from "./gamepad.js";
 import { renderHome } from "./home.js";
 import { aiProgress } from "./local-ai.js";
 import { renderAdd, renderAuth } from "./servers.js";
-import { gameBack, isGameShowing, preloadGame, tryOpenNative } from "./game-screen.js";
+import { escapeInGame, gameBack, isGameShowing, preloadGame, tryOpenNative } from "./game-screen.js";
 import { renderSettings, worldTransferPhase } from "./settings.js";
 import { refresh, refreshFeed, state, tunnelWatchers } from "./state.js";
 import { endTour, isTourActive, maybeStartAppTour } from "./tour.js";
@@ -34,14 +34,16 @@ function rerenderHome(): void {
 
 // The way back, for Android's back gesture and a controller's B: a running
 // tour ends first, then the update popup, an open drawer and a shell
-// screen over a world close; then the world's previous page, and any
-// inner screen returns home. layersOnly stops after the closing part. At
-// home, atRoot decides what back means.
-function goBack(layersOnly: boolean, atRoot: () => void): void {
+// screen over a world close; then, for the gesture, whatever the world's
+// page has open (escapeGame: the pad sends its own Escape before it asks);
+// then the world's previous page, and any inner screen returns home.
+// layersOnly stops after the closing part. At home, atRoot decides what
+// back means.
+function goBack(layersOnly: boolean, atRoot: () => void, escapeGame = false): void {
   if (isTourActive()) endTour();
   else if (isUpdatePopupOpen()) closeUpdatePopup();
   else if (isDrawerOpen()) closeDrawer();
-  else if (closeOverlay() || layersOnly) return;
+  else if (closeOverlay() || (escapeGame && isGameShowing() && escapeInGame()) || layersOnly) return;
   else if (isGameShowing() && gameBack()) return;
   else if (state.screenName === "home") atRoot();
   else goHome();
@@ -59,9 +61,10 @@ window.odm.onEvent((event) => {
     goHome();
     void refreshFeed();
   } else if (event.kind === "back") {
-    // Android's back gesture: home leaves the app, the way a root screen
+    // Android's back gesture: a world's open tour or dialog closes before
+    // its page goes back, and home leaves the app, the way a root screen
     // should.
-    goBack(false, () => void window.odm.leaveApp?.());
+    goBack(false, () => void window.odm.leaveApp?.(), true);
   } else if (event.kind === "local-status") {
     state.local = event.status;
     rerenderLive();
