@@ -93,13 +93,20 @@ test("a device narrating with an agent is read back as that agent, not as a key"
   assert.deepEqual(savedAiFrom({ config: { text: { provider: "harness" }, harness: { id: "" } } }), NO_SAVED_AI);
 });
 
-test("Fast is asked for only when the door's switch is on, for both roles (server issue 255)", () => {
+// The server asks OpenAI for Fast for any named model, at the premium price,
+// so each role's switch is its own: Fast for the storyteller does not bill
+// every summary at it too.
+test("Fast is asked for only where the door's switch for that role is on (server issue 255)", () => {
   const plain = openAiPatch(setup("sk-1", "gpt-6-sol"), NO_SAVED_AI);
   assert.equal(plain.patch.text.speed, "", "the provider default unless chosen");
   assert.equal(plain.patch.text.utilitySpeed, "");
   const fast = openAiPatch({ ...setup("sk-1", "gpt-6-sol", "gpt-5.6-mini"), fast: true }, NO_SAVED_AI);
   assert.equal(fast.patch.text.speed, "fast");
-  assert.equal(fast.patch.text.utilitySpeed, "fast");
+  assert.equal(fast.patch.text.utilitySpeed, "", "the utility model was not chosen for Fast");
+  const both = openAiPatch({ ...setup("sk-1", "gpt-6-sol", "gpt-5.6-mini"), fast: true, utilityFast: true }, NO_SAVED_AI);
+  assert.equal(both.patch.text.utilitySpeed, "fast");
+  const utilityOnly = openAiPatch({ ...setup("sk-1", "gpt-6-sol", "gpt-5.6-mini"), utilityFast: true }, NO_SAVED_AI);
+  assert.deepEqual([utilityOnly.patch.text.speed, utilityOnly.patch.text.utilitySpeed], ["", "fast"]);
   const agent = harnessPatch({ choice: "harness", apiKey: "", model: "", utilityModel: "", fast: true, harness: { id: "codex", model: "gpt-6-sol", utilityModel: "" } });
   assert.equal(agent.patch.harness.speed, "fast");
   assert.equal(agent.patch.harness.utilitySpeed, "fast");
@@ -110,6 +117,8 @@ test("Fast is asked for only when the door's switch is on, for both roles (serve
 test("the saved Fast choice is read back for the key and for an agent", () => {
   assert.equal(savedAiFrom(openAiConfig({ customModel: "gpt-6-sol", hasCustomApiKey: true, speed: "fast" })).fast, true);
   assert.equal(savedAiFrom(openAiConfig({ customModel: "gpt-6-sol", hasCustomApiKey: true, speed: "" })).fast, undefined);
+  const roles = savedAiFrom(openAiConfig({ customModel: "gpt-6-sol", hasCustomApiKey: true, speed: "", utilitySpeed: "fast" }));
+  assert.deepEqual([roles.fast, roles.utilityFast], [undefined, true]);
   const agent = savedAiFrom({ config: { text: { provider: "harness" }, harness: { id: "claude", model: "opus", utilityModel: "", speed: "fast" } } });
   assert.equal(agent.fast, true);
 });
@@ -134,15 +143,16 @@ test("an agent runs Fast where Claude Code or Codex lists the tier for the model
 
 // The door offers Fast by these rules; the device's server decides by its
 // own before every call. The two must agree, or the door offers a Fast the
-// server never asks for (or hides one it would).
+// server never asks for (or hides one it would). On OpenAI's API the server
+// offers it for any named model; which have the tier is not read from names.
 test("the door's Fast models are the server's", { skip: !fs.existsSync(serverSpeedTier) }, async () => {
   const server = await import(pathToFileURL(serverSpeedTier).href);
   const names = [
     "gpt-6-sol", "GPT-6-Luna", "gpt-6-astra", "gpt-6.1-sol", "gpt-5.6", "gpt-5.6-mini", "gpt-5.5", "gpt-5.1",
-    "gpt-4o", "ft:gpt-6-sol:org", "gpt-6", "o4-mini", "", "  gpt-6-sol  ",
+    "gpt-4o", "ft:gpt-6-sol:org", "gpt-6", "o4-mini", "", "  ", "  gpt-6-sol  ",
   ];
   for (const name of names) {
-    assert.equal(openAiFastModel(name), server.openAiFastModel(name), `OpenAI: ${JSON.stringify(name)}`);
+    assert.equal(openAiFastModel(name), server.apiSpeedEligibility({ endpointKind: "openai", model: name }).ok, `OpenAI: ${JSON.stringify(name)}`);
   }
   for (const [harnessId, models] of [["claude", claudeModels], ["codex", codexModels], ["opencode", codexModels], ["grok", []]]) {
     for (const model of ["opus", "sonnet", "haiku", "claude-opus-5", "gpt-6-sol", "gpt-5.4", ""]) {

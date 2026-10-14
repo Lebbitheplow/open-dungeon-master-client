@@ -9,13 +9,12 @@ export const DEFAULT_MODEL = "gpt-5.1";
 
 export const NO_SAVED_AI: SavedAi = { keySaved: false, model: "", utilityModel: "" };
 
-// Processing speed (server issue 255): the models with a paid Fast tier, as
-// the server's src/lib/speed-tier.ts reads them, so the door offers Fast
-// only where a call can run at it. tests/ai-setup.test.mjs holds these to
-// the server's answers. The server decides again before every call.
+// Processing speed (server issue 255): Fast is offered for any model named
+// on OpenAI's API, as the server's src/lib/speed-tier.ts offers it. Which
+// models have the tier is not read from the name; OpenAI's reply says what
+// ran. tests/ai-setup.test.mjs holds this to the server's answer.
 export function openAiFastModel(model: string): boolean {
-  const name = model.trim().toLowerCase();
-  return !name.startsWith("ft:") && /^(gpt-6(\.\d+)?|gpt-5\.6)(-[a-z0-9.-]+)?$/.test(name);
+  return Boolean(model.trim());
 }
 
 // Whether an agent program runs this model at Fast: Claude Code and Codex
@@ -64,6 +63,7 @@ export function savedAiFrom(body: unknown): SavedAi {
     model: typeof text.customModel === "string" ? text.customModel : "",
     utilityModel: typeof text.utilityModel === "string" ? text.utilityModel : "",
     ...(text.speed === "fast" ? { fast: true } : {}),
+    ...(text.utilitySpeed === "fast" ? { utilityFast: true } : {}),
   };
 }
 
@@ -71,14 +71,14 @@ export function savedAiFrom(body: unknown): SavedAi {
 // storyteller, the utility model and the pictures. A blank key keeps the one
 // the device already holds (the server reads an omitted key as "keep"), so
 // changing the model never means pasting the key again. Fast is asked for
-// both roles; the server sends it only for a model that has the tier.
+// each role only where the player chose it: the server sends it for any
+// model on OpenAI's API, at the premium price.
 export function openAiPatch(setup: AiSetup, saved: SavedAi): { patch: object } | { error: string } {
   const apiKey = setup.apiKey.trim().slice(0, 400);
   if (!apiKey && !saved.keySaved) return { error: "Enter the API key." };
   const model = setup.model.trim().slice(0, 200) || DEFAULT_MODEL;
   const utilityModel = setup.utilityModel.trim().slice(0, 200) || model;
   const key = <K extends string>(field: K) => (apiKey ? { [field]: apiKey } : {});
-  const speed = setup.fast === true ? "fast" : "";
   return {
     patch: {
       text: {
@@ -90,8 +90,8 @@ export function openAiPatch(setup: AiSetup, saved: SavedAi): { patch: object } |
         utilityBaseUrl: OPENAI_BASE_URL,
         utilityModel,
         ...key("utilityApiKey"),
-        speed,
-        utilitySpeed: speed,
+        speed: setup.fast === true ? "fast" : "",
+        utilitySpeed: setup.utilityFast === true ? "fast" : "",
       },
       images: { defaultBackend: "openai", ...key("openaiApiKey") },
     },

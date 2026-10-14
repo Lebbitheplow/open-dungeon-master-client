@@ -392,9 +392,18 @@ function renderOpenAiForm(saved: SavedAi | null = null): void {
     "text",
     saved?.utilityModel || "gpt-5-mini",
   );
-  // Fast is offered while either model has the tier (GPT-6, GPT-5.6).
-  const speed = speedChoice(saved?.fast === true);
-  const offerFast = () => speed.offer(openAiFastModel(modelField.value) || openAiFastModel(utilityField.value));
+  // Fast for each role on its own: OpenAI's API is asked for it for any
+  // named model, at the premium price, so a choice for the storyteller does
+  // not spend it on every summary too.
+  const speed = speedChoice(saved?.fast === true, { label: "Fast processing for the Dungeon Master (premium price)" });
+  const utilitySpeed = speedChoice(saved?.utilityFast === true, {
+    label: "Fast processing for the utility model (premium price)",
+    note: false,
+  });
+  const offerFast = () => {
+    speed.offer(openAiFastModel(modelField.value));
+    utilitySpeed.offer(openAiFastModel(utilityField.value || modelField.value));
+  };
   modelField.addEventListener("input", offerFast);
   utilityField.addEventListener("input", offerFast);
   offerFast();
@@ -407,7 +416,7 @@ function renderOpenAiForm(saved: SavedAi | null = null): void {
     "hint",
     "One key for this whole device: every campaign here uses it, new or old, for narration and for pictures.",
   );
-  form.append(keyLabel, modelLabel, utilityLabel, speed.row, scope, error, submit);
+  form.append(keyLabel, modelLabel, utilityLabel, speed.row, utilitySpeed.row, scope, error, submit);
   form.addEventListener("input", () => {
     openAiTouched = true;
   });
@@ -421,6 +430,7 @@ function renderOpenAiForm(saved: SavedAi | null = null): void {
       model: modelField.value.trim(),
       utilityModel: utilityField.value.trim(),
       fast: speed.fast(),
+      utilityFast: utilitySpeed.fast(),
     };
     void finishAi(setup).catch(() => undefined).then(() => {
       submit.disabled = false;

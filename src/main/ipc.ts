@@ -983,6 +983,7 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
           model: str(setup.model, 200),
           utilityModel: str(setup.utilityModel, 200),
           fast: setup.fast === true,
+          utilityFast: setup.utilityFast === true,
         },
         saved,
       );

@@ -98,9 +98,12 @@ export interface AiSetup {
   // "harness": an agent program already installed and signed in on this
   // computer (Claude Code, Codex, opencode, Grok Build) narrates instead.
   harness?: { id: HarnessId; model: string; utilityModel: string };
-  // The provider's paid Fast tier (server issue 255), for the models that
-  // have one; the server asks for it only where the model does.
+  // The provider's paid Fast tier (server issue 255), for the storyteller.
+  // On OpenAI the server asks for it for any named model, at the premium
+  // price, so each role is chosen on its own: utilityFast is the utility
+  // model's.
   fast?: boolean;
+  utilityFast?: boolean;
 }
 
 export type HarnessId = "claude" | "codex" | "opencode" | "grok";
@@ -138,8 +141,9 @@ export interface SavedAi {
   utilityModel: string;
   // Set when the device narrates with an agent program.
   harnessId?: string;
-  // The storyteller runs at the provider's Fast tier.
+  // The storyteller runs at the provider's Fast tier, and the utility model.
   fast?: boolean;
+  utilityFast?: boolean;
 }
 
 // firstSetup: the shell just auto-provisioned the local profile, so the
