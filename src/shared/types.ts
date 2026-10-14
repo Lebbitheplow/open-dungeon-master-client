@@ -537,7 +537,7 @@ export interface OdmBridge {
   // settings to it failed and needs a hand.
   localAiInstall(tierId: string): Promise<Result<{ status: LocalAiStatus; warning: string }>>;
   localAiInstallComfy(): Promise<Result<{ status: LocalAiStatus; warning: string }>>;
-  localAiUninstall(component: "text" | "images"): Promise<Result<{ status: LocalAiStatus }>>;
+  localAiUninstall(component: "text" | "images"): Promise<Result<{ status: LocalAiStatus; warning?: string }>>;
   localAiStatus(): Promise<LocalAiStatus>;
   // Speech-to-text for dictation in the device world. Desktop only: the
   // phone dictates with its own recognizer, so it leaves these out.

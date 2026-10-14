@@ -48,7 +48,7 @@ import { coverRequestUrl, type HostInput } from "../shared/home-feed-logic";
 import { landingPath, safeInnerPath } from "../shared/open-path";
 import { createDesktopHomeFeed, fetchCoverImage } from "./home-feed";
 import type { LocalAiManager } from "./local-ai/manager";
-import { wireImageAi, wireTextAi } from "./local-ai/wiring";
+import { unwireImageAi, wireImageAi, wireTextAi } from "./local-ai/wiring";
 import type { LocalServer } from "./local-server";
 import {
   deleteAccount,
@@ -1237,6 +1237,9 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     if (!entry) {
       return { ok: false, needsLogin: true, error: "Sign in to your local account." };
     }
+    // An image stack removed while the world slept left it wired to a
+    // ComfyUI that is gone; unwired here, in the background.
+    if (!localAi.status().comfy.installed) void unwireImageAi(local.origin, token, localAi.comfy.origin());
     await applySessionCookie(
       partitionFor(LOCAL_SERVER_ID),
       local.origin,
@@ -1443,9 +1446,17 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
 
   shellIpc.handle("local-ai:uninstall", async (_event, component: unknown) => {
     try {
-      if (str(component, 10) === "images") await localAi.uninstallComfy();
-      else await localAi.uninstallText();
-      return { ok: true, status: localAi.status() };
+      let warning = "";
+      if (str(component, 10) === "images") {
+        await localAi.uninstallComfy();
+        // A running world stops painting with it now; a sleeping one is
+        // put right at its next start (local:play).
+        const token = store.token(LOCAL_SERVER_ID);
+        if (token && local.origin) warning = await unwireImageAi(local.origin, token, localAi.comfy.origin());
+      } else {
+        await localAi.uninstallText();
+      }
+      return { ok: true, status: localAi.status(), warning };
     } catch (err) {
       return fail(err);
     }

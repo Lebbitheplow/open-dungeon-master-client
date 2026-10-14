@@ -180,8 +180,9 @@ function localAiStatusCard(status: LocalAiStatus | null): HTMLElement | null {
         if (!confirm(prompt)) return;
         btn.disabled = true;
         void window.odm.localAiUninstall(component).then((result) => {
-          if (result.ok) renderLocalAi(true, result.status);
-          else renderError(result.error);
+          if (!result.ok) renderError(result.error);
+          else if (result.warning) renderWarning(result.warning);
+          else renderLocalAi(true, result.status);
         });
       }),
     );
