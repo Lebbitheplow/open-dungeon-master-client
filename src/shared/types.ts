@@ -195,6 +195,9 @@ export interface HardwareInfo {
   gpuName: string;
   // Which GPU stack to install compute for; "" when no signal was found.
   gpuVendor: "" | "nvidia" | "amd" | "apple";
+  // An NVIDIA card's compute capability (8.9 for an RTX 4090, 12.0 for an
+  // RTX 5090), which picks the CUDA build of torch. Absent when unknown.
+  gpuCompute?: number;
   unifiedMemory: boolean;
 }
 
