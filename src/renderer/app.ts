@@ -194,10 +194,33 @@ startGamepad({
 });
 
 // Escape closes a shell screen laid over a world (the drawer's own
-// listener closes the drawer the same way).
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && closeOverlay()) event.preventDefault();
-});
+// listener closes the drawer the same way). On a shell screen of its own
+// (Settings, Story AI, adding a server) it is the way back, as Android's
+// back and a controller's B are: home. Read in the capture phase, before
+// the tour, the drawer and the Steam offer close themselves, so their
+// Escape stays theirs. A world's page keeps Escape for its own dialogs, the
+// home screen has nowhere further back, and in a text field the first
+// Escape only leaves the field, so nothing typed is lost to it.
+document.addEventListener(
+  "keydown",
+  (event) => {
+    if (event.key !== "Escape" || event.defaultPrevented) return;
+    if (closeOverlay()) {
+      event.preventDefault();
+      return;
+    }
+    if (isTourActive() || isUpdatePopupOpen() || isSteamOfferOpen() || isDrawerOpen()) return;
+    if (isGameShowing() || state.screenName === "home") return;
+    const field = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>("input, textarea, select, [contenteditable]") : null;
+    if (field) {
+      field.blur();
+      return;
+    }
+    event.preventDefault();
+    goHome();
+  },
+  true,
+);
 
 // The screens' theme reaches the shell's own chrome through the same
 // attribute the server sets on <html> (docs/vtt-parity-implementation-plan.md
