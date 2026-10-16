@@ -32,6 +32,7 @@ const host = (overrides = {}) => ({
   error: "",
   campaigns: [],
   canCreate: true,
+  offersStory: true,
   ...overrides,
 });
 const feed = (hosts) => ({ hosts, refreshedAt: "" });

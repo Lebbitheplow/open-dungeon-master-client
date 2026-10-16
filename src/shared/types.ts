@@ -398,6 +398,10 @@ export interface HomeHost {
   // host policy (its campaign list says so; older servers do not, and are
   // taken as open).
   canCreate: boolean;
+  // Whether that server has an AI storyteller: Quick start is an AI-run
+  // adventure, offered only where one can run it (older servers do not
+  // say, and are taken to have one).
+  offersStory: boolean;
 }
 
 // refreshedAt is "" for a feed served from the cache before any refresh.
