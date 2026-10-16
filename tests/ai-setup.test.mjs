@@ -298,18 +298,18 @@ test("the current setup is said in a player's words", async () => {
       speech: { ttsProvider: "openai" },
     },
   });
-  assert.equal(openai.story, "OpenAI narrates (gpt-5.4), on your key.");
+  assert.equal(openai.story, "OpenAI tells the story (gpt-5.4), on your key.");
   assert.equal(openai.pictures, "OpenAI paints the pictures, on your key.");
   assert.equal(openai.narration, "OpenAI's voices read the story aloud.");
   const agent = currentAiSummary({ config: { text: { provider: "harness" }, harness: { id: "codex" }, images: { defaultBackend: "harness" } } });
-  assert.equal(agent.story, "Codex narrates, on its own sign-in.");
+  assert.equal(agent.story, "Codex tells the story, on its own sign-in.");
   assert.equal(agent.pictures, "Codex paints the pictures.");
   const human = currentAiSummary({ config: { text: { provider: "none" }, images: {}, speech: { ttsProvider: "off" } } });
-  assert.match(human.story, /no AI narrates/);
+  assert.match(human.story, /no AI tells the story/);
   assert.match(human.pictures, /placeholders/);
   assert.equal(human.narration, "The story is read on screen.");
   const local = currentAiSummary({ config: { text: { provider: "custom", customBaseUrl: "http://127.0.0.1:8001/v1", customModel: "qwen" } } });
-  assert.equal(local.story, "A model on this computer narrates (qwen).");
+  assert.equal(local.story, "A model on this computer tells the story (qwen).");
 });
 
 // The OpenAI door can read the story aloud on the same key: only when the

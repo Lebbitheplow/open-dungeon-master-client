@@ -147,7 +147,7 @@ function deviceSection(): HTMLElement | null {
   if (local.firstRun) return card;
   body.append(
     row(
-      "Who narrates: a human, your OpenAI key" + (isAndroid ? "" : ", or a local model"),
+      "Who tells the story: a human, your OpenAI key" + (isAndroid ? "" : ", or a local model"),
       button("secondary", "Story AI", () => renderLocalAi(true), "sparkles"),
     ),
   );

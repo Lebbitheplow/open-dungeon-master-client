@@ -86,13 +86,13 @@ export function renderHelp(): void {
     section(
       "sparkles",
       "Story AI",
-      `Story AI is what the world on this ${device} plays with: it opens on what is set now (who narrates, what paints, what reads aloud), then offers the choices. No AI at all, your own OpenAI API key (which can paint and read aloud too), or${isAndroid ? "" : " an agent you already pay for (Claude Code, Codex, opencode or Grok Build; Codex and Grok Build can paint as well, after one test map), or"} a model on this ${device}.${localAi}`,
+      `Story AI is what the world on this ${device} plays with: it opens on what is set now (who tells the story, what paints, what reads it aloud), then offers the choices. No AI at all, your own OpenAI API key (which can paint and read aloud too), or${isAndroid ? "" : " an agent you already pay for (Claude Code, Codex, opencode or Grok Build; Codex and Grok Build can paint as well, after one test map), or"} a model on this ${device}.${localAi}`,
       `Story AI sets up the services. Who runs a particular table (the AI, you, or a friend) is chosen when that campaign is made, and a table can always have a person in the Dungeon Master's seat. To play with an AI Dungeon Master on someone else's server, connect to a server that has AI enabled; its admin sets that up.`,
     ),
     section(
       "wand",
       "Workshop, characters, campaigns",
-      `The title screen's menu opens the pages you use most on the host it names above them ("Opens on ..."): the one you were last in, unless you press Change to pick another. New campaign builds your own table: pick a genre or a world pack, decide who narrates, and share the room code. Quick start skips all that: a prepared one-evening adventure with ready-made heroes. Every lobby offers three ways to a hero: a ready-made one, one from your library, or your own. Both doors are missing on a server whose admin keeps campaign creation; a room code is the way in there. Characters holds your adventurers and the creation wizard. The Workshop is the Dungeon Master's prep bench: maps, monsters, NPCs, lore and handouts. Join with a code drops you into the sigil boxes at the foot of the screen.`,
+      `The title screen's menu opens the pages you use most on the host it names above them ("Opens on ..."): the one you were last in, unless you press Change to pick another. New campaign builds your own table: pick a genre or a world pack, decide who tells the story, and share the room code. Quick start skips all that: a prepared one-evening adventure with ready-made heroes. Every lobby offers three ways to a hero: a ready-made one, one from your library, or your own. Both doors are missing on a server whose admin keeps campaign creation; a room code is the way in there. Characters holds your adventurers and the creation wizard. The Workshop is the Dungeon Master's prep bench: maps, monsters, NPCs, lore and handouts. Join with a code drops you into the sigil boxes at the foot of the screen.`,
     ),
     section(
       "play",

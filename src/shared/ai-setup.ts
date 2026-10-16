@@ -55,8 +55,9 @@ function hostOf(url: unknown): string {
   }
 }
 
-// What the device world plays with now, in a player's words: who narrates,
-// what paints, what reads aloud. Shown before any change is offered, so
+// What the device world plays with now, in a player's words: who tells the
+// story, what paints, what reads it aloud ("narration" is only ever the
+// reading aloud, as in the server's own Help). Shown before any change is offered, so
 // Story AI starts from what is set rather than a blank question.
 export function currentAiSummary(body: unknown): SavedAi["summary"] | null {
   const config = (body as {
@@ -73,17 +74,17 @@ export function currentAiSummary(body: unknown): SavedAi["summary"] | null {
   const agent = typeof config.harness?.id === "string" ? AGENT_NAMES[config.harness.id] ?? config.harness.id : "";
   const story =
     text.provider === "none"
-      ? "A person runs every table; no AI narrates."
+      ? "A person runs every table; no AI tells the story."
       : text.provider === "harness" && agent
-        ? `${agent} narrates, on its own sign-in.`
+        ? `${agent} tells the story, on its own sign-in.`
         : text.provider === "custom" && isOpenAi(text.customBaseUrl)
-          ? `OpenAI narrates${model ? ` (${model})` : ""}, on your key.`
+          ? `OpenAI tells the story${model ? ` (${model})` : ""}, on your key.`
           : text.provider === "custom"
             ? /127\.0\.0\.1|localhost/.test(String(text.customBaseUrl ?? ""))
-              ? `A model on this computer narrates${model ? ` (${model})` : ""}.`
-              : `${model || "A model"} at ${hostOf(text.customBaseUrl) || "another server"} narrates.`
+              ? `A model on this computer tells the story${model ? ` (${model})` : ""}.`
+              : `${model || "A model"} at ${hostOf(text.customBaseUrl) || "another server"} tells the story.`
             : text.provider === "local"
-              ? `Ollama on this computer narrates${typeof text.localTextModel === "string" && text.localTextModel ? ` (${text.localTextModel})` : ""}.`
+              ? `Ollama on this computer tells the story${typeof text.localTextModel === "string" && text.localTextModel ? ` (${text.localTextModel})` : ""}.`
               : "Not chosen yet.";
   const backend = config.images?.defaultBackend;
   const pictures =

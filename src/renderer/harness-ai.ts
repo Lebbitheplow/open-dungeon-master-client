@@ -80,7 +80,7 @@ function drawPicker(
     backLink("Story AI", back),
     intro(
       "Use an agent you already have",
-      "Claude Code, Codex, opencode or Grok Build narrates on its own sign-in. It gets none of its own tools: only the table's rules, turn by turn, the same as the built-in storyteller.",
+      "Claude Code, Codex, opencode or Grok Build tells the story on its own sign-in. It gets none of its own tools: only the table's rules, turn by turn, the same as the built-in storyteller.",
     ),
     choices,
     button("quiet", "Check again", () => renderHarnessPicker(finish, back, true), "refresh"),
@@ -180,8 +180,8 @@ function drawDetail(
     "p",
     "hint",
     paints
-      ? `Every campaign on this computer narrates with it from now on, on its own sign-in and plan. ${card.label} can paint too: the next screen offers it, after one test map.`
-      : "Every campaign on this computer narrates with it from now on, on its own sign-in and plan. Pictures stay as they are: a local image AI keeps painting, and otherwise the tables use their painted placeholders.",
+      ? `Every campaign on this computer has it tell the story from now on, on its own sign-in and plan. ${card.label} can paint too: the next screen offers it, after one test map.`
+      : "Every campaign on this computer has it tell the story from now on, on its own sign-in and plan. Pictures stay as they are: a local image AI keeps painting, and otherwise the tables use their painted placeholders.",
   );
   const submit = button("primary", "Save and play", undefined, "play");
   submit.type = "submit";
@@ -209,5 +209,5 @@ function drawDetail(
         submit.disabled = false;
       });
   });
-  show("narrow", backToList, intro(`Narrate with ${card.label}`, harnessDescription(card)), formCard(form));
+  show("narrow", backToList, intro(`Tell the story with ${card.label}`, harnessDescription(card)), formCard(form));
 }

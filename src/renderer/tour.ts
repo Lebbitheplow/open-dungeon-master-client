@@ -49,7 +49,7 @@ export const APP_TOUR_STEPS: TourStep[] = [
     title: "Story AI for your world",
     body: `Story AI is what the world on this device plays with: it shows what is set now, then offers no AI, an AI on your OpenAI API key${localModels}. Who runs each table is still chosen when you make the campaign. To play with AI on someone else's server, connect to an AI-enabled server.`,
     anchors: ["tile-story-ai", "drawer-story-ai", "hero"],
-    fallbackBody: `Begin your world and Story AI appears in the menu. It chooses who narrates: a human at the table, an AI billed to your OpenAI API key${localModels}. Or connect to an AI-enabled server and play there.`,
+    fallbackBody: `Begin your world and Story AI appears in the menu. It chooses who tells the story: a human at the table, an AI billed to your OpenAI API key${localModels}. Or connect to an AI-enabled server and play there.`,
   },
   {
     id: "workshop",

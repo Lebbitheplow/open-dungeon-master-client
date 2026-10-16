@@ -87,7 +87,7 @@ export function renderLocalAi(fromHome = false, aiStatus: LocalAiStatus | null =
     choice(
       "key",
       "Your OpenAI API key",
-      "One key narrates, paints the pictures and can read the story aloud, billed to it. No GPU needed.",
+      "One key tells the story, paints the pictures and can read it aloud, billed to it. No GPU needed.",
       () => renderOpenAiForm(),
     ),
   );
@@ -98,7 +98,7 @@ export function renderLocalAi(fromHome = false, aiStatus: LocalAiStatus | null =
       choice(
         "wand",
         "An agent you already have",
-        "Claude Code, Codex, opencode or Grok Build narrates on its own sign-in, with none of its own tools.",
+        "Claude Code, Codex, opencode or Grok Build tells the story on its own sign-in, with none of its own tools.",
         () => renderHarnessPicker(finishAi, () => renderLocalAi()),
       ),
     );
@@ -473,8 +473,8 @@ function renderOpenAiForm(saved: SavedAi | null = null): void {
           offerFast();
         }
         listing.textContent = result.models.length
-          ? `Your key lists ${result.models.length} models that can narrate. Pick one, or type another it serves.`
-          : "Your key lists no models that can narrate.";
+          ? `Your key lists ${result.models.length} models that can tell the story. Pick one, or type another it serves.`
+          : "Your key lists no models that can tell the story.";
       });
   };
   keyField.addEventListener("change", () => {
@@ -489,7 +489,7 @@ function renderOpenAiForm(saved: SavedAi | null = null): void {
   const scope = el(
     "p",
     "hint",
-    "One key for this whole device: every campaign here uses it, new or old, for narration and for pictures.",
+    "One key for this whole device: every campaign here uses it, new or old, for the story and for pictures.",
   );
   // Reading the story aloud on the same key: suggested, since the key is
   // already here, and billed per passage, so the player ticks it.
@@ -581,7 +581,7 @@ export function renderAgentPictures(agent: string): void {
       return;
     }
     const choices = el("div", "choices");
-    const paint = choice("image", `Let ${agent} paint`, "One test map now, the way a table asks for one. Pictures then come from the same sign-in and plan it narrates on.", () =>
+    const paint = choice("image", `Let ${agent} paint`, "One test map now, the way a table asks for one. Pictures then come from the same sign-in and plan it tells the story on.", () =>
       void paintTest(),
     );
     paint.querySelector(".title")?.append(el("span", "tag", "suggested"));
@@ -591,7 +591,7 @@ export function renderAgentPictures(agent: string): void {
     );
     show(
       "mid",
-      intro(`${agent} can paint too`, `${agent} narrates your world now. It has an image tool of its own, so the same sign-in can paint character portraits, scenes and battle maps.`),
+      intro(`${agent} can paint too`, `${agent} tells your world's story now. It has an image tool of its own, so the same sign-in can paint character portraits, scenes and battle maps.`),
       choices,
     );
   });
