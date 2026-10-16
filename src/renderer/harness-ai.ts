@@ -12,8 +12,9 @@ import type { AiSetup, HarnessCard, HarnessStatusResult } from "../shared/types"
 import { harnessFastModel } from "../shared/ai-setup.js";
 import { harnessDescription, harnessStep, harnessTag } from "../shared/harness-card.js";
 import { speedChoice } from "./speed-choice.js";
+import { renderAgentPictures } from "./local-ai.js";
 
-type Finish = (setup: AiSetup) => Promise<void>;
+type Finish = (setup: AiSetup, next?: () => void) => Promise<void>;
 type Back = () => void;
 
 function copyLine(text: string): HTMLElement {
@@ -174,26 +175,35 @@ function drawDetail(
   story.select.addEventListener("change", offerFast);
   utility.select.addEventListener("change", offerFast);
   offerFast();
+  const paints = card.nativeImages !== "no";
   const scope = el(
     "p",
     "hint",
-    "Every campaign on this computer narrates with it from now on, on its own sign-in and plan. Pictures stay as they are: a local image AI keeps painting, and otherwise the tables use their painted placeholders.",
+    paints
+      ? `Every campaign on this computer narrates with it from now on, on its own sign-in and plan. ${card.label} can paint too: the next screen offers it, after one test map.`
+      : "Every campaign on this computer narrates with it from now on, on its own sign-in and plan. Pictures stay as they are: a local image AI keeps painting, and otherwise the tables use their painted placeholders.",
   );
   const submit = button("primary", "Save and play", undefined, "play");
   submit.type = "submit";
   submit.classList.add("block");
-  form.append(story.wrap, utility.wrap, speed.row, scope, submit);
+  const tuning = el("details", "tuning");
+  tuning.append(el("summary", "", "Optional tuning: bookkeeping model and speed"), utility.wrap, speed.row);
+  form.append(story.wrap, tuning, scope, submit);
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     submit.disabled = true;
-    void finish({
-      choice: "harness",
-      apiKey: "",
-      model: "",
-      utilityModel: "",
-      harness: { id: card.id, model: story.select.value, utilityModel: utility.select.value },
-      fast: speed.fast(),
-    })
+    void finish(
+      {
+        choice: "harness",
+        apiKey: "",
+        model: "",
+        utilityModel: "",
+        harness: { id: card.id, model: story.select.value, utilityModel: utility.select.value },
+        fast: speed.fast(),
+      },
+      // An agent with an image tool is offered the pictures as well.
+      paints ? () => renderAgentPictures(card.label) : undefined,
+    )
       .catch(() => undefined)
       .then(() => {
         submit.disabled = false;

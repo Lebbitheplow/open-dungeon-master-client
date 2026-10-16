@@ -65,7 +65,7 @@ export function renderHelp(): void {
       "menu",
       "Getting around",
       `The home screen is a title screen: the table you were last at fills it, the menu runs down the left, and your tables sit as save slots on the right, where an owner can delete one. The medallion in the corner opens the menu with your hosts and every door: adding a server, invites, Story AI, Settings and this guide. Tap the wordmark on any screen to return home.`,
-      `Inside a world the host's own pages fill the window, as they do in a browser. Open the account menu there and choose App home to come back here, App settings for the audio and dice controls, or App guide for this page. ${wayBack}`,
+      `Inside a world the host's own pages fill the window, as they do in a browser. Open the account menu there and choose App home to come back here, App settings for the audio and dice controls, or App guide for this page; App settings and the guide open over the table, and closing them returns to the same game without dropping a call. ${wayBack}`,
     ),
     section(
       "server",
@@ -85,14 +85,14 @@ export function renderHelp(): void {
     ),
     section(
       "sparkles",
-      "AI narration",
-      `Story AI decides who narrates the world on this ${device}: a human at the table, or an AI Dungeon Master billed to your own OpenAI API key.${localAi}`,
-      `To play with an AI Dungeon Master on someone else's server, connect to a server that has AI enabled; its admin sets that up. Campaigns run by a human Dungeon Master work everywhere.`,
+      "Story AI",
+      `Story AI is what the world on this ${device} plays with: it opens on what is set now (who narrates, what paints, what reads aloud), then offers the choices. No AI at all, your own OpenAI API key (which can paint and read aloud too), or${isAndroid ? "" : " an agent you already pay for (Claude Code, Codex, opencode or Grok Build; Codex and Grok Build can paint as well, after one test map), or"} a model on this ${device}.${localAi}`,
+      `Story AI sets up the services. Who runs a particular table (the AI, you, or a friend) is chosen when that campaign is made, and a table can always have a person in the Dungeon Master's seat. To play with an AI Dungeon Master on someone else's server, connect to a server that has AI enabled; its admin sets that up.`,
     ),
     section(
       "wand",
       "Workshop, characters, campaigns",
-      `The title screen's menu opens the pages you use most on whichever host you were last in. New campaign starts an adventure: pick a genre or a world pack, decide who narrates, and share the room code. Quick start skips all that: a one-evening adventure with ready-made heroes, seated from the lobby. Both doors are missing on a server whose admin keeps campaign creation; a room code is the way in there. Characters holds your adventurers and the creation wizard. The Workshop is the Dungeon Master's prep bench: maps, monsters, NPCs, lore and handouts. Join with a code drops you into the sigil boxes at the foot of the screen.`,
+      `The title screen's menu opens the pages you use most on the host it names above them ("Opens on ..."): the one you were last in, unless you press Change to pick another. New campaign builds your own table: pick a genre or a world pack, decide who narrates, and share the room code. Quick start skips all that: a prepared one-evening adventure with ready-made heroes. Every lobby offers three ways to a hero: a ready-made one, one from your library, or your own. Both doors are missing on a server whose admin keeps campaign creation; a room code is the way in there. Characters holds your adventurers and the creation wizard. The Workshop is the Dungeon Master's prep bench: maps, monsters, NPCs, lore and handouts. Join with a code drops you into the sigil boxes at the foot of the screen.`,
     ),
     section(
       "play",
@@ -114,7 +114,7 @@ export function renderHelp(): void {
     section(
       "gear",
       "Settings",
-      `Settings gathers what belongs to the app itself: the microphone and its dictation key, playback and dice, updates, sharing your world, Story AI,${isAndroid ? "" : " the language your world's story memory reads (pick Many languages when your table plays in Italian, Spanish or another language),"} the hide-offline switch for the title screen's save slots, the tour, and Troubleshooting: a check and a repair of the app's own server files, cached files cleared, and a summary to copy into a bug report, none of which touches anything you made. Your account, avatar and password live on each server, under its own Settings page.`,
+      `Settings gathers what belongs to the app itself, in four groups with a row at the top to reach each. Playing on this device: the microphone and its dictation key, playback and dice, controllers and the title screen. Your world: who plays there, sharing it, Story AI,${isAndroid ? "" : " the language your world's story memory reads (pick Many languages when your table plays in Italian, Spanish or another language),"} and moving it. Accounts and connections: saved sign-ins and older hosts. Help and maintenance: this guide, the tour, updates, and Troubleshooting: a check and a repair of the app's own server files, cached files cleared, and a summary to copy into a bug report, none of which touches anything you made. Your account, avatar and password live on each server, under its own Settings page.`,
     ),
   );
 }

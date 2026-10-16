@@ -285,3 +285,55 @@ test("the door's listings match the server's routes", { skip: !fs.existsSync(pat
   assert.match(setupRoute, /action: z\.literal\("models"\)/);
   assert.match(setupRoute, /provider: z\.enum\(\["openai"/);
 });
+
+// Story AI opens on what the device world plays with now (audit C03), in a
+// player's words, read from the same masked settings.
+test("the current setup is said in a player's words", async () => {
+  const { currentAiSummary } = await import("../dist/shared/ai-setup.js");
+  assert.equal(currentAiSummary(null), null);
+  const openai = currentAiSummary({
+    config: {
+      text: { provider: "custom", customBaseUrl: "https://api.openai.com/v1", customModel: "gpt-5.4" },
+      images: { defaultBackend: "openai" },
+      speech: { ttsProvider: "openai" },
+    },
+  });
+  assert.equal(openai.story, "OpenAI narrates (gpt-5.4), on your key.");
+  assert.equal(openai.pictures, "OpenAI paints the pictures, on your key.");
+  assert.equal(openai.narration, "OpenAI's voices read the story aloud.");
+  const agent = currentAiSummary({ config: { text: { provider: "harness" }, harness: { id: "codex" }, images: { defaultBackend: "harness" } } });
+  assert.equal(agent.story, "Codex narrates, on its own sign-in.");
+  assert.equal(agent.pictures, "Codex paints the pictures.");
+  const human = currentAiSummary({ config: { text: { provider: "none" }, images: {}, speech: { ttsProvider: "off" } } });
+  assert.match(human.story, /no AI narrates/);
+  assert.match(human.pictures, /placeholders/);
+  assert.equal(human.narration, "The story is read on screen.");
+  const local = currentAiSummary({ config: { text: { provider: "custom", customBaseUrl: "http://127.0.0.1:8001/v1", customModel: "qwen" } } });
+  assert.equal(local.story, "A model on this computer narrates (qwen).");
+});
+
+// The OpenAI door can read the story aloud on the same key: only when the
+// player ticks it, with the narration model from the key's own list.
+test("narration on the key is asked for only when ticked", async () => {
+  const run = async (narrate, recommended) => {
+    const patches = [];
+    const asked = [];
+    const world = {
+      settings: async () => ({ config: { text: {}, images: {}, speech: {} } }),
+      patch: async (patch) => void patches.push(patch),
+      post: async (pathname, body) => {
+        asked.push(body);
+        return { recommended: body.role === "narration" ? recommended : "" };
+      },
+    };
+    const saved = await saveOpenAiDoor({ ...setup("sk-1", "teller"), narrate }, world);
+    return { saved, patches, asked };
+  };
+  const off = await run(false, "voice-1");
+  assert.ok(!off.asked.some((body) => body.role === "narration"), "unticked, narration is not listed");
+  const on = await run(true, "voice-1");
+  assert.deepEqual(on.patches.at(-1), { speech: { ttsProvider: "openai", ttsBaseUrl: "", ttsModel: "voice-1", ttsVoice: "" } });
+  const unpicked = await run(true, "");
+  assert.match(unpicked.saved.notice, /Narration in Admin > Speech/);
+  assert.ok(!unpicked.patches.some((patch) => patch.speech?.ttsProvider), "nothing is switched on without a model");
+});

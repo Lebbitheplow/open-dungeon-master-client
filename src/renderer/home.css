@@ -1847,3 +1847,41 @@ html.deck:has(#app.immersive) .pad-hints { display: none; }
 }
 .pad-legend dt { font-family: var(--font-display); font-weight: 600; letter-spacing: 0.04em; color: var(--gold-200); }
 .pad-legend dd { margin: 0; color: var(--ink-300); }
+
+/* ---- the ways into a game, each with a line saying where it leads, and
+   the host they open on (home.ts menu) ---- */
+.tt-menu-text { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+.tt-menu-sub {
+  margin-top: 1px;
+  font-family: var(--font-sans, inherit);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--tt-ink-dim);
+  transition: color var(--dur-quick) var(--ease-snap);
+}
+.tt-menu-item:is(:hover, :focus-visible) .tt-menu-sub,
+.pad-active .tt-menu-item:focus .tt-menu-sub { color: var(--tt-ink-soft); }
+.tt-menu-host {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: var(--tt-ink-dim);
+}
+.tt-menu-host svg { width: 14px; height: 14px; color: var(--tt-gold); }
+.tt-menu-host-change {
+  padding: 2px 8px;
+  border: 1px solid rgba(212, 171, 58, 0.45);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--tt-gold-pale);
+  transition: background-color var(--dur-quick) var(--ease-snap), transform var(--dur-move) var(--ease-spring);
+}
+.tt-menu-host-change:is(:hover, :focus-visible) { background: rgba(212, 171, 58, 0.14); outline: none; }
+.tt-menu-host-change:active { transform: scale(0.96); }
+@media (prefers-reduced-motion: reduce) {
+  .tt-menu-host-change { transition: none; }
+}

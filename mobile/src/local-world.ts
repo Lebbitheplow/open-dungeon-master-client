@@ -13,6 +13,7 @@ import {
   NO_SAVED_AI,
   STORY_MODELS_PATH,
   saveOpenAiDoor,
+  currentAiSummary,
   savedAiFrom,
   storyModelsFrom,
   storyModelsRequest,
@@ -389,7 +390,9 @@ export function createLocalWorld(deps: LocalWorldDeps) {
       const origin = await start();
       const profile = await liveToken(origin);
       if (!profile) return NO_SAVED_AI;
-      return savedAiFrom(await deps.getAdminSettings(origin, profile.token));
+      const settings = await deps.getAdminSettings(origin, profile.token);
+      const summary = currentAiSummary(settings);
+      return summary ? { ...savedAiFrom(settings), summary } : savedAiFrom(settings);
     } catch {
       return NO_SAVED_AI;
     }

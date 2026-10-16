@@ -104,6 +104,9 @@ export interface AiSetup {
   // model's.
   fast?: boolean;
   utilityFast?: boolean;
+  // The OpenAI door: read the story aloud with OpenAI's voices too, on the
+  // same key (the narration model from the key's own list).
+  narrate?: boolean;
 }
 
 // The storyteller models an OpenAI key lists, as the device world's server
@@ -148,6 +151,9 @@ export interface SavedAi {
   // The storyteller runs at the provider's Fast tier, and the utility model.
   fast?: boolean;
   utilityFast?: boolean;
+  // What the device world uses now, in words, for the top of Story AI
+  // (currentAiSummary in ai-setup.ts). Older shells ignore it.
+  summary?: { story: string; pictures: string; narration: string };
 }
 
 // firstSetup: the shell just auto-provisioned the local profile, so the
@@ -545,6 +551,10 @@ export interface OdmBridge {
   // The agent programs the device world's server can start. Desktop only;
   // the phone answers that there is no such thing on a phone.
   localHarnessStatus(refresh?: boolean): Promise<HarnessStatusResult>;
+  // The saved agent paints one test map the way a table asks for one and,
+  // when it comes back, becomes the device world's painter (the server's
+  // POST /api/admin/harness picture then adopt). Desktop only.
+  localHarnessPictures?(): Promise<{ ok: true; image: string; moved: number } | { ok: false; error: string }>;
   localPlay(joinCode?: string, path?: string): Promise<ConnectResult>;
   shareStart(): Promise<Result<{ tunnel: TunnelStatus }>>;
   shareStop(): Promise<Result<{ tunnel: TunnelStatus }>>;

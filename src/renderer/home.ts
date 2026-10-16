@@ -15,6 +15,7 @@ import {
   deviceStatusLine,
   enterLabel,
   pickContinueCampaign,
+  nextCreationHost,
   pickPrimaryHost,
   reconcileLocal,
   recapText,
@@ -34,7 +35,8 @@ import { renderLocalAi } from "./local-ai.js";
 import { playLocal, shareRow } from "./local.js";
 import { connectServer, openTyped, renderAdd, scanInvite, signInTo } from "./servers.js";
 import { submitJoin } from "./submit-join.js";
-import { DEVICE, hideOffline, isAndroid, refresh, refreshFeed, setHideOffline, state } from "./state.js";
+import { DEVICE, hideOffline, isAndroid, preferredHost, refresh, refreshFeed, setHideOffline, setPreferredHost, state } from "./state.js";
+import { STARTING_ROUTES } from "../shared/starting-routes.js";
 
 const EMPTY_FEED: HomeFeed = { hosts: [], refreshedAt: "" };
 
@@ -465,23 +467,48 @@ interface MenuItem {
   glyph: string;
   tour: string;
   onClick: (btn: HTMLButtonElement) => void;
+  // A line under the name saying where it leads (the ways into a game).
+  sub?: string;
+}
+
+// "Opens on ...": which host New campaign, Characters and Workshop go to,
+// said once above them, with Change when there is another to choose. The
+// choice is remembered (state.preferredHost) while that host answers.
+function hostLine(primary: HomeHost, feed: HomeFeed): HTMLElement {
+  const line = el("p", "tt-menu-host");
+  line.dataset.tour = "home-host";
+  line.append(icon(hostIcon(primary)), el("span", "tt-menu-host-text", `Opens on ${hostName(primary)}`));
+  const next = nextCreationHost(feed, primary);
+  if (next) {
+    const change = el("button", "tt-menu-host-change", "Change");
+    change.type = "button";
+    change.title = `Open new tables, characters and workshops on ${hostName(next)} instead`;
+    change.addEventListener("click", () => {
+      setPreferredHost(next.id);
+      renderHome();
+    });
+    line.append(change);
+  }
+  return line;
 }
 
 // A game's main menu: diamond bullets, Cinzel, the painted glyph rising
 // beside the line under the pointer. The primary host's doors come first
 // (a world that has never started has no pages to open yet, so they wait
 // for its first run); the shell's own doors follow.
-function menu(primary: HomeHost | null, focusJoin: () => void): HTMLElement {
+function menu(primary: HomeHost | null, feed: HomeFeed, focusJoin: () => void): HTMLElement {
   const nav = el("nav", "tt-menu");
   nav.setAttribute("aria-label", "Main menu");
   const items: MenuItem[] = [];
-  if (primary && !(primary.kind === "local" && state.local.firstRun)) {
+  const opensHere = Boolean(primary && !(primary.kind === "local" && state.local.firstRun));
+  if (primary && opensHere) nav.append(reveal(hostLine(primary, feed), 760));
+  if (primary && opensHere) {
     // A server whose admin keeps campaign creation offers no door for it;
     // the room code in the Join box is the way in there.
     if (primary.canCreate) {
       items.push(
-        { label: "Quick start", glyph: "ui-quickstart", tour: "tile-quick-start", onClick: (btn) => openHost(primary, "/?new=starter", btn) },
-        { label: "New campaign", glyph: "ui-new", tour: "tile-new-campaign", onClick: (btn) => openHost(primary, "/?new=1", btn) },
+        { label: "Quick start", glyph: "ui-quickstart", tour: "tile-quick-start", sub: STARTING_ROUTES.starter, onClick: (btn) => openHost(primary, "/?new=starter", btn) },
+        { label: "New campaign", glyph: "ui-new", tour: "tile-new-campaign", sub: STARTING_ROUTES.new, onClick: (btn) => openHost(primary, "/?new=1", btn) },
       );
     }
     items.push(
@@ -490,7 +517,7 @@ function menu(primary: HomeHost | null, focusJoin: () => void): HTMLElement {
       { label: "Rulebook", glyph: "system-rules", tour: "tile-rulebook", onClick: (btn) => openHost(primary, "/rulebook", btn) },
     );
   }
-  items.push({ label: "Join with a code", glyph: "ui-join", tour: "tile-join", onClick: focusJoin });
+  items.push({ label: "Join with a code", glyph: "ui-join", tour: "tile-join", sub: STARTING_ROUTES.join, onClick: focusJoin });
   items.push({ label: "Add a server", glyph: "system-share", tour: "tile-add-server", onClick: () => renderAdd(state.joinIntent?.origin ?? "") });
   // Story AI is chosen on the world's first run; the door only makes sense
   // once that world exists.
@@ -506,7 +533,10 @@ function menu(primary: HomeHost | null, focusJoin: () => void): HTMLElement {
     const glyphWrap = el("span", "tt-menu-glyph");
     glyphWrap.setAttribute("aria-hidden", "true");
     glyphWrap.append(glyph(item.glyph));
-    btn.append(diamond, el("span", "tt-menu-label", item.label), glyphWrap);
+    const text = el("span", "tt-menu-text");
+    text.append(el("span", "tt-menu-label", item.label));
+    if (item.sub) text.append(el("span", "tt-menu-sub", item.sub));
+    btn.append(diamond, text, glyphWrap);
     btn.addEventListener("click", () => item.onClick(btn));
     nav.append(reveal(btn, 800 + index * 55));
   });
@@ -831,7 +861,7 @@ export function renderHome(): void {
   state.screenName = "home";
   const feed = reconcileLocal(state.feed ?? EMPTY_FEED, state.local);
   const pick = pickContinueCampaign(feed);
-  const primary = pickPrimaryHost(feed, pick);
+  const primary = pickPrimaryHost(feed, pick, preferredHost());
   const localIsHero = !pick && state.local.state !== "unavailable";
   const join = joinPanel();
 
@@ -845,7 +875,7 @@ export function renderHome(): void {
   const stage = el("section", "tt-stage");
   stage.setAttribute("aria-label", "Title screen");
   const left = el("div", "tt-stage-left");
-  left.append(titleBlock(pick), menu(primary, join.focus), statusLine());
+  left.append(titleBlock(pick), menu(primary, feed, join.focus), statusLine());
   const right = el("div", "tt-stage-right");
   if (pick) right.append(recapPanel(pick));
   right.append(slots(feed, primary));

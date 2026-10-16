@@ -43,6 +43,7 @@ const bridge: OdmBridge = {
   localAiSaved: () => ipcRenderer.invoke("local:ai-saved"),
   localAiModels: (apiKey: string) => ipcRenderer.invoke("local:ai-models", String(apiKey ?? "")),
   localHarnessStatus: (refresh?: boolean) => ipcRenderer.invoke("local:harness-status", Boolean(refresh)),
+  localHarnessPictures: () => ipcRenderer.invoke("local:harness-pictures"),
   localPlay: (joinCode?: string, path?: string) =>
     ipcRenderer.invoke("local:play", joinCode, path),
   shareStart: () => ipcRenderer.invoke("share:start"),
