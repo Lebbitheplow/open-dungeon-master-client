@@ -242,8 +242,11 @@ function backdrop(pick: ContinuePick | null): HTMLElement {
   return wrap;
 }
 
-function corners(): HTMLElement[] {
-  return ["tl", "tr", "bl", "br"].map((where) => {
+// The upper pair is pinned to the window; the lower pair rides the foot of
+// the first screen (.tt-first), which grows with what it holds, so nothing
+// on the title screen falls below its frame.
+function corners(which: Array<"tl" | "tr" | "bl" | "br">): HTMLElement[] {
+  return which.map((where) => {
     const corner = el("span", `tt-corner tt-corner-${where}`);
     corner.setAttribute("aria-hidden", "true");
     return corner;
@@ -506,10 +509,12 @@ function menu(primary: HomeHost | null, feed: HomeFeed, focusJoin: () => void): 
     // A server whose admin keeps campaign creation offers no door for it;
     // the room code in the Join box is the way in there.
     if (primary.canCreate) {
-      items.push(
-        { label: "Quick start", glyph: "ui-quickstart", tour: "tile-quick-start", sub: STARTING_ROUTES.starter, onClick: (btn) => openHost(primary, "/?new=starter", btn) },
-        { label: "New campaign", glyph: "ui-new", tour: "tile-new-campaign", sub: STARTING_ROUTES.new, onClick: (btn) => openHost(primary, "/?new=1", btn) },
-      );
+      // Quick start is an AI-run adventure: offered, as on the website, only
+      // where the host has an AI storyteller to run it.
+      if (primary.offersStory) {
+        items.push({ label: "Quick start", glyph: "ui-quickstart", tour: "tile-quick-start", sub: STARTING_ROUTES.starter, onClick: (btn) => openHost(primary, "/?new=starter", btn) });
+      }
+      items.push({ label: "New campaign", glyph: "ui-new", tour: "tile-new-campaign", sub: STARTING_ROUTES.new, onClick: (btn) => openHost(primary, "/?new=1", btn) });
     }
     items.push(
       { label: "Characters", glyph: "tab-characters", tour: "tile-characters", onClick: (btn) => openHost(primary, "/characters", btn) },
@@ -517,13 +522,26 @@ function menu(primary: HomeHost | null, feed: HomeFeed, focusJoin: () => void): 
       { label: "Rulebook", glyph: "system-rules", tour: "tile-rulebook", onClick: (btn) => openHost(primary, "/rulebook", btn) },
     );
   }
-  items.push({ label: "Join with a code", glyph: "ui-join", tour: "tile-join", sub: STARTING_ROUTES.join, onClick: focusJoin });
+  // The ways into a game come first, each with its line; the places that
+  // are yours and the app's own doors stand beside them from a laptop up,
+  // so the menu stays inside the title screen's frame.
+  const places = items.filter((item) => !item.sub);
+  const ways = items.filter((item) => item.sub);
+  items.length = 0;
+  items.push(...ways, { label: "Join with a code", glyph: "ui-join", tour: "tile-join", sub: STARTING_ROUTES.join, onClick: focusJoin });
+  const waysCount = items.length;
+  items.push(...places);
   items.push({ label: "Add a server", glyph: "system-share", tour: "tile-add-server", onClick: () => renderAdd(state.joinIntent?.origin ?? "") });
   // Story AI is chosen on the world's first run; the door only makes sense
   // once that world exists.
   if (state.local.state !== "unavailable" && !state.local.firstRun) {
     items.push({ label: "Story AI", glyph: "ui-ai", tour: "tile-story-ai", onClick: () => renderLocalAi(true) });
   }
+  const groups = el("div", "tt-menu-groups");
+  const waysGroup = el("div", "tt-menu-group");
+  const placesGroup = el("div", "tt-menu-group");
+  groups.append(waysGroup, placesGroup);
+  nav.append(groups);
   items.forEach((item, index) => {
     const btn = el("button", "tt-menu-item");
     btn.type = "button";
@@ -538,7 +556,7 @@ function menu(primary: HomeHost | null, feed: HomeFeed, focusJoin: () => void): 
     if (item.sub) text.append(el("span", "tt-menu-sub", item.sub));
     btn.append(diamond, text, glyphWrap);
     btn.addEventListener("click", () => item.onClick(btn));
-    nav.append(reveal(btn, 800 + index * 55));
+    (index < waysCount ? waysGroup : placesGroup).append(reveal(btn, 800 + index * 55));
   });
   return nav;
 }
@@ -866,11 +884,13 @@ export function renderHome(): void {
   const join = joinPanel();
 
   const page = el("div", "tt-page");
+  const first = el("div", "tt-first");
+  first.append(...corners(["bl", "br"]));
   const header = topbar();
   header.classList.add("tt-header");
-  page.append(header);
+  first.append(header);
   const banner = joinBanner();
-  if (banner) page.append(banner);
+  if (banner) first.append(banner);
 
   const stage = el("section", "tt-stage");
   stage.setAttribute("aria-label", "Title screen");
@@ -880,11 +900,12 @@ export function renderHome(): void {
   if (pick) right.append(recapPanel(pick));
   right.append(slots(feed, primary));
   stage.append(left, right);
-  page.append(stage);
+  first.append(stage);
+  page.append(first);
 
   const below = el("section", "tt-below");
   below.append(...[deviceBlock(localIsHero), join.panel, footer()].filter((node): node is HTMLElement => node !== null));
   page.append(below);
 
-  show("title", backdrop(pick), ...corners(), page);
+  show("title", backdrop(pick), ...corners(["tl", "tr"]), page);
 }
