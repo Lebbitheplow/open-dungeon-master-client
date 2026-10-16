@@ -70,48 +70,48 @@ of this repository's release workflow:
 <table>
 <tr>
 <td width="50%" valign="top" align="center">
-<img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/local-data.png" width="56"><br>
+<img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/local-data.webp" width="56"><br>
 <b>A world on your device</b><br>
 <sub>The app runs its own Open Dungeon Master server: enter your world from the title screen and it wakes up, close the app and it sleeps. Campaigns, characters and pictures stay on your computer or phone. No account anywhere else.</sub>
 </td>
 <td width="50%" valign="top" align="center">
-<img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/chats.png" width="56"><br>
+<img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/chats.webp" width="56"><br>
 <b>Share it with one code</b><br>
 <sub>Open a campaign lobby and the app opens a public address for your world through a Cloudflare tunnel, with no port forwarding and no router setup. Friends join with the room code, an invite link, or a QR code. For a table in the same room, share on this Wi-Fi instead and play with no internet at all.</sub>
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top" align="center">
-<img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/support.png" width="56"><br>
+<img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/support.webp" width="56"><br>
 <b>Any server, one app</b><br>
 <sub>Add servers by address and the app remembers each session. A room code finds its table wherever the host is sharing from, even though the host's address changes every time, and <code>odm://</code> invite links open straight into the app.</sub>
 </td>
 <td width="50%" valign="top" align="center">
-<img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/story.png" width="56"><br>
+<img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/story.webp" width="56"><br>
 <b>Native game screens</b><br>
 <sub>The app ships the game's own screens and draws them itself; only game data travels to the host. The controls match everywhere, and a shared world costs far less traffic. Much older hosts open their own pages instead.</sub>
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top" align="center">
-<img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/text-model.png" width="56"><br>
+<img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/text-model.webp" width="56"><br>
 <b>Story AI, your choice</b><br>
 <sub>Decide who narrates your world: a human at the table, an AI Dungeon Master on your own OpenAI API key, or, on desktop, a local model the app sizes to your hardware, downloads and runs for you, or a CLI agent you already pay for (Claude Code, Codex, opencode, Grok Build) narrating on its own subscription.</sub>
 </td>
 <td width="50%" valign="top" align="center">
-<img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/images.png" width="56"><br>
+<img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/images.webp" width="56"><br>
 <b>Local scene art</b><br>
 <sub>On desktop the app can also install a local ComfyUI with one curated SDXL checkpoint for portraits, scene art and battle maps. Text and image stacks install and uninstall separately.</sub>
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top" align="center">
-<img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/chats.png" width="56"><br>
+<img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/chats.webp" width="56"><br>
 <b>Dice, voice and devices</b><br>
 <sub>Pixels Bluetooth dice pair on desktop and Android alike, the 3D dice tray rolls in the app, and App settings holds the microphone, playback device and every volume, reachable over any running table.</sub>
 </td>
 <td width="50%" valign="top" align="center">
-<img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/characters.png" width="56"><br>
+<img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/characters.webp" width="56"><br>
 <b>A title screen for home</b><br>
 <sub>The table you were last at fills the screen with its latest scene and a "when last we left" recap, your other tables sit as save slots grouped by host, and a guided tour shows where everything lives.</sub>
 </td>
