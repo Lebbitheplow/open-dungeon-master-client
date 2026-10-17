@@ -427,6 +427,13 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     store.setPortal(on !== false);
   });
 
+  // Stable or beta updates (src/main/updater.ts reads it at every check).
+  shellIpc.handle("prefs:update-channel", () => store.updateChannel());
+  shellIpc.handle("prefs:set-update-channel", (_event, channel: unknown) => {
+    store.setUpdateChannel(channel === "beta" ? "beta" : "stable");
+    updater.channelChanged();
+  });
+
   // Story memory (src/shared/story-memory.ts). Saving never restarts the
   // world by itself: only the shell screen knows whether a table is open in
   // it, so it decides when to apply. Pending means the running server still
