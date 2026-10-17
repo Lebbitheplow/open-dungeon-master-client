@@ -262,7 +262,17 @@ test("changing the model keeps the key the device already holds", async () => {
     },
   });
   const world = createLocalWorld(h.deps);
-  assert.deepEqual(await world.aiSaved(), { keySaved: true, model: "gpt-5.1", utilityModel: "gpt-5-mini" });
+  assert.deepEqual(await world.aiSaved(), {
+    keySaved: true,
+    model: "gpt-5.1",
+    utilityModel: "gpt-5-mini",
+    // Story AI opens on what is already set (client PR 62).
+    summary: {
+      story: "OpenAI tells the story (gpt-5.1), on your key.",
+      pictures: "Painted placeholders until something can paint.",
+      narration: "Read aloud when a speech engine is found here.",
+    },
+  });
   const result = await world.configureAi({ choice: "openai", apiKey: "", model: "gpt-5.4-mini", utilityModel: "" });
   assert.equal(result.ok, true);
   const patch = h.patches[0] as { text: Record<string, string>; images: Record<string, string> };
