@@ -369,7 +369,8 @@ built from `vendor/server`. To rebuild the runtimes themselves, see
 Pushing a `v<version>` tag runs [release.yml](.github/workflows/release.yml): it
 bundles the server's newest release (beta or stable; a tag off `main` takes the latest
 stable one), builds every desktop target plus the Flatpak, builds the signed Android
-APK and app bundle, and publishes them to the release as a beta (a prerelease).
+APK and app bundle, and publishes them to the release: as a beta (a prerelease) while
+the repository variable `PUBLISH_AS_BETA` is `true`, otherwise as the latest release.
 Publish the server release first when a client release depends on server changes.
 Promote a beta that held up with
 `gh release edit v<version> --prerelease=false --latest`, together with the server

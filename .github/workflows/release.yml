@@ -18,11 +18,13 @@
 # ANDROID_KEY_ALIAS repo secrets.
 #
 # electron-builder publishes to a draft release; the final publish job flips
-# it live once every required artifact is uploaded, as a beta: every tag
-# ships first as a GitHub prerelease, and one that holds up is promoted to
-# stable by hand with `gh release edit vX.Y.Z --prerelease=false --latest`
+# it live once every required artifact is uploaded, as a beta while the
+# repository variable PUBLISH_AS_BETA is true: every tag then ships first as
+# a GitHub prerelease, and one that holds up is promoted to stable by hand
+# with `gh release edit vX.Y.Z --prerelease=false --latest`
 # (docs/releases.md in the server repository). Stable installs only ever see
-# GitHub's latest release, which is never a prerelease.
+# GitHub's latest release, which is never a prerelease. With the variable
+# unset, every tag goes out as the latest release, as before the channels.
 #
 # Which server it bundles: a tag on main is a beta and takes the server's
 # newest release, beta or stable; a tag off main (a fix on a release/x.y
@@ -559,16 +561,25 @@ jobs:
           if [ "$bundles" = 0 ]; then
             echo "::warning::${GITHUB_REF_NAME} has no flatpak bundle; flatpak installs are not offered this version until one is uploaded."
           fi
-      # Live as a beta. The body names the server it bundles until release
-      # notes replace it, so promotion can pair it with that server release.
-      - name: Publish the draft release as a beta
+      # Live as a beta once the repository variable PUBLISH_AS_BETA is true
+      # (gh variable set PUBLISH_AS_BETA --body true); until then as the
+      # latest release, the way every release went out before the channels.
+      # The body names the server it bundles until release notes replace it,
+      # so promotion can pair it with that server release.
+      - name: Publish the draft release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           SERVER_REF: ${{ needs.payload.outputs.server_ref }}
+          PUBLISH_AS_BETA: ${{ vars.PUBLISH_AS_BETA }}
         run: |
           notes=()
           if [ -z "$(gh release view "${GITHUB_REF_NAME}" --json body -q .body)" ]; then
             notes=(--notes "Bundles server ${SERVER_REF}.")
           fi
-          gh release edit "${GITHUB_REF_NAME}" --draft=false --prerelease --latest=false "${notes[@]}"
+          if [ "$PUBLISH_AS_BETA" = true ]; then
+            channel=(--prerelease --latest=false)
+          else
+            channel=(--latest)
+          fi
+          gh release edit "${GITHUB_REF_NAME}" --draft=false "${channel[@]}" "${notes[@]}"
