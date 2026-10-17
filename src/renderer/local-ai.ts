@@ -1,6 +1,7 @@
-// Story AI for the device world: who narrates (a human, OpenAI by key, or
-// a local model on this machine), the guided local install with its
-// progress, the optional image stack, and the OpenAI key form.
+// Story AI for the device world: what it plays with now, then who narrates
+// (no AI, OpenAI by key, an agent program, or a local model on this
+// machine), the guided local install with its progress, the optional image
+// stack, the OpenAI key form, and an agent's offer to paint too.
 import { backLink, formCard, intro, loadingScreen, show } from "./chrome.js";
 import { button, chip, el, input } from "./dom.js";
 import type { IconName } from "./dom.js";
@@ -39,6 +40,24 @@ function choice(
   return btn;
 }
 
+// What the device world uses now, said before anything is offered (the
+// last answer is kept for the session, so a re-render does not flash).
+let currentSummary: SavedAi["summary"] | null = null;
+
+function currentCard(summary: SavedAi["summary"] | null): HTMLElement | null {
+  if (!summary) return null;
+  const card = el("div", "panel card story-now");
+  const head = el("div", "head");
+  head.append(chip("sparkles"));
+  const grow = el("div", "grow");
+  grow.append(el("div", "name", "Your world plays with"));
+  for (const line of [summary.story, summary.pictures, summary.narration]) grow.append(el("div", "detail", line));
+  head.append(grow);
+  card.append(head);
+  card.style.marginBottom = "1.25rem";
+  return card;
+}
+
 export function renderLocalAi(fromHome = false, aiStatus: LocalAiStatus | null = null): void {
   state.screenName = "local-ai";
   if (fromHome && !aiStatus) {
@@ -48,15 +67,27 @@ export function renderLocalAi(fromHome = false, aiStatus: LocalAiStatus | null =
       if (state.screenName === "local-ai") renderLocalAi(true, status);
     });
   }
+  if (fromHome && !aiStatus) {
+    void window.odm
+      .localAiSaved()
+      .catch(() => null)
+      .then((saved) => {
+        const summary = saved?.summary ?? null;
+        if (summary && JSON.stringify(summary) !== JSON.stringify(currentSummary)) {
+          currentSummary = summary;
+          if (state.screenName === "local-ai") renderLocalAi(fromHome, aiStatus);
+        }
+      });
+  }
   const choices = el("div", "choices");
   choices.append(
-    choice("user", "A human Dungeon Master", "No AI at all. You or a friend runs the table.", () =>
+    choice("user", "No AI", "A person runs every table, and the app keeps the sheets, dice and maps.", () =>
       void finishAi({ choice: "human", apiKey: "", model: "", utilityModel: "" }),
     ),
     choice(
       "key",
-      "AI Dungeon Master via your OpenAI API key",
-      "Narration and image generation billed to your key. No GPU needed.",
+      "Your OpenAI API key",
+      "One key tells the story, paints the pictures and can read it aloud, billed to it. No GPU needed.",
       () => renderOpenAiForm(),
     ),
   );
@@ -67,7 +98,7 @@ export function renderLocalAi(fromHome = false, aiStatus: LocalAiStatus | null =
       choice(
         "wand",
         "An agent you already have",
-        "Claude Code, Codex, opencode or Grok Build narrates on its own sign-in, with none of its own tools.",
+        "Claude Code, Codex, opencode or Grok Build tells the story on its own sign-in, with none of its own tools.",
         () => renderHarnessPicker(finishAi, () => renderLocalAi()),
       ),
     );
@@ -84,9 +115,10 @@ export function renderLocalAi(fromHome = false, aiStatus: LocalAiStatus | null =
     "mid",
     fromHome ? backLink("Home", () => renderHome()) : null,
     intro(
-      "Who runs your games?",
-      "You can change this any time from the Story AI button on the home screen.",
+      "Story AI for this device's world",
+      `The AI services every campaign in the world on this ${isAndroid ? "device" : "computer"} can use. Who runs a particular table (the AI, you, or a friend) is chosen when that campaign is made. Change this any time from Story AI on the home screen.`,
     ),
+    currentCard(currentSummary),
     localAiStatusCard(aiStatus),
     choices,
     speechCard(),
@@ -441,8 +473,8 @@ function renderOpenAiForm(saved: SavedAi | null = null): void {
           offerFast();
         }
         listing.textContent = result.models.length
-          ? `Your key lists ${result.models.length} models that can narrate. Pick one, or type another it serves.`
-          : "Your key lists no models that can narrate.";
+          ? `Your key lists ${result.models.length} models that can tell the story. Pick one, or type another it serves.`
+          : "Your key lists no models that can tell the story.";
       });
   };
   keyField.addEventListener("change", () => {
@@ -457,9 +489,20 @@ function renderOpenAiForm(saved: SavedAi | null = null): void {
   const scope = el(
     "p",
     "hint",
-    "One key for this whole device: every campaign here uses it, new or old, for narration and for pictures.",
+    "One key for this whole device: every campaign here uses it, new or old, for the story and for pictures.",
   );
-  form.append(keyLabel, modelLabel, utilityLabel, listed, listing, speed.row, utilitySpeed.row, scope, error, submit);
+  // Reading the story aloud on the same key: suggested, since the key is
+  // already here, and billed per passage, so the player ticks it.
+  const narrateRow = el("label", "check-row");
+  const narrateBox = el("input");
+  narrateBox.type = "checkbox";
+  narrateBox.checked = saved?.summary ? /OpenAI's voices/.test(saved.summary.narration) : false;
+  narrateRow.append(narrateBox, el("span", "", "Read the story aloud with OpenAI's voices too (suggested; billed per passage)"));
+  // The cheaper helper model and the paid speed tiers are tuning: closed
+  // until wanted, and the defaults work without them.
+  const tuning = el("details", "tuning");
+  tuning.append(el("summary", "", "Optional tuning: helper model and speed"), utilityLabel, utilitySpeed.row, speed.row);
+  form.append(keyLabel, modelLabel, listed, listing, narrateRow, tuning, scope, error, submit);
   form.addEventListener("input", () => {
     openAiTouched = true;
   });
@@ -479,6 +522,7 @@ function renderOpenAiForm(saved: SavedAi | null = null): void {
       utilityModel: utilityField.value.trim(),
       fast: speed.fast(),
       utilityFast: utilitySpeed.fast(),
+      narrate: narrateBox.checked,
     };
     void finishAi(setup).catch(() => undefined).then(() => {
       submit.disabled = false;
@@ -496,20 +540,87 @@ function renderOpenAiForm(saved: SavedAi | null = null): void {
   keyField.focus();
 }
 
-async function finishAi(setup: AiSetup): Promise<void> {
+// Saves the choice, then opens the world, or goes on to `next` (the agent
+// door's offer to paint too) when there is one.
+async function finishAi(setup: AiSetup, next?: () => void): Promise<void> {
   const result = await window.odm.localConfigureAi(setup);
   if (!result.ok) {
     renderError(result.error);
     return;
   }
+  currentSummary = null;
   // Saved, with a model the key's list did not settle: said once, with
   // where to pick it, before the world opens.
   if (result.notice) {
     renderAiNotice(result.notice);
     return;
   }
+  if (next) {
+    next();
+    return;
+  }
   await playLocal(null);
   state.joinIntent = null;
+}
+
+// After an agent that can paint is chosen: the same sign-in can paint the
+// portraits, scenes and maps too. One test map first, painted the way a
+// table asks for one; only a picture that comes back switches it on. A
+// ComfyUI already installed here keeps painting, free, so the offer is not
+// made.
+export function renderAgentPictures(agent: string): void {
+  state.screenName = "local-ai-agent-pictures";
+  const odm = window.odm;
+  if (!odm.localHarnessPictures) {
+    void enterLocalWorld();
+    return;
+  }
+  void odm.localAiStatus().then((status) => {
+    if (status.comfy.installed) {
+      void enterLocalWorld();
+      return;
+    }
+    const choices = el("div", "choices");
+    const paint = choice("image", `Let ${agent} paint`, "One test map now, the way a table asks for one. Pictures then come from the same sign-in and plan it tells the story on.", () =>
+      void paintTest(),
+    );
+    paint.querySelector(".title")?.append(el("span", "tag", "suggested"));
+    choices.append(
+      paint,
+      choice("play", "Not now", "Tables use painted placeholders. You can switch this on later in Admin > Image generation.", () => void enterLocalWorld()),
+    );
+    show(
+      "mid",
+      intro(`${agent} can paint too`, `${agent} tells your world's story now. It has an image tool of its own, so the same sign-in can paint character portraits, scenes and battle maps.`),
+      choices,
+    );
+  });
+  async function paintTest(): Promise<void> {
+    const label = el("p", "hint", `Asking ${agent} for a test map. This can take a minute or two.`);
+    const { card } = progressCard(label);
+    card.querySelector(".progress")?.classList.add("indeterminate");
+    show("narrow", intro(`${agent} is painting`, "Keep the app open."), card);
+    const result = await odm.localHarnessPictures!().catch((err: unknown) => ({ ok: false as const, error: String(err) }));
+    if (!result.ok) {
+      const retry = formCard(
+        el("p", "error", result.error),
+        button("primary", "Try again", () => void paintTest(), "refresh"),
+        button("quiet", "Not now", () => void enterLocalWorld()),
+      );
+      show("narrow", intro("The test map did not come back", "Nothing was switched on. Tables keep their placeholders."), retry);
+      return;
+    }
+    const img = el("img", "agent-test-picture");
+    img.src = result.image;
+    img.alt = "The test map";
+    const cont = button("primary", "Enter your world", () => void enterLocalWorld(), "play");
+    cont.classList.add("block");
+    show(
+      "narrow",
+      intro(`${agent} paints your tables`, result.moved ? `It painted this, and ${result.moved} campaign${result.moved === 1 ? "" : "s"} that could not paint now use it too.` : "It painted this. New campaigns paint with it from now on."),
+      formCard(img, cont),
+    );
+  }
 }
 
 function renderAiNotice(notice: string): void {

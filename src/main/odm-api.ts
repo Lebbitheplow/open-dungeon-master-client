@@ -200,7 +200,7 @@ export async function speechEngine(origin: string, token: string, install: boole
 // One of the world's admin routes that takes a JSON body and answers with
 // one (the model listings the OpenAI door asks, src/shared/ai-setup.ts).
 // The server asks the key's provider in turn, so it is given longer.
-export async function postAdmin(origin: string, token: string, pathname: string, body: object): Promise<unknown> {
+export async function postAdmin(origin: string, token: string, pathname: string, body: object, timeoutMs = 30_000): Promise<unknown> {
   const res = await api(
     origin,
     pathname,
@@ -209,7 +209,7 @@ export async function postAdmin(origin: string, token: string, pathname: string,
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
       body: JSON.stringify(body),
     },
-    30_000,
+    timeoutMs,
   );
   if (!res.ok) throw await errorFrom(res, "The world's server refused the request.");
   return res.json();

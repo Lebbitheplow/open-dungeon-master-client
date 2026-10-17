@@ -44,6 +44,69 @@ function isOpenAi(baseUrl: unknown): boolean {
 // What the device already holds, read from the masked admin settings (the
 // key itself never leaves the server, only whether one is set). A key for
 // some other backend does not count: it could not pay for OpenAI.
+
+const AGENT_NAMES: Record<string, string> = { claude: "Claude Code", codex: "Codex", opencode: "opencode", grok: "Grok Build" };
+
+function hostOf(url: unknown): string {
+  try {
+    return typeof url === "string" ? new URL(url).host : "";
+  } catch {
+    return "";
+  }
+}
+
+// What the device world plays with now, in a player's words: who tells the
+// story, what paints, what reads it aloud ("narration" is only ever the
+// reading aloud, as in the server's own Help). Shown before any change is offered, so
+// Story AI starts from what is set rather than a blank question.
+export function currentAiSummary(body: unknown): SavedAi["summary"] | null {
+  const config = (body as {
+    config?: {
+      text?: Record<string, unknown>;
+      harness?: Record<string, unknown>;
+      images?: Record<string, unknown>;
+      speech?: Record<string, unknown>;
+    };
+  } | null)?.config;
+  if (!config?.text) return null;
+  const text = config.text;
+  const model = typeof text.customModel === "string" ? text.customModel : "";
+  const agent = typeof config.harness?.id === "string" ? AGENT_NAMES[config.harness.id] ?? config.harness.id : "";
+  const story =
+    text.provider === "none"
+      ? "A person runs every table; no AI tells the story."
+      : text.provider === "harness" && agent
+        ? `${agent} tells the story, on its own sign-in.`
+        : text.provider === "custom" && isOpenAi(text.customBaseUrl)
+          ? `OpenAI tells the story${model ? ` (${model})` : ""}, on your key.`
+          : text.provider === "custom"
+            ? /127\.0\.0\.1|localhost/.test(String(text.customBaseUrl ?? ""))
+              ? `A model on this computer tells the story${model ? ` (${model})` : ""}.`
+              : `${model || "A model"} at ${hostOf(text.customBaseUrl) || "another server"} tells the story.`
+            : text.provider === "local"
+              ? `Ollama on this computer tells the story${typeof text.localTextModel === "string" && text.localTextModel ? ` (${text.localTextModel})` : ""}.`
+              : "Not chosen yet.";
+  const backend = config.images?.defaultBackend;
+  const pictures =
+    backend === "comfyui"
+      ? "ComfyUI on this computer paints the pictures."
+      : backend === "openai"
+        ? "OpenAI paints the pictures, on your key."
+        : backend === "harness"
+          ? `${agent || "The agent"} paints the pictures.`
+          : "Painted placeholders until something can paint.";
+  const tts = config.speech?.ttsProvider;
+  const narration =
+    tts === "openai"
+      ? "OpenAI's voices read the story aloud."
+      : tts === "kokoro"
+        ? "Kokoro reads the story aloud."
+        : tts === "off"
+          ? "The story is read on screen."
+          : "Read aloud when a speech engine is found here.";
+  return { story, pictures, narration };
+}
+
 export function savedAiFrom(body: unknown): SavedAi {
   const config = (body as { config?: { text?: Record<string, unknown>; harness?: Record<string, unknown> } } | null)
     ?.config;
@@ -141,6 +204,18 @@ const MEDIA_LISTINGS = [
   { role: "dictation" as const, request: { action: "list", role: "dictation", provider: "speech", baseUrl: OPENAI_BASE_URL } },
 ];
 
+// Narration on the same key, asked only when the player ticks it: the model
+// from the key's own list (as the server's guided setup lists it), saved as
+// the device world's speech. With no obvious pick nothing changes and the
+// notice says where to choose.
+const NARRATION_LISTING = { action: "list", role: "narration", provider: "speech", baseUrl: OPENAI_BASE_URL };
+
+export async function openAiNarrationPatch(post: AdminPost): Promise<object | null> {
+  const listing = (await post(MEDIA_MODELS_PATH, NARRATION_LISTING).catch(() => null)) as { recommended?: unknown } | null;
+  const model = typeof listing?.recommended === "string" ? listing.recommended.trim() : "";
+  return model ? { speech: { ttsProvider: "openai", ttsBaseUrl: "", ttsModel: model, ttsVoice: "" } } : null;
+}
+
 export type MediaModels = { pictures: string; dictation: string };
 
 // What the device already saved, from the masked admin settings.
@@ -200,7 +275,13 @@ export async function saveOpenAiDoor(
   await world.patch(built.patch);
   const media = await openAiMediaPatch(savedMediaModels(settings), world.post);
   if (media.patch) await world.patch(media.patch);
-  return { notice: mediaNotice(media.unpicked) };
+  let narrationNotice = "";
+  if (setup.narrate) {
+    const narration = await openAiNarrationPatch(world.post);
+    if (narration) await world.patch(narration);
+    else narrationNotice = " Your key lists no single obvious voice model, so pick one under Narration in Admin > Speech.";
+  }
+  return { notice: `${mediaNotice(media.unpicked)}${narrationNotice}`.trim() };
 }
 
 // The admin settings patch for "an agent I already have": the device's server

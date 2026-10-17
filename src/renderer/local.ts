@@ -89,20 +89,25 @@ export function shareRow(): HTMLElement {
   const tunnel = state.tunnel;
   if (tunnel.state === "running") {
     row.append(badge("Shared online", true));
-    row.append(el("span", "status-line", tunnel.url));
-    // What friends type is a campaign's room code, shown in its lobby; while
-    // shared, every code this world's campaigns have points here. The host
-    // code below is the address itself, for someone with no code to hand.
+    // The invite friends actually need leads: a campaign's room code, from
+    // its lobby (Invite there has the link and the QR too). While shared,
+    // every code this world's campaigns have points here. The address and
+    // the host code come after, for someone with no code to hand.
+    row.append(
+      el(
+        "span",
+        "status-line",
+        "Friends join with a campaign's room code from its lobby, while this app stays open.",
+      ),
+    );
     const code = hostCodeFromOrigin(tunnel.url);
-    if (code) {
-      row.append(
-        el(
-          "span",
-          "status-line",
-          `Friends join with a campaign's room code from its lobby. Host code ${code} reaches this world's door without one.`,
-        ),
-      );
-    }
+    row.append(
+      el(
+        "span",
+        "status-line quiet",
+        code ? `Without a code: ${tunnel.url}, or host code ${code}.` : `Without a code: ${tunnel.url}`,
+      ),
+    );
     const copy = button("secondary", "Copy link", () => {
       void copyText(tunnel.url).then((worked) => {
         copy.lastChild!.textContent = worked ? "Copied" : "Copy failed";
@@ -145,14 +150,14 @@ export function shareRow(): HTMLElement {
     // Sharing on this Wi-Fi: the address friends at the table type or scan.
     // Online sharing can still be opened on top of it.
     row.append(badge("Shared on this Wi-Fi", true));
-    row.append(el("span", "status-line", lan));
     row.append(
       el(
         "span",
         "status-line",
-        "Friends on the same network open this address in a browser or the app. No internet needed. It stays open until you stop sharing or quit.",
+        "Friends on the same network join with a campaign's room code, or open this address in a browser or the app. No internet needed; it stays open until you stop sharing or quit.",
       ),
     );
+    row.append(el("span", "status-line quiet", lan));
     const copy = button("secondary", "Copy address", () => {
       void copyText(lan).then((worked) => {
         copy.lastChild!.textContent = worked ? "Copied" : "Copy failed";

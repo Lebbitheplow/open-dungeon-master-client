@@ -31,6 +31,7 @@ import {
   STORY_MODELS_PATH,
   harnessPatch,
   saveOpenAiDoor,
+  currentAiSummary,
   savedAiFrom,
   storyModelsFrom,
   storyModelsRequest,
@@ -938,6 +939,7 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
           utilityModel: str(setup.utilityModel, 200),
           fast: setup.fast === true,
           utilityFast: setup.utilityFast === true,
+          narrate: setup.narrate === true,
         },
         {
           settings: () => getAdminSettings(origin, token),
@@ -987,6 +989,27 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
           fast: body.config?.speed === "fast",
         },
       };
+    } catch (err) {
+      return fail(err);
+    }
+  });
+
+  // The agent that narrates paints too (Story AI, after an agent is chosen):
+  // one test map painted the way a table asks for one, and only when it
+  // comes back the server makes the agent the device world's painter and
+  // moves campaigns stranded on a backend that cannot paint onto it. The
+  // server refuses the second step without the first.
+  shellIpc.handle("local:harness-pictures", async () => {
+    try {
+      const token = store.token(LOCAL_SERVER_ID);
+      if (!token || !local.origin) return fail(new Error("Set up the local account first."));
+      const picture = (await postAdmin(local.origin, token, "/api/admin/harness", { action: "picture" }, 300_000)) as {
+        image?: string;
+        error?: string;
+      };
+      if (!picture?.image) return fail(new Error(picture?.error || "No picture came back."));
+      const adopted = (await postAdmin(local.origin, token, "/api/admin/harness", { action: "adopt" })) as { moved?: unknown[] };
+      return { ok: true, image: picture.image, moved: Array.isArray(adopted?.moved) ? adopted.moved.length : 0 };
     } catch (err) {
       return fail(err);
     }
@@ -1130,7 +1153,9 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
   shellIpc.handle("local:ai-saved", async () => {
     const token = store.token(LOCAL_SERVER_ID);
     if (!token || !local.origin) return NO_SAVED_AI;
-    return savedAiFrom(await getAdminSettings(local.origin, token).catch(() => null));
+    const settings = await getAdminSettings(local.origin, token).catch(() => null);
+    const summary = currentAiSummary(settings);
+    return summary ? { ...savedAiFrom(settings), summary } : savedAiFrom(settings);
   });
 
   shellIpc.handle("local:play", async (_event, joinCode: unknown, path: unknown): Promise<ConnectResult> => {

@@ -11,7 +11,7 @@ import { tryOpenNative } from "./game-screen.js";
 import { submitJoin } from "./submit-join.js";
 import { forgetObjectUrls } from "./game/object-urls.js";
 import { renderHome } from "./home.js";
-import { connectAt, hostVersions, refresh, state } from "./state.js";
+import { connectAt, hostVersions, refresh, refreshFeed, state } from "./state.js";
 import type { ServerProbe, ServerSummary } from "../shared/types";
 
 export function renderError(message: string): void {
@@ -392,10 +392,13 @@ export function renderAuth(
   submit.type = "submit";
   submit.classList.add("block");
   form.append(error, submit);
+  // The new sign-in's tables are asked for at once: the home otherwise
+  // showed this host offline until the next refresh came round.
   const landed = async (): Promise<void> => {
     state.joinIntent = null;
     await refresh();
     renderHome();
+    void refreshFeed();
   };
   form.addEventListener("submit", (event) => {
     event.preventDefault();
