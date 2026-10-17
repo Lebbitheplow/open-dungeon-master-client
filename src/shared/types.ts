@@ -227,6 +227,10 @@ export interface LocalAiStatus {
   // Whether the small summaries model sits beside the story model.
   utilityInstalled: boolean;
   running: boolean;
+  // Running means a server the app did not start answers on the port.
+  external: boolean;
+  // Where the device world's text AI is pointed (http://127.0.0.1:8001/v1).
+  endpoint: string;
   busy: "" | "scanning" | "downloading" | "starting";
   progress: { label: string; percent: number } | null;
   error: string;
@@ -574,6 +578,8 @@ export interface OdmBridge {
   localAiInstallComfy(): Promise<Result<{ status: LocalAiStatus; warning: string }>>;
   localAiUninstall(component: "text" | "images"): Promise<Result<{ status: LocalAiStatus; warning?: string }>>;
   localAiStatus(): Promise<LocalAiStatus>;
+  // Starts the installed story AI again after it stopped or gave up.
+  localAiStart(): Promise<Result<{ status: LocalAiStatus }>>;
   // Speech-to-text for dictation in the device world. Desktop only: the
   // phone dictates with its own recognizer, so it leaves these out.
   localSpeechStatus?(): Promise<Result<{ speech: LocalSpeechStatus }>>;
