@@ -291,6 +291,11 @@ export type SteamAddResult =
   | { ok: true; state: "needs-restart" }
   | { ok: false; error: string };
 
+// Which releases the desktop updater offers. Every build is published as a
+// GitHub prerelease first, the beta; the ones that hold up are promoted to
+// stable by clearing that flag (docs/releases.md in the server repository).
+export type UpdateChannel = "stable" | "beta";
+
 export interface UpdateStatus {
   current: string;
   latest: string;
@@ -304,6 +309,8 @@ export interface UpdateStatus {
   instruction: string;
   // Where the new build lives, for the installs that fetch it themselves.
   releasesUrl: string;
+  // The channel the answer came from.
+  channel: UpdateChannel;
 }
 
 // "available" is the once-per-run background check finding something; the
@@ -507,6 +514,11 @@ export interface OdmBridge {
   // On by default; a host too old for it opens its own pages regardless.
   portalMode(): Promise<boolean>;
   setPortalMode(on: boolean): Promise<void>;
+  // Which releases the updater offers: stable by default, or each night's
+  // beta as well. Desktop only; absent on the phone, which updates through
+  // Google Play.
+  updateChannel?(): Promise<UpdateChannel>;
+  setUpdateChannel?(channel: UpdateChannel): Promise<void>;
   // How the desktop keeps saved sign-ins: absent on the phone, whose
   // secrets sit in the Android Keystore.
   credentialStorage?(): Promise<{ protection: "keyring" | "obscured" | "none"; keepSignIns: boolean }>;
