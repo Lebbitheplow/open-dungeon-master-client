@@ -256,8 +256,10 @@ deletes anything you made:
 - **Clear cached files** drops what the app cached from servers; sign-ins,
   saved servers and your world stay.
 - **Copy summary** puts a short report on the clipboard for a bug report:
-  versions, the state of your world and which server files are wrong. It
-  names no accounts, keys or campaign text, and shortens paths to `~`.
+  versions, the state of your world, whether the local story and image AI
+  are installed and answering (and the last thing that stopped them), and
+  which server files are wrong. It names no accounts, keys or campaign
+  text, and shortens paths to `~`.
 - **Show logs** opens the folder with `local-server.log` and `tunnel.log`.
   Read a log before sharing it; the world's own output goes there.
 - **Reset the app** is the one row that takes your world out of the app's
