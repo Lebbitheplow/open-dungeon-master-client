@@ -219,6 +219,8 @@ function main(): void {
         relaunch,
         flatpak,
       },
+      // Settings > This app > Beta updates, read at every check.
+      () => store.updateChannel(),
     );
 
     // The Steam Deck layout (src/shared/deck.ts): the hardware, the OS
