@@ -68,7 +68,13 @@ export function portalEligible(input: { bundled: string; remote: string }): Port
 // (`layered`), which an older host drops, and the sheet counts AC and magic
 // by the one-of-a-kind rules an older host's engine does not keep, so the
 // AC on the sheet would not be the AC the DM rolls against.
-export const NATIVE_MIN_SERVER = "0.28.2";
+// Raised again for hands and gear and the table's fight pace (server issues
+// 424 and 432): the table settings save how often fights come
+// (`combatPace`), which an older host drops, so the picker springs back to
+// Balanced; the Hand deals gear cards (draw, stow, drop, pick up, a shield)
+// whose moves and costs an older host's DM has no tool to carry out; and the
+// builder says the DM reads the whole backstory, which an older host cuts.
+export const NATIVE_MIN_SERVER = "0.28.3";
 
 export function nativeEligible(remote: string): PortalVerdict {
   const version = parseVersion(remote);
