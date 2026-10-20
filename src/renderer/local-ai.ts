@@ -11,7 +11,7 @@ import { renderError } from "./servers.js";
 import { isAndroid, state } from "./state.js";
 import { renderHarnessPicker } from "./harness-ai.js";
 import { speedChoice } from "./speed-choice.js";
-import { openAiFastModel } from "../shared/ai-setup.js";
+import { LOCAL_AI_MINIMUM_GB, openAiFastModel } from "../shared/ai-setup.js";
 import { speechSummary } from "../shared/speech.js";
 import type { AiSetup, HardwareInfo, LocalAiStatus, LocalAiTier, LocalSpeechStatus, SavedAi } from "../shared/types";
 
@@ -106,7 +106,7 @@ export function renderLocalAi(fromHome = false, aiStatus: LocalAiStatus | null =
       choice(
         "cpu",
         "Local AI on this machine",
-        "Free and private: a guided install sized to your hardware. Needs a beefy machine.",
+        `Free and private: a guided install sized to your hardware. Needs at least ${LOCAL_AI_MINIMUM_GB} GB of graphics memory.`,
         () => void startLocalAiFlow(),
       ),
     );
@@ -279,7 +279,7 @@ function renderLocalAiTiers(hardware: HardwareInfo, tiers: LocalAiTier[]): void 
   for (const tier of tiers) {
     const tag = tier.installed ? "installed" : tier.recommended ? "recommended" : "";
     const desc = `${tier.detail} ${tier.sizeGb} GB download${
-      tier.fits ? "" : `; needs about ${tier.needsGb} GB of memory`
+      tier.fits || tier.installed ? "" : `; needs about ${tier.needsGb} GB of memory`
     }.`;
     const btn = choice(
       "sparkles",
@@ -294,7 +294,12 @@ function renderLocalAiTiers(hardware: HardwareInfo, tiers: LocalAiTier[]): void 
   show(
     "mid",
     backLink("Story AI", () => renderLocalAi()),
-    intro("Pick your storyteller", `${gpu}: ${memory}. Greyed-out choices need more memory.`),
+    intro(
+      "Pick your storyteller",
+      tiers.some((tier) => tier.fits)
+        ? `${gpu}: ${memory}. Greyed-out choices need more memory.`
+        : `${gpu}: ${memory}. A local storyteller needs at least ${LOCAL_AI_MINIMUM_GB} GB of graphics memory (24 GB of memory on a Mac), so this machine is below it. Your OpenAI key, an agent you already have or a human Dungeon Master runs the table here instead.`,
+    ),
     choices,
   );
 }

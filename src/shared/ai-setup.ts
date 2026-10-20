@@ -8,6 +8,13 @@ import type { AiModelsResult, AiSetup, SavedAi } from "./types";
 
 export const OPENAI_BASE_URL = "https://api.openai.com/v1";
 
+// The least graphics memory the desktop's local storyteller is offered on: a
+// 16 GB card, or a unified pool whose GPU share reaches it (a 24 GB Mac).
+// Below it no model plays the full rules well enough, so the app offers none
+// rather than one that fumbles the table. The server's docs state the same
+// minimum (docs/text-backends.md).
+export const LOCAL_AI_MINIMUM_GB = 16;
+
 export const NO_SAVED_AI: SavedAi = { keySaved: false, model: "", utilityModel: "" };
 
 // Processing speed (server issue 255): Fast is offered for any model named

@@ -153,10 +153,13 @@ world on your device:
   person narrates. Works everywhere, no model needed.
 - **Your own OpenAI API key.** The AI Dungeon Master and scene images run on OpenAI,
   billed to your key.
-- **A local model** (desktop only). The app scans your GPU and memory, offers the
-  Qwen3.6-35B-A3B tiers that fit (Q8 down to Q2, 12 to 45 GB) or a Gemma 4 12B
-  fallback for smaller machines, and adds a small Qwen3.5-4B utility model for
-  summaries when there is room. It downloads a pinned llama.cpp build (Vulkan on
+- **A local model** (desktop only, and only with at least 16 GB of graphics
+  memory: a 16 GB card, or 24 GB of memory on a Mac). The app scans your GPU and
+  memory, offers the Qwen3.6-35B-A3B tiers that fit (Q8 down to Q4, 22 to 38 GB
+  downloads) or gpt-oss-20b (12 GB) for a 16 GB card, and adds a small
+  Qwen3.5-4B utility model for summaries when there is room. Below 16 GB it
+  offers none, since no model that small plays the full rules well; use your
+  OpenAI key, an agent, or a human Dungeon Master there. It downloads a pinned llama.cpp build (Vulkan on
   Windows and Linux x64, Metal on Apple Silicon), writes the preset the AI Dungeon
   Master was tuned on, and starts and stops the model with your world.
 - **An agent you already have** (desktop only, not the Flatpak build). Claude Code,
