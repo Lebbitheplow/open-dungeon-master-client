@@ -45,6 +45,8 @@ const ROUTES: Route[] = [
   { pattern: "/characters/:characterId", load: () => import("@/app/characters/[characterId]/page"), skeleton: "sheet" },
   // The library's build editor and "Duplicate and edit" (server issue 229).
   { pattern: "/characters/:characterId/edit", load: () => import("@/app/characters/[characterId]/edit/page") },
+  // The hero page a new character's first save lands on (server PR #442).
+  { pattern: "/characters/:characterId/ready", load: () => import("@/app/characters/[characterId]/ready/page") },
   { pattern: "/workshop", load: () => import("@/app/workshop/page"), skeleton: "shelf" },
   { pattern: "/workshop/:workshopId", load: () => import("@/app/workshop/[workshopId]/page"), skeleton: "hub" },
   { pattern: "/settings", load: () => import("@/app/settings/page") },
