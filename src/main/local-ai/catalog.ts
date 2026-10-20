@@ -117,10 +117,10 @@ export const CATALOG: CatalogEntry[] = [
 ];
 
 // Tiers offered before the 16 GB minimum. An install of one still starts and
-// shows as installed; none is offered again. The 35B at Q2 re-rolled
-// initiative, recited the turn order and narrated blows nobody rolled on the
-// full rules, Q3 was never measured against gpt-oss-20b (which needs less),
-// and Gemma 4 12B plays only on the short rules.
+// shows as installed; none is offered again. Where they fit, gpt-oss-20b
+// plays the full rules as well as the 35B at Q2 and Q3 did, faster and in
+// less memory (the server's docs/text-backends.md has the runs), and Gemma
+// 4 12B plays only on the short rules.
 export const RETIRED: CatalogEntry[] = [
   {
     id: "qwen-q3",
