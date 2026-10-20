@@ -14,6 +14,9 @@ export const OPENAI_BASE_URL = "https://api.openai.com/v1";
 // rather than one that fumbles the table. The server's docs state the same
 // minimum (docs/text-backends.md).
 export const LOCAL_AI_MINIMUM_GB = 16;
+// Every setup's needs, the local storyteller's with the machines it was
+// measured on, on the site's guide.
+export const REQUIREMENTS_URL = "https://opendungeonmaster.com/guide/start/system-requirements/";
 
 export const NO_SAVED_AI: SavedAi = { keySaved: false, model: "", utilityModel: "" };
 

@@ -63,6 +63,15 @@ More help, and the full player guide, live at
 | **Linux** (x64) | `.AppImage`, `.deb`, `.rpm`, `.tar.gz`, `.flatpak` | The AppImage carries a static runtime, so it runs on distros that no longer ship libfuse2. |
 | **Android** 8.0+ (arm64) | `open-dungeon-master-client-<version>.apk` | Sideload it: allow installs from your browser or file manager when Android asks. |
 
+**What your machine needs.** The app wants 4 GB of memory (8 GB recommended);
+measured on Linux it uses about 1.2 GB with its world open, and the installer is
+close to 200 MB. A person, an OpenAI key or an agent program telling the story
+needs nothing more. A local model needs at least 16 GB of graphics memory, and
+runs on Windows x64, Linux x64 and Apple Silicon only (not Intel Macs, ARM PCs,
+the Flatpak or Android). Local pictures need 8 GB of graphics memory. Every
+setup, with the machines it was measured on and what hosting a group needs:
+[System requirements](https://opendungeonmaster.com/guide/start/system-requirements/).
+
 **Checking a download.** The release page lists a SHA-256 checksum beside every
 file; compare it with `sha256sum <file>` (or `Get-FileHash <file>` in PowerShell).
 Releases after 0.17.6 also carry a build attestation, which proves a file came out
@@ -169,8 +178,9 @@ world on your device:
   built-in storyteller.
 
 Scene art on desktop can come from a local ComfyUI the app installs into its own
-Python virtual environment (it needs Python 3 on the machine) with the SDXL base
-checkpoint, about 7 GB.
+Python virtual environment with the SDXL base checkpoint: about 15 GB of disk
+with its Python packages, on Windows or Linux, with Python 3.10 to 3.14 and Git
+installed first, and 8 GB of graphics memory.
 
 To play with an AI Dungeon Master on someone else's server, connect to a server
 whose admin has set one up. Tables run by a human Dungeon Master work on every host.
