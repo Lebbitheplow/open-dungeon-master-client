@@ -211,6 +211,9 @@ export interface GameOptions {
   // A path with no native page, or a full URL off the host: the shell
   // opens it the old way (web view) or in the browser.
   onLeave(url: string): void;
+  // The host's bare home page, when the shell's title screen stands in for
+  // it (GameRouter.onHome).
+  onHome?(): void;
 }
 
 // A plain anchor in a host page (not a next/link) would take the whole
@@ -237,6 +240,7 @@ export function mountGame(root: HTMLElement, options: GameOptions): GameMount {
   installRuntime(client);
   const router = new GameRouter(options.path);
   router.onLeave = options.onLeave;
+  router.onHome = options.onHome ?? null;
   const onClick = (event: MouseEvent): void => {
     const url = linkTarget(event, client.origin);
     if (url === null) return;

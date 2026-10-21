@@ -13,6 +13,7 @@ import { storyMemoryEnv, storyMemorySupported } from "../shared/story-memory";
 import { QuickTunnel } from "./tunnel";
 import { detectInstallKind, flatpakIsSystemWide, flatpakRelaunchCommand, packageFormatOf, Updater } from "./updater";
 import { ShellWindow } from "./window";
+import { wireContextMenus } from "./edit-menu";
 
 // Session tokens go through the OS keychain when one is available. The
 // "plain:" fallback (headless Linux without a keyring) is marked so tokens
@@ -49,6 +50,8 @@ function main(): void {
   // A stable directory name across dev and packaged runs, so accounts and
   // the offline world never depend on how the app was launched.
   app.setPath("userData", path.join(app.getPath("appData"), "open-dungeon-master-client"));
+  // Cut, Copy and Paste on a right-click, in every page the app shows.
+  wireContextMenus(app);
 
   let pendingJoin: JoinLink | null = joinLinkFromArgv(process.argv);
   let ipc: ShellIpc | null = null;

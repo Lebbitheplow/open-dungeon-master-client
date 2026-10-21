@@ -11,8 +11,9 @@ import { renderError } from "./servers.js";
 import { isAndroid, state } from "./state.js";
 import { renderHarnessPicker } from "./harness-ai.js";
 import { speedChoice } from "./speed-choice.js";
-import { LOCAL_AI_MINIMUM_GB, REQUIREMENTS_URL, openAiFastModel } from "../shared/ai-setup.js";
+import { LOCAL_AI_MINIMUM_GB, REQUIREMENTS_URL, localAiFit, openAiFastModel } from "../shared/ai-setup.js";
 import { speechSummary } from "../shared/speech.js";
+import { renderMediaSetup } from "./world-media.js";
 import type { AiSetup, HardwareInfo, LocalAiStatus, LocalAiTier, LocalSpeechStatus, SavedAi } from "../shared/types";
 
 // The live progress bar of an install in flight, for the progress events to
@@ -58,8 +59,36 @@ function currentCard(summary: SavedAi["summary"] | null): HTMLElement | null {
   return card;
 }
 
+// Set while the first launch's guided setup runs: who tells the story, then
+// voices and music, then the home screen. Story AI opened from the home
+// screen or Settings goes straight back home once a choice is saved.
+let setupFlow = false;
+
+export function startGuidedSetup(): void {
+  setupFlow = true;
+  renderLocalAi();
+}
+
+// What this computer can run, from the installer's hardware scan, asked
+// once per run of the app and said on the local door.
+let localFit: Promise<{ tag: string; desc: string } | null> | null = null;
+
+function hintLocalFit(btn: HTMLButtonElement): void {
+  localFit ??= window.odm
+    .localAiScan()
+    .then((result) => (result.ok ? localAiFit(result.hardware, result.tiers) : null))
+    .catch(() => null);
+  void localFit.then((fit) => {
+    if (!fit || !btn.isConnected) return;
+    const desc = btn.querySelector(".desc");
+    if (desc) desc.textContent = fit.desc;
+    if (fit.tag) btn.querySelector(".title")?.append(el("span", "tag", fit.tag));
+  });
+}
+
 export function renderLocalAi(fromHome = false, aiStatus: LocalAiStatus | null = null): void {
   state.screenName = "local-ai";
+  if (fromHome) setupFlow = false;
   if (fromHome && !aiStatus) {
     // The entry screen doubles as the status view; fetch once, then re-render
     // with the installed-components card filled in.
@@ -102,14 +131,14 @@ export function renderLocalAi(fromHome = false, aiStatus: LocalAiStatus | null =
         () => renderHarnessPicker(finishAi, () => renderLocalAi()),
       ),
     );
-    choices.append(
-      choice(
-        "cpu",
-        "Local AI on this machine",
-        `Free and private: a guided install sized to your hardware. Needs at least ${LOCAL_AI_MINIMUM_GB} GB of graphics memory.`,
-        () => void startLocalAiFlow(),
-      ),
+    const local = choice(
+      "cpu",
+      "Local AI on this machine",
+      `Free and private: a guided install sized to your hardware. Needs at least ${LOCAL_AI_MINIMUM_GB} GB of graphics memory.`,
+      () => void startLocalAiFlow(),
     );
+    hintLocalFit(local);
+    choices.append(local);
   }
   show(
     "mid",
@@ -359,7 +388,15 @@ function renderLocalAiInstall(tier: LocalAiTier): void {
   });
 }
 
+// Every Story AI path ends here: the guided setup goes on to voices and
+// music, anything else back to the home screen (the world's home is the
+// app's, src/renderer/game-screen.ts).
 async function enterLocalWorld(): Promise<void> {
+  if (setupFlow) {
+    setupFlow = false;
+    renderMediaSetup(() => void playLocal(null).then(() => (state.joinIntent = null)));
+    return;
+  }
   await playLocal(null);
   state.joinIntent = null;
 }
@@ -593,8 +630,7 @@ async function finishAi(setup: AiSetup, next?: () => void): Promise<void> {
     next();
     return;
   }
-  await playLocal(null);
-  state.joinIntent = null;
+  await enterLocalWorld();
 }
 
 // After an agent that can paint is chosen: the same sign-in can paint the
@@ -647,7 +683,7 @@ export function renderAgentPictures(agent: string): void {
     const img = el("img", "agent-test-picture");
     img.src = result.image;
     img.alt = "The test map";
-    const cont = button("primary", "Enter your world", () => void enterLocalWorld(), "play");
+    const cont = button("primary", "Continue", () => void enterLocalWorld(), "play");
     cont.classList.add("block");
     show(
       "narrow",
