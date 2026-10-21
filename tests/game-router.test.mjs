@@ -53,3 +53,34 @@ test("the table view has a native screen of its own", () => {
   assert.deepEqual(matchRoute("/campaigns/:campaignId/table", "/campaigns/c1/table"), { campaignId: "c1" });
   assert.equal(matchRoute("/campaigns/:campaignId", "/campaigns/c1/table"), null);
 });
+
+test("with a home handler, the bare home page goes to the shell; the wizard's query stays the host's", () => {
+  const router = new GameRouter("/?new=1");
+  let home = 0;
+  router.onHome = () => home++;
+  router.push("/campaigns/c1");
+  router.push("/");
+  router.replace("/#top");
+  assert.equal(home, 2);
+  assert.equal(router.location.pathname, "/campaigns/c1");
+  router.push("/?new=starter");
+  assert.deepEqual(router.location, { pathname: "/", search: "?new=starter" });
+  assert.equal(router.depth, 3);
+  // The home page drops ?new= from its own address once the wizard is open.
+  router.replace("/");
+  assert.equal(home, 2);
+  assert.deepEqual(router.location, { pathname: "/", search: "" });
+});
+
+test("back onto the bare home page goes to the shell too; without a handler it stays a page", () => {
+  const router = new GameRouter("/");
+  router.push("/characters");
+  let home = 0;
+  router.onHome = () => home++;
+  assert.equal(router.back(), true);
+  assert.equal(home, 1);
+  assert.equal(router.location.pathname, "/characters");
+  router.onHome = null;
+  assert.equal(router.back(), true);
+  assert.deepEqual(router.location, { pathname: "/", search: "" });
+});
