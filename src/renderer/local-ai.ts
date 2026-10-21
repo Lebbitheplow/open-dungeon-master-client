@@ -3,7 +3,7 @@
 // machine), the guided local install with its progress, the optional image
 // stack, the OpenAI key form, and an agent's offer to paint too.
 import { backLink, formCard, intro, loadingScreen, show } from "./chrome.js";
-import { button, chip, el, input } from "./dom.js";
+import { button, chip, el, icon, input } from "./dom.js";
 import type { IconName } from "./dom.js";
 import { renderHome } from "./home.js";
 import { playLocal } from "./local.js";
@@ -11,7 +11,7 @@ import { renderError } from "./servers.js";
 import { isAndroid, state } from "./state.js";
 import { renderHarnessPicker } from "./harness-ai.js";
 import { speedChoice } from "./speed-choice.js";
-import { openAiFastModel } from "../shared/ai-setup.js";
+import { LOCAL_AI_MINIMUM_GB, REQUIREMENTS_URL, openAiFastModel } from "../shared/ai-setup.js";
 import { speechSummary } from "../shared/speech.js";
 import type { AiSetup, HardwareInfo, LocalAiStatus, LocalAiTier, LocalSpeechStatus, SavedAi } from "../shared/types";
 
@@ -106,7 +106,7 @@ export function renderLocalAi(fromHome = false, aiStatus: LocalAiStatus | null =
       choice(
         "cpu",
         "Local AI on this machine",
-        "Free and private: a guided install sized to your hardware. Needs a beefy machine.",
+        `Free and private: a guided install sized to your hardware. Needs at least ${LOCAL_AI_MINIMUM_GB} GB of graphics memory.`,
         () => void startLocalAiFlow(),
       ),
     );
@@ -279,7 +279,7 @@ function renderLocalAiTiers(hardware: HardwareInfo, tiers: LocalAiTier[]): void 
   for (const tier of tiers) {
     const tag = tier.installed ? "installed" : tier.recommended ? "recommended" : "";
     const desc = `${tier.detail} ${tier.sizeGb} GB download${
-      tier.fits ? "" : `; needs about ${tier.needsGb} GB of memory`
+      tier.fits || tier.installed ? "" : `; needs about ${tier.needsGb} GB of memory`
     }.`;
     const btn = choice(
       "sparkles",
@@ -291,11 +291,27 @@ function renderLocalAiTiers(hardware: HardwareInfo, tiers: LocalAiTier[]): void 
     btn.disabled = !tier.fits;
     choices.append(btn);
   }
+  // An anchor, as on the help screen: both hosts hand an off-origin link to
+  // the system browser.
+  const needs = el("a", "btn secondary", "");
+  needs.href = REQUIREMENTS_URL;
+  needs.target = "_blank";
+  needs.rel = "noopener noreferrer";
+  needs.append(icon("book"), document.createTextNode("What each storyteller needs"));
+  const needsLine = el("div", "actions");
+  needsLine.style.marginTop = "1rem";
+  needsLine.append(needs);
   show(
     "mid",
     backLink("Story AI", () => renderLocalAi()),
-    intro("Pick your storyteller", `${gpu}: ${memory}. Greyed-out choices need more memory.`),
+    intro(
+      "Pick your storyteller",
+      tiers.some((tier) => tier.fits)
+        ? `${gpu}: ${memory}. Greyed-out choices need more memory.`
+        : `${gpu}: ${memory}. A local storyteller needs at least ${LOCAL_AI_MINIMUM_GB} GB of graphics memory (24 GB of memory on a Mac), so this machine is below it. Your OpenAI key, an agent you already have or a human Dungeon Master runs the table here instead.`,
+    ),
     choices,
+    needsLine,
   );
 }
 
@@ -377,7 +393,7 @@ function renderComfyOffer(warning: string): void {
     "mid",
     intro(
       "Add local image generation?",
-      "ComfyUI with the Stable Diffusion XL model paints scene art on your GPU, free and private. About 15 GB all told (Python packages included); needs Python 3 and Git installed. You can remove it later from the Story AI screen.",
+      "ComfyUI with the Stable Diffusion XL model paints scene art on your GPU, free and private. About 15 GB all told (Python packages included); needs Python 3.10 to 3.14 and Git installed. You can remove it later from the Story AI screen.",
     ),
     warning ? el("p", "error", warning) : null,
     choices,

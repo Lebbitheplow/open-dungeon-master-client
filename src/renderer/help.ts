@@ -9,6 +9,7 @@ import { renderHome } from "./home.js";
 import { renderSettings } from "./settings.js";
 import { isAndroid, refresh, state } from "./state.js";
 import { startAppTour } from "./tour.js";
+import { LOCAL_AI_MINIMUM_GB } from "../shared/ai-setup.js";
 
 // The full guide on the site, kept current between app releases.
 export const GUIDE_URL = "https://opendungeonmaster.com/guide/";
@@ -34,7 +35,7 @@ export function renderHelp(): void {
     : " An invite's QR code carries the same link; on a phone the app scans it.";
   const localAi = isAndroid
     ? ""
-    : " On a desktop with a capable GPU, Story AI can also install a local model so nothing leaves your machine.";
+    : ` On a desktop with at least ${LOCAL_AI_MINIMUM_GB} GB of graphics memory, Story AI can also install a local model so nothing leaves your machine.`;
 
   const actions = el("div", "guide-actions");
   actions.append(
