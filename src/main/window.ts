@@ -4,6 +4,7 @@ import type { FieldRect } from "../shared/deck";
 import type { ShellEvent } from "../shared/types";
 import { appIconPath } from "./app-icon";
 import { autoConfirmBluetoothPairing, wireBluetoothChooser } from "./bluetooth";
+import { editMenu } from "./edit-menu";
 import { PORTAL_TOKEN_COOKIE } from "../shared/portal-logic";
 import { isShellCookieWrite } from "./session-cookies";
 
@@ -199,6 +200,7 @@ export class ShellWindow {
         label: "File",
         submenu: [{ role: "quit" }],
       },
+      editMenu(),
       {
         label: "View",
         submenu: [
