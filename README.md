@@ -33,8 +33,16 @@ The rules engines, the AI Dungeon Master and the game screens all come from the
 repository is the shell around them. It runs the bundled server on your machine or
 phone, opens a public address for it when you share, runs the AI Dungeon Master on
 whatever you already have (a local model it installs for you, an API key, or a CLI
-agent subscription like Claude Code or Codex), and draws the game screens natively for whichever host you
-play on.
+agent subscription like Codex or Grok Build, which also paint the scene art), and draws
+the game screens natively for whichever host you play on.
+
+> [!TIP]
+> **New here? Start with the [knowledge base](https://opendungeonmaster.com/guide/).**
+> It covers which setup fits your table, the
+> [system requirements](https://opendungeonmaster.com/guide/start/system-requirements/),
+> installing on each platform, hosting and joining, playing, leading a table, Story AI
+> and every setting, and it is checked against each release. This README is the
+> reference for building and packaging the apps.
 
 <div align="center">
 
@@ -52,8 +60,12 @@ Every build ships first as a beta (marked Pre-release there) and is promoted to 
 unchanged once it holds up; the desktop app offers the betas too with App settings >
 This app > Beta updates. How the channels work:
 [releases.md](https://github.com/Lebbitheplow/open-dungeon-master/blob/main/docs/releases.md).
-More help, and the full player guide, live at
-[opendungeonmaster.com](https://opendungeonmaster.com/guide/).
+More help lives in the [knowledge base](https://opendungeonmaster.com/guide/):
+installing on [Windows](https://opendungeonmaster.com/guide/desktop/install-windows/),
+[macOS](https://opendungeonmaster.com/guide/desktop/install-macos/),
+[Linux](https://opendungeonmaster.com/guide/desktop/install-linux/) and
+[Android](https://opendungeonmaster.com/guide/android/install/), and
+[desktop troubleshooting](https://opendungeonmaster.com/guide/desktop/troubleshooting/).
 
 | Platform | File | Notes |
 | --- | --- | --- |
@@ -109,12 +121,12 @@ of this repository's release workflow:
 <td width="50%" valign="top" align="center">
 <img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/text-model.webp" width="56"><br>
 <b>Story AI, your choice</b><br>
-<sub>Decide who narrates your world: a human at the table, an AI Dungeon Master on your own OpenAI API key, or, on desktop, a local model the app sizes to your hardware, downloads and runs for you, or a CLI agent you already pay for (Claude Code, Codex, opencode, Grok Build) narrating on its own subscription.</sub>
+<sub>Decide who narrates your world: a human at the table, an AI Dungeon Master on your own OpenAI API key, or, on desktop, a CLI agent you already pay for (Codex or Grok Build, which paint the pictures too, Claude Code or opencode) narrating on its own subscription, or a local model the app sizes to your hardware, downloads and runs for you: gpt-oss-20b on a 16 GB gaming card.</sub>
 </td>
 <td width="50%" valign="top" align="center">
 <img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/images.webp" width="56"><br>
 <b>Local scene art</b><br>
-<sub>On desktop the app can also install a local ComfyUI with one curated SDXL checkpoint for portraits, scene art and battle maps. Text and image stacks install and uninstall separately.</sub>
+<sub>Portraits, scene art and location maps from the Codex or Grok Build agent that narrates, your OpenAI key, or, on desktop, a local ComfyUI the app installs with one curated SDXL checkpoint. Text and image stacks install and uninstall separately.</sub>
 </td>
 </tr>
 <tr>
@@ -125,8 +137,8 @@ of this repository's release workflow:
 </td>
 <td width="50%" valign="top" align="center">
 <img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/characters.webp" width="56"><br>
-<b>A title screen for home</b><br>
-<sub>The table you were last at fills the screen with its latest scene and a "when last we left" recap, your other tables sit as save slots grouped by host, and a guided tour shows where everything lives.</sub>
+<b>One home, and a guided first launch</b><br>
+<sub>The app's home is your world's home: the table you were last at fills the screen with its latest scene and a "when last we left" recap, and your other tables sit as save slots grouped by host. A first launch asks your name, who tells the story and how it sounds, and a guided tour shows where everything lives.</sub>
 </td>
 </tr>
 </table>
@@ -137,8 +149,9 @@ Every build carries the Open Dungeon Master server, built from the server reposi
 at release time, and runs it privately on your device:
 
 - **Desktop** starts it as a child process from the app's data folder the first time
-  you enter your world. Your first visit asks for a name and signs you in; there is
-  no password to remember on your own world.
+  you enter your world. The first launch asks for a name and signs you in (there is
+  no password to remember on your own world), then who tells the story and what reads
+  it aloud.
 - **Android** runs the same server on a Node 24 runtime built for Android, with the
   phone's built-in SQLite engine. A foreground notification shows while the world is
   shared, and **Stop hosting** in that notification ends the share.
@@ -155,8 +168,10 @@ computer runs: a local model or a CLI agent is a desktop-only Story AI.
 
 ## Story AI
 
-**Story AI** (on the title screen's menu, and in Settings) decides who narrates the
-world on your device:
+**Story AI** (on the title screen's menu, in Settings, and in the first launch)
+decides who narrates the world on your device. The
+[knowledge base](https://opendungeonmaster.com/guide/desktop/story-ai-on-desktop/)
+walks each door:
 
 - **A human Dungeon Master.** The app keeps the sheets, dice, maps and record; a
   person narrates. Works everywhere, no model needed.
@@ -168,16 +183,27 @@ world on your device:
   downloads) or gpt-oss-20b (12 GB) for a 16 GB card, and adds a small
   Qwen3.5-4B utility model for summaries when there is room. Below 16 GB it
   offers none, since no model that small plays the full rules well; use your
-  OpenAI key, an agent, or a human Dungeon Master there. It downloads a pinned llama.cpp build (Vulkan on
+  OpenAI key, an agent, or a human Dungeon Master there. **On a gaming PC with a
+  16 GB card, pick gpt-oss-20b** ("Story model for 16 GB"): it fits on the card
+  whole and keeps turns quick. With 32 GB or more of system memory the list may also
+  offer the 35B at Q4 on that card, partly in system memory, which plays a little
+  more reliably and answers slower. It downloads a pinned llama.cpp build (Vulkan on
   Windows and Linux x64, Metal on Apple Silicon), writes the preset the AI Dungeon
   Master was tuned on, and starts and stops the model with your world.
-- **An agent you already have** (desktop only, not the Flatpak build). Claude Code,
-  Codex, opencode or Grok Build, installed and signed in on this computer, narrates
-  on the subscription you already pay for. No API key changes hands. The program
+- **An agent you already have** (desktop only, not the Flatpak build). Codex, Grok
+  Build, Claude Code or opencode, installed and signed in on this computer, narrates
+  on the subscription you already pay for. Codex (a ChatGPT plan such as ChatGPT
+  Plus) and Grok Build (SuperGrok or X Premium+) also paint portraits, scene art and
+  maps once a test picture succeeds, so one subscription covers the whole table;
+  Claude Code and opencode narrate only. No API key changes hands. The program
   gets none of its own tools, only the table's rules turn by turn, the same as the
   built-in storyteller.
 
-Scene art on desktop can come from a local ComfyUI the app installs into its own
+What reads the story aloud (OpenAI's voices on the saved key, a Kokoro on this
+computer or your network, or on screen only) and the sound library download are in
+Settings, **Narration and sound**.
+
+Scene art on desktop can also come from a local ComfyUI the app installs into its own
 Python virtual environment with the SDXL base checkpoint: about 15 GB of disk
 with its Python packages, on Windows or Linux, with Python 3.10 to 3.14 and Git
 installed first, and 8 GB of graphics memory.
@@ -191,7 +217,8 @@ whose admin has set one up. Tables run by a human Dungeon Master work on every h
   in or register there once; the app remembers the session.
 - **Join with a code** takes a room code, an invite link, or a scanned QR code (the
   Android app scans with the camera). The code resolves through the broker to
-  wherever that table's host is sharing from right now.
+  wherever that table's host is sharing from right now, and a code the broker does
+  not know is asked of the servers the app is signed in to.
 - **Invite links** (`odm://join?...`) open the app directly on desktop and Android;
   the web version of the link offers the app or the browser.
 - Beside every server in the menu you can forget it on this device or delete your
@@ -419,7 +446,7 @@ app is built on [Electron](https://www.electronjs.org/), the Android app on
 [cloudflared](https://github.com/cloudflare/cloudflared), and local AI uses
 [llama.cpp](https://github.com/ggml-org/llama.cpp),
 [ComfyUI](https://github.com/comfyanonymous/ComfyUI), and models downloaded from
-their publishers under their own licenses (Qwen, Gemma, Stable Diffusion XL).
+their publishers under their own licenses (Qwen, gpt-oss, Stable Diffusion XL).
 
 <sub>Dungeons &amp; Dragons and D&amp;D are trademarks of Wizards of the Coast LLC. This
 project is not affiliated with, endorsed, or sponsored by Wizards of the Coast.</sub>
