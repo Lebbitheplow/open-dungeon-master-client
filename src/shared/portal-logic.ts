@@ -74,7 +74,12 @@ export function portalEligible(input: { bundled: string; remote: string }): Port
 // Balanced; the Hand deals gear cards (draw, stow, drop, pick up, a shield)
 // whose moves and costs an older host's DM has no tool to carry out; and the
 // builder says the DM reads the whole backstory, which an older host cuts.
-export const NATIVE_MIN_SERVER = "0.28.3";
+// Raised again for the table's pace and breaks (server 0.28.4, PRs 438, 453,
+// 455 and 464): the settings save when the AI DM answers (`waitForTable`),
+// which an older host drops, and the table calls routes an older host does
+// not have (a break, a Pass, the party backstory); a wizard the app opens
+// from its home returns there only on a host that knows to send it back.
+export const NATIVE_MIN_SERVER = "0.28.4";
 
 export function nativeEligible(remote: string): PortalVerdict {
   const version = parseVersion(remote);

@@ -27,13 +27,17 @@ test("a bundled server without the proxy never portals", () => {
 });
 
 test("the native screens need a host that answers the app's own origin", () => {
-  assert.deepEqual(nativeEligible("0.28.3"), { ok: true });
+  assert.deepEqual(nativeEligible("0.28.4"), { ok: true });
   assert.deepEqual(nativeEligible("0.29.0"), { ok: true });
   assert.deepEqual(nativeEligible("1.2.0"), { ok: true });
+  // Hosts before the table's pace and breaks (server 0.28.4) drop when the
+  // AI DM answers and have no break, Pass or party backstory routes.
+  assert.equal(nativeEligible("0.28.3").ok, false);
+  assert.match(nativeEligible("0.28.3").reason, /0\.28\.4 or newer/);
   // Hosts before hands and gear and the fight pace (server issues 424 and
   // 432) drop the table's fight pace and have no tool for a gear card's move.
   assert.equal(nativeEligible("0.28.2").ok, false);
-  assert.match(nativeEligible("0.28.2").reason, /0\.28\.3 or newer/);
+  assert.match(nativeEligible("0.28.2").reason, /0\.28\.4 or newer/);
   // Hosts before one cloak at a time (server issue 412) drop where a
   // workshop item is worn and the DM's "wear both", and their engine counts
   // a second cloak's magic that the sheet would leave out of its AC.
