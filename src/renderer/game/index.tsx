@@ -175,10 +175,11 @@ function GameApp({ router, root, onLeave }: { router: GameRouter; root: HTMLElem
   const Page = pageFor(matched.route);
   // The query is not part of the key: a filter or tab in the address updates
   // the page it belongs to instead of tearing it down and starting it again.
+  // A refresh is: it mounts the page afresh, so the page loads its data again.
   return (
     <>
       <Boundary
-        key={routeKey}
+        key={`${routeKey}#${router.refreshes}`}
         onError={(error) => {
           console.error("game page failed", error);
           onLeave(location.pathname + location.search);

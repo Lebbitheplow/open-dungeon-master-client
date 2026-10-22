@@ -45,6 +45,10 @@ test("refresh keeps the address but yields a new location object", () => {
   assert.notEqual(router.location, before);
   assert.deepEqual(router.location, before);
   assert.equal(fired, 1);
+  // The count the game root keys the page on, so the page mounts afresh.
+  assert.equal(router.refreshes, 1);
+  router.push("/campaigns/abc");
+  assert.equal(router.refreshes, 1, "a navigation is no refresh");
 });
 
 test("the table view has a native screen of its own", () => {
