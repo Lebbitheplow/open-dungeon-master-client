@@ -224,7 +224,7 @@ whose admin has set one up. Tables run by a human Dungeon Master work on every h
 - Beside every server in the menu you can forget it on this device or delete your
   account there for good.
 
-When you enter a host running server 0.28.4 or newer, the app draws the game screens
+When you enter a host running server 0.29.0 or newer, the app draws the game screens
 itself from the pages it ships, and forwards data calls, live updates, pictures and
 downloads to the host with your session. Hosts from server 0.16.0 on are loaded
 through the app's bundled screens as well (Settings has the switch for these older

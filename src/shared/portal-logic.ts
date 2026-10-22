@@ -79,7 +79,12 @@ export function portalEligible(input: { bundled: string; remote: string }): Port
 // which an older host drops, and the table calls routes an older host does
 // not have (a break, a Pass, the party backstory); a wizard the app opens
 // from its home returns there only on a host that knows to send it back.
-export const NATIVE_MIN_SERVER = "0.28.4";
+// Raised again for workshop classes and whole names (server 0.29.0, PRs 470,
+// 476 and 477): the workshop saves a class of the table's own, a kind an
+// older host refuses, and the builder offers it; a Market line picked from
+// the catalog keeps the row it is (`srdName`) when it is renamed, which an
+// older host drops, so a renamed line would sell as no item at all.
+export const NATIVE_MIN_SERVER = "0.29.0";
 
 export function nativeEligible(remote: string): PortalVerdict {
   const version = parseVersion(remote);
