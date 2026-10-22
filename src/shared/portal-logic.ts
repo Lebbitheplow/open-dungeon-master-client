@@ -84,7 +84,16 @@ export function portalEligible(input: { bundled: string; remote: string }): Port
 // older host refuses, and the builder offers it; a Market line picked from
 // the catalog keeps the row it is (`srdName`) when it is renamed, which an
 // older host drops, so a renamed line would sell as no item at all.
-export const NATIVE_MIN_SERVER = "0.29.0";
+// Raised again for one tool per intent, stat blocks read whole and the SRD
+// creature table (server 0.29.1, issues 471, 473 and 480): the DM console
+// sets an enemy's condition and deals an enemy's damage through
+// set_condition and apply_damage, and teleports a token through move_token,
+// which an older host refuses or reads as a character's; the workshop saves
+// an attack made as a bonus action, a swarm's weaker blow and a creature's
+// resistance to a condition, which an older host drops, so the block springs
+// back; and the console offers any creature for True Polymorph and
+// Shapechange, which an older host refuses as no beast.
+export const NATIVE_MIN_SERVER = "0.29.1";
 
 export function nativeEligible(remote: string): PortalVerdict {
   const version = parseVersion(remote);
