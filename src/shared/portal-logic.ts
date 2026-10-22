@@ -93,6 +93,13 @@ export function portalEligible(input: { bundled: string; remote: string }): Port
 // resistance to a condition, which an older host drops, so the block springs
 // back; and the console offers any creature for True Polymorph and
 // Shapechange, which an older host refuses as no beast.
+// Also needed from the same release for Workshop references (server
+// workshop import audit, 2026-10-22): the builder and the level-up dialog
+// say which of a player's own subclasses a table leaves out, and an older
+// host names every class's subclasses there, so a fighter's list would
+// explain away a wizard's; the creator, the import picker and Homebrew read
+// what failed and what a rename carried from answers an older host does not
+// give.
 export const NATIVE_MIN_SERVER = "0.29.1";
 
 export function nativeEligible(remote: string): PortalVerdict {
