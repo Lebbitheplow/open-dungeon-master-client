@@ -34,6 +34,8 @@ test("the native screens need a host that answers the app's own origin", () => {
   // enemy conditions, enemy damage and teleports by their merged tools, drop
   // a workshop attack's bonus action and a swarm's weaker blow, and refuse
   // True Polymorph into a creature that is no beast.
+  // They also name every class's subclasses among a player's own a table
+  // leaves out, so a fighter's subclass list would explain away a wizard's.
   assert.equal(nativeEligible("0.29.0").ok, false);
   assert.match(nativeEligible("0.29.0").reason, /0\.29\.1 or newer/);
   // Hosts before workshop classes and whole names (server 0.29.0) refuse a
