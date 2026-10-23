@@ -100,6 +100,13 @@ export function portalEligible(input: { bundled: string; remote: string }): Port
 // explain away a wizard's; the creator, the import picker and Homebrew read
 // what failed and what a rename carried from answers an older host does not
 // give.
+// Also needed from the same release for the board and the hero chooser
+// (server PRs 481, 493 and 494): Help me build asks the confirm sheet to
+// judge a hero not stored yet, which an older host refuses as no hero
+// picked; Undo move calls a route an older host does not have; and the
+// party card's "In fights" picker saves who commands a companion
+// (`commandedBy`), which an older host drops, so the picker springs back to
+// the DM.
 export const NATIVE_MIN_SERVER = "0.29.1";
 
 export function nativeEligible(remote: string): PortalVerdict {
