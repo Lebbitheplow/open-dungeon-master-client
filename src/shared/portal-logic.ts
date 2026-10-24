@@ -111,6 +111,13 @@ export function portalEligible(input: { bundled: string; remote: string }): Port
 // NPCs" switch saves through PUT /sheet/romance, which an older host does
 // not have, and "Drawn to" on a hero or an NPC is a field an older host
 // drops, so the chips spring back to blank.
+// Also needed from 0.30.0 (server PRs 499, 508 and 509, issue 503): the hero
+// chooser's "Pregens your DM offers" and the confirm sheet's owed picks call
+// routes and read fields an older host does not have; the Market's Haggle by
+// Intimidation or Deception sends a skill an older host takes as Persuasion;
+// a World entry's kept import version is answered by a route an older host
+// does not have; and the companion conscience, pacts and combat sides read
+// rows an older host never writes.
 export const NATIVE_MIN_SERVER = "0.30.0";
 
 export function nativeEligible(remote: string): PortalVerdict {
