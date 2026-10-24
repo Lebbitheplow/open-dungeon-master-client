@@ -107,7 +107,11 @@ export function portalEligible(input: { bundled: string; remote: string }): Port
 // party card's "In fights" picker saves who commands a companion
 // (`commandedBy`), which an older host drops, so the picker springs back to
 // the DM.
-export const NATIVE_MIN_SERVER = "0.29.1";
+// And from 0.30.0 (server issue 501): the Bonds tab's "Open to advances from
+// NPCs" switch saves through PUT /sheet/romance, which an older host does
+// not have, and "Drawn to" on a hero or an NPC is a field an older host
+// drops, so the chips spring back to blank.
+export const NATIVE_MIN_SERVER = "0.30.0";
 
 export function nativeEligible(remote: string): PortalVerdict {
   const version = parseVersion(remote);
