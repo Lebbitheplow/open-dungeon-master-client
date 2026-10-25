@@ -39,7 +39,9 @@ async function setupShutdown() {
   };
 
   const dependencies = {
-    electron: { app, safeStorage: {}, shell: {} },
+    electron: { app, safeStorage: {}, shell: {}, session: { defaultSession: {} } },
+    // The shell's pages are isolated at start (src/main/isolation.ts): nothing to do here.
+    "./isolation": { isolateShellPages: () => {} },
     "../shared/deck": { detectDeck: () => ({ gameMode: false, active: false, device: false }) },
     "../shared/deep-link": { joinLinkFromArgv: () => null },
     "./local-ai/manager": { LocalAiManager: class { stop() { aiStops++; return ai.promise; } } },

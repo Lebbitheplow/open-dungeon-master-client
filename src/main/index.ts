@@ -1,7 +1,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import { spawn } from "node:child_process";
-import { app, safeStorage, shell } from "electron";
+import { app, safeStorage, session, shell } from "electron";
 import { deckLaunchArgs, detectDeck } from "../shared/deck";
 import { joinLinkFromArgv, parseJoinLink, type JoinLink } from "../shared/deep-link";
 import { LocalAiManager } from "./local-ai/manager";
@@ -14,6 +14,7 @@ import { QuickTunnel } from "./tunnel";
 import { detectInstallKind, flatpakIsSystemWide, flatpakRelaunchCommand, packageFormatOf, Updater } from "./updater";
 import { ShellWindow } from "./window";
 import { wireContextMenus } from "./edit-menu";
+import { isolateShellPages } from "./isolation";
 
 // Session tokens go through the OS keychain when one is available. The
 // "plain:" fallback (headless Linux without a keyring) is marked so tokens
@@ -93,6 +94,9 @@ function main(): void {
     // answer) under the id of its Start menu shortcut, which electron-builder
     // names after appId.
     if (process.platform === "win32") app.setAppUserModelId("com.opendungeonmaster.client");
+    // The shell's own pages (the main window and the table screen) are
+    // cross-origin isolated before either loads (src/main/isolation.ts).
+    isolateShellPages(session.defaultSession);
     // A reset the previous run asked for (src/main/reset.ts) comes first,
     // before the registry, the world or any session opens the folder.
     const reset = await applyPendingReset(app.getPath("userData")).catch((err: unknown) => {
