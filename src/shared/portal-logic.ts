@@ -118,7 +118,12 @@ export function portalEligible(input: { bundled: string; remote: string }): Port
 // a World entry's kept import version is answered by a route an older host
 // does not have; and the companion conscience, pacts and combat sides read
 // rows an older host never writes.
-export const NATIVE_MIN_SERVER = "0.30.0";
+// And from 0.30.1 (server PRs 515, 516 and 522): Report a problem asks a
+// route an older host does not have for its parts and the report file, the
+// Workshop's Draft pregens posts to a route an older host does not have, and
+// the reason chips after a fix to the AI DM save through a route an older
+// host does not have, so each would fail where the screen offers it.
+export const NATIVE_MIN_SERVER = "0.30.1";
 
 export function nativeEligible(remote: string): PortalVerdict {
   const version = parseVersion(remote);
