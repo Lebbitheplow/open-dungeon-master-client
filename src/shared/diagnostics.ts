@@ -97,8 +97,9 @@ export function diagnosticSummary(facts: DiagnosticFacts, now = new Date()): str
 }
 
 // ---- Report a problem ----
-// The server's Report a problem (its ReportProblemDialog) saves one JSON
-// file for a GitHub issue. In the game screens the page hands that file to
+// The server's Report a problem (its ReportProblemDialog, the server
+// admin's alone) saves one JSON file for a GitHub bug report. In the game
+// screens the page hands that file to
 // the app (window.odmShell.saveReport) and asks the app about itself
 // (reportFacts): the facts the server cannot see. The same facts as the
 // summary's first line, plus how the app shows the pages and whether the
