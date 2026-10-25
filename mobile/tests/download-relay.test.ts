@@ -309,3 +309,38 @@ test("a home cover's cache name is one the native streamer accepts", () => {
   // One host's picture never takes another's place.
   assert.notEqual(coverFileName("local", `${HOST}/uploads/a.png`), coverFileName(host, `${HOST}/uploads/a.png`));
 });
+
+// Report a problem's file (bridge.ts saveReport): handed whole, parked in
+// the cache, offered to the share sheet, the outcome told to the caller.
+test("saveFile parks the file in the cache and opens the share sheet", async () => {
+  const { relay, calls, notices } = makeHarness();
+  const data = Buffer.from('{"kind":"odm-report"}').toString("base64");
+  assert.equal(await relay.saveFile("odm-report-2026-10-24-10-00-00.json", data, "application/json"), "saved");
+  assert.deepEqual(calls, [
+    "clear odm-downloads",
+    `write odm-downloads/odm-report-2026-10-24-10-00-00.json ${data}`,
+    `share odm-report-2026-10-24-10-00-00.json ${CACHE}/odm-downloads/odm-report-2026-10-24-10-00-00.json`,
+  ]);
+  assert.deepEqual(notices, []);
+});
+
+test("saveFile says cancelled when the player backs out of the sheet, and rejects on a failure", async () => {
+  const backedOut = makeHarness({
+    async share() {
+      throw new Error("Share canceled");
+    },
+  });
+  assert.equal(await backedOut.relay.saveFile("r.json", PDF_B64, "application/json"), "cancelled");
+  const broken = makeHarness({
+    async writeCache() {
+      throw new Error("disk full");
+    },
+  });
+  await assert.rejects(broken.relay.saveFile("r.json", PDF_B64, "application/json"), /disk full/);
+  assert.deepEqual(broken.notices, []);
+  await assert.rejects(broken.relay.saveFile("r.json", "not base64!", "application/json"), /could not be saved/);
+  // A failed save does not block the next one.
+  const after = makeHarness();
+  assert.equal(await after.relay.saveFile("../r", PDF_B64, "application/json"), "saved");
+  assert.ok(after.calls.some((call) => call.startsWith("write odm-downloads/r.json ")));
+});

@@ -15,7 +15,7 @@ import { BackgroundColor, InAppBrowser, ToolBarType } from "@capgo/inappbrowser"
 import { createWebBluetooth } from "./ble-polyfill-core";
 import { createBleRelay } from "./ble-relay";
 import { createDownloadRelay } from "./download-relay";
-import { createDownloadShim, DOWNLOAD_URL_MESSAGE, noticeText } from "./download-shim-core";
+import { bytesToB64, createDownloadShim, DOWNLOAD_URL_MESSAGE, noticeText } from "./download-shim-core";
 import { offerNativeDictation } from "./dictation";
 import { createAndroidHomeFeed, HOME_CACHE_KEY } from "./home-feed";
 import { fetchCover, fetchIncoming, OdmDownload, renameIncoming, sweepCovers } from "./native-download";
@@ -63,7 +63,7 @@ import {
   portalEligible,
 } from "../../src/shared/portal-logic";
 import { landingPath, safeInnerPath } from "../../src/shared/open-path";
-import { diagnosticSummary } from "../../src/shared/diagnostics";
+import { diagnosticSummary, reportFileInput, type AppFacts } from "../../src/shared/diagnostics";
 import type {
   AccountDeletionResult,
   ConnectResult,
@@ -1494,6 +1494,14 @@ async function handleLink(raw: string): Promise<void> {
 
 // ---------- the bridge ----------
 
+// The app itself, for the diagnostics summary and a report file. The
+// WebView's user agent names the Android version and the device, the way
+// it does to every site.
+function androidAppFacts(version: string): AppFacts {
+  const device = /\(([^)]*)\)/.exec(navigator.userAgent)?.[1] ?? "";
+  return { version, installKind: "android", platform: "android", arch: "", os: device, runtime: "WebView" };
+}
+
 const bridge: OdmBridge = {
   platform: "android",
   // What the phone can draw (docs/vtt-parity-implementation-plan.md 18.2,
@@ -1824,6 +1832,20 @@ const bridge: OdmBridge = {
   // the summary for a bug report. The phone's payload carries no manifest,
   // so there is no check, and nothing of the WebView's cache is offered.
   localRepair: () => localWorld.repair(),
+  // Report a problem in the game screens: what the report file says about
+  // this app (the summary's first line), and the file handed to the share
+  // sheet, where the tester saves it to Files or Drive and then attaches it
+  // to the issue form. The app sends it nowhere itself.
+  reportFacts: async () => androidAppFacts((await App.getInfo().catch(() => null))?.version ?? ""),
+  async saveReport(input) {
+    const report = reportFileInput(input);
+    if (!report) throw new Error("That is not a report file.");
+    const data = bytesToB64(new TextEncoder().encode(report.text));
+    const outcome = await downloadRelay.saveFile(report.name, data, "application/json");
+    return outcome === "saved"
+      ? { saved: true, name: report.name, where: "the place you picked" }
+      : { saved: false, name: "", where: "" };
+  },
   async diagnosticSummary() {
     const [status, facts, info, servers] = await Promise.all([
       localWorld.status(),
@@ -1831,12 +1853,9 @@ const bridge: OdmBridge = {
       App.getInfo().catch(() => null),
       loadServers(),
     ]);
-    // The WebView's user agent names the Android version and the device,
-    // the way it does to every site.
-    const device = /\(([^)]*)\)/.exec(navigator.userAgent)?.[1] ?? "";
     return {
       text: diagnosticSummary({
-        app: { version: info?.version ?? "", installKind: "android", platform: "android", arch: "", os: device, runtime: "WebView" },
+        app: androidAppFacts(info?.version ?? ""),
         payload: facts?.payload ?? null,
         runTree: facts?.runTree ?? null,
         world: {

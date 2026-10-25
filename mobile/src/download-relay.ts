@@ -153,6 +153,12 @@ export function createDownloadRelay(deps: DownloadRelayDeps): {
   // sheet. True when the file arrived (whatever the player did with the
   // sheet); false after a failure, which the player has been told about.
   download(url: string, name: string, headers: Record<string, string>): Promise<boolean>;
+  // A file the app was handed whole (Report a problem's report file),
+  // parked in the cache and offered to the share sheet like a download.
+  // The outcome goes to the caller rather than to a notice: "cancelled"
+  // when the player backed out of the sheet; rejects when it could not be
+  // written or shared.
+  saveFile(name: string, base64: string, mime: string): Promise<"saved" | "cancelled">;
 } {
   // Downloads run one at a time: each clears the cache folder before
   // writing, and a file mid-share must not be swept away by the next one.
@@ -205,8 +211,29 @@ export function createDownloadRelay(deps: DownloadRelayDeps): {
     return run;
   }
 
+  function saveFile(name: string, base64: string, mime: string): Promise<"saved" | "cancelled"> {
+    const safe = sanitizeFilename(name, mime);
+    if (!base64 || base64.length > MAX_DOWNLOAD_B64_CHARS || !BASE64_SHAPE.test(base64)) {
+      return Promise.reject(new Error(`${safe} could not be saved.`));
+    }
+    const run = queue.then(async (): Promise<"saved" | "cancelled"> => {
+      await deps.clearCache(DOWNLOAD_FOLDER).catch(() => undefined);
+      const uri = await deps.writeCache(`${DOWNLOAD_FOLDER}/${safe}`, base64);
+      try {
+        await deps.share(safe, uri);
+        return "saved";
+      } catch (err) {
+        if (/cancel/i.test(err instanceof Error ? err.message : "")) return "cancelled";
+        throw err;
+      }
+    });
+    queue = run.then(() => undefined, () => undefined);
+    return run;
+  }
+
   return {
     download,
+    saveFile,
     async handleMessage(detail: unknown, options = {}): Promise<boolean> {
       const msg = detail as { type?: unknown; name?: unknown; mime?: unknown; data?: unknown; message?: unknown; url?: unknown } | null;
       if (!msg || typeof msg !== "object") return false;

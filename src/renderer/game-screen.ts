@@ -7,7 +7,8 @@
 // in the web view as before.
 import { landingPath } from "../shared/open-path.js";
 import { nativeEligible } from "../shared/portal-logic.js";
-import type { ShellShareStatus } from "../shared/types.js";
+import { reportAppFacts, type ReportAppFacts } from "../shared/diagnostics.js";
+import type { ReportSaveResult, ShellShareStatus } from "../shared/types.js";
 import { show } from "./chrome.js";
 import { el } from "./dom.js";
 import { renderHelp } from "./help.js";
@@ -64,6 +65,11 @@ interface ShellHostApi {
   // over the running world from the page's account menu.
   openSettings(): void;
   openHelp(): void;
+  // Report a problem: the file saved by the app, and the app described in
+  // it. Absent when the bridge has no such door; the page then saves the
+  // way a browser does.
+  reportFacts?(): Promise<ReportAppFacts>;
+  saveReport?(input: { name: string; text: string }): Promise<ReportSaveResult>;
 }
 
 const LOCAL = "local";
@@ -218,6 +224,12 @@ function shellHostApi(hostId: string, origin: string, current: () => GameMount |
   if (window.odm.shareLink) {
     const share = window.odm.shareLink;
     api.shareLink = (input) => share(input);
+  }
+  // Both or neither: a page that finds saveReport also finds the facts.
+  const { reportFacts, saveReport } = window.odm;
+  if (reportFacts && saveReport) {
+    api.reportFacts = async () => reportAppFacts(await reportFacts(), hostId === LOCAL);
+    api.saveReport = (input) => saveReport(input);
   }
   return api;
 }
