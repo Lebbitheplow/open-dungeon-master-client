@@ -88,7 +88,8 @@ import {
   clearPartition,
   partitionFor,
 } from "./session-cookies";
-import { RESET_PHRASE, diagnosticSummary, redactHome } from "../shared/diagnostics";
+import { RESET_PHRASE, diagnosticSummary, redactHome, type AppFacts } from "../shared/diagnostics";
+import { saveReportFile } from "./report-save";
 import { requestReset, type ResetOutcome } from "./reset";
 import { systemSteamHost } from "./steam-host";
 import { addToSteam, canAddToSteam, deckOffersSteam, steamPresent, steamShortcutState, type InstallPlace } from "./steam-shortcut";
@@ -1463,20 +1464,36 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
       return fail(err);
     }
   });
+  // The app itself, as the summary's first line and a report file name it.
+  const appFacts = (): AppFacts => ({
+    version: app.getVersion(),
+    installKind: updater.kind,
+    platform: process.platform,
+    arch: process.arch,
+    os: `${os.type()} ${os.release()}`,
+    runtime: `Electron ${process.versions.electron}`,
+  });
+  // Report a problem in the game screens (src/main/report-save.ts): what the
+  // file says about this app, and the file saved where the tester picks.
+  shellIpc.handle("report:facts", () => appFacts());
+  shellIpc.handle("report:save", (_event, input: unknown) =>
+    saveReportFile(
+      {
+        downloadsDir: () => app.getPath("downloads"),
+        home: os.homedir(),
+        showSaveDialog: (options) => saveDialog(options),
+        writeFile: (file, text) => fs.promises.writeFile(file, text, "utf8"),
+      },
+      input,
+    ),
+  );
   shellIpc.handle("diag:summary", async () => {
     const world = local.diagnostics();
     const status = localStatus();
     const ai = await localAi.refresh();
     const home = os.homedir();
     const text = diagnosticSummary({
-      app: {
-        version: app.getVersion(),
-        installKind: updater.kind,
-        platform: process.platform,
-        arch: process.arch,
-        os: `${os.type()} ${os.release()}`,
-        runtime: `Electron ${process.versions.electron}`,
-      },
+      app: appFacts(),
       payload: world.payload,
       runTree: world.runTree,
       world: {

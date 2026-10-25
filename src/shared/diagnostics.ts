@@ -95,3 +95,60 @@ export function diagnosticSummary(facts: DiagnosticFacts, now = new Date()): str
   }
   return `${lines.join("\n")}\n`;
 }
+
+// ---- Report a problem ----
+// The server's Report a problem (its ReportProblemDialog) saves one JSON
+// file for a GitHub issue. In the game screens the page hands that file to
+// the app (window.odmShell.saveReport) and asks the app about itself
+// (reportFacts): the facts the server cannot see. The same facts as the
+// summary's first line, plus how the app shows the pages and whether the
+// table is the device's own world. Never an address, a path or a key; the
+// file itself is only ever saved where the person picks.
+
+export type AppFacts = DiagnosticFacts["app"];
+
+export interface ReportAppFacts extends AppFacts {
+  screens: "native";
+  localWorld: boolean;
+}
+
+export function reportAppFacts(app: AppFacts, localWorld: boolean): ReportAppFacts {
+  return {
+    version: app.version,
+    installKind: app.installKind,
+    platform: app.platform,
+    arch: app.arch,
+    os: app.os,
+    runtime: app.runtime,
+    screens: "native",
+    localWorld,
+  };
+}
+
+// A report is text well under this; the cap only stops a page from handing
+// the app something else entirely.
+export const MAX_REPORT_CHARS = 8 * 1024 * 1024;
+// The server's own name for the file (src/lib/report-bundle.ts reportFileName).
+const REPORT_NAME = /^odm-report-[0-9-]{1,40}\.json$/;
+
+export function defaultReportName(now = new Date()): string {
+  return `odm-report-${now.toISOString().slice(0, 19).replace(/[:T]/g, "-")}.json`;
+}
+
+// What a page asked the app to save, checked: the text must be a report
+// file (JSON of kind "odm-report"), and a name of any other shape is
+// replaced, so the door cannot write other files or other names. Null when
+// it is not a report.
+export function reportFileInput(input: unknown, now = new Date()): { name: string; text: string } | null {
+  const raw = input as { name?: unknown; text?: unknown } | null;
+  if (!raw || typeof raw !== "object" || typeof raw.text !== "string") return null;
+  if (!raw.text || raw.text.length > MAX_REPORT_CHARS) return null;
+  try {
+    const parsed = JSON.parse(raw.text) as { kind?: unknown } | null;
+    if (!parsed || typeof parsed !== "object" || parsed.kind !== "odm-report") return null;
+  } catch {
+    return null;
+  }
+  const name = typeof raw.name === "string" && REPORT_NAME.test(raw.name) ? raw.name : defaultReportName(now);
+  return { name, text: raw.text };
+}

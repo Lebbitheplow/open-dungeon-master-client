@@ -3,6 +3,7 @@
 // build and the browser renderer build, so it must stay runtime-free.
 
 import type { DeckChoice, DeckInfo, FieldRect } from "./deck";
+import type { AppFacts } from "./diagnostics";
 import type { OfferNotice, OfferTarget } from "./offer-notice";
 import type { StoryMemory, StoryMemoryStatus } from "./story-memory";
 import type { WorldPreview } from "./world-transfer";
@@ -182,6 +183,14 @@ export interface TunnelStatus {
 // window.odmShell.share (the server's src/lib/shell-host.ts mirrors this).
 // supported is false on pages of remote servers: only the shell's own world
 // can be shared from here.
+// The answer to saveReport: what the file was saved as and a short place
+// to show ("~/Downloads"), "" for both when nothing was saved.
+export interface ReportSaveResult {
+  saved: boolean;
+  name: string;
+  where: string;
+}
+
 export interface ShellShareStatus extends TunnelStatus {
   supported: boolean;
   // The Wi-Fi address of a device-hosted world, "" when there is none.
@@ -665,6 +674,15 @@ export interface OdmBridge {
   localRepair?(): Promise<Result<RepairResult>>;
   clearCaches?(): Promise<Result<{ sessions: number }>>;
   diagnosticSummary?(): Promise<{ text: string }>;
+  // Report a problem in the game screens (the server's ReportProblemDialog,
+  // through window.odmShell): what the report file says about this app, and
+  // the file saved where the tester can attach it to an issue. The desktop
+  // asks where with its save dialog, starting in Downloads; the phone hands
+  // the file to the share sheet (Files, Drive or another app). saved is
+  // false when the person backed out; a file that is not a report is
+  // refused (src/shared/diagnostics.ts reportFileInput).
+  reportFacts?(): Promise<AppFacts>;
+  saveReport?(input: { name: string; text: string }): Promise<ReportSaveResult>;
   showLogs?(): Promise<void>;
   // Starting over: everything the app keeps set aside (never deleted) and
   // the app restarted empty, once the typed word matches RESET_PHRASE.
