@@ -1,6 +1,7 @@
 // Builds the Capacitor web assets. The manager UI is the same app.ts the
 // desktop shell uses (it only talks to window.odm); the Capacitor bridge
 // implementation is bundled in front of it.
+import { execFileSync } from "node:child_process";
 import { build } from "esbuild";
 import fs from "node:fs";
 import { createRequire } from "node:module";
@@ -88,4 +89,20 @@ for (const [name, files] of Object.entries(FONT_PACKAGES)) {
   const folder = path.join(path.dirname(requireHere.resolve(`${name}/package.json`)), "files");
   for (const file of files) fs.copyFileSync(path.join(folder, file), path.join(www, "fonts", file));
 }
+// The sources this shell was built from, read by the server's browser runner
+// (scripts/browser/run.mjs --app), which says when the shell is stale. A
+// Workshop audit once counted two app failures that the sources had already
+// fixed, because the shell it ran was a build days old.
+const sourceOf = (dir) => {
+  try {
+    const git = (...args) => execFileSync("git", ["-C", dir, ...args], { encoding: "utf8" }).trim();
+    return { commit: git("rev-parse", "HEAD"), changed: git("status", "--porcelain", "--untracked-files=no") !== "" };
+  } catch {
+    return null;
+  }
+};
+fs.writeFileSync(
+  path.join(www, "build-info.json"),
+  `${JSON.stringify({ client: sourceOf(repo), server: sourceOf(server), builtAt: new Date().toISOString() }, null, 2)}\n`,
+);
 console.log("www built");
