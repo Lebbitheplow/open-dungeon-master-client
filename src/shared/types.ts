@@ -3,7 +3,7 @@
 // build and the browser renderer build, so it must stay runtime-free.
 
 import type { DeckChoice, DeckInfo, FieldRect } from "./deck";
-import type { AppFacts } from "./diagnostics";
+import type { AppFacts, ReportLocalAi } from "./diagnostics";
 import type { OfferNotice, OfferTarget } from "./offer-notice";
 import type { StoryMemory, StoryMemoryStatus } from "./story-memory";
 import type { WorldPreview } from "./world-transfer";
@@ -681,7 +681,7 @@ export interface OdmBridge {
   // the file to the share sheet (Files, Drive or another app). saved is
   // false when the person backed out; a file that is not a report is
   // refused (src/shared/diagnostics.ts reportFileInput).
-  reportFacts?(): Promise<AppFacts>;
+  reportFacts?(): Promise<AppFacts & Partial<ReportLocalAi>>;
   saveReport?(input: { name: string; text: string }): Promise<ReportSaveResult>;
   showLogs?(): Promise<void>;
   // Starting over: everything the app keeps set aside (never deleted) and

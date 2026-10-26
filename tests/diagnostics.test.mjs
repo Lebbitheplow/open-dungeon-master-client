@@ -4,7 +4,7 @@
 // fact about the app.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { describeLocalAi, describeVerify, diagnosticSummary, redactHome } from "../dist/shared/diagnostics.js";
+import { describeLocalAi, describeVerify, diagnosticSummary, redactHome, reportAppFacts, reportLocalAi } from "../dist/shared/diagnostics.js";
 
 const facts = {
   app: { version: "0.17.4", installKind: "nsis", platform: "win32", arch: "x64", os: "Windows_NT 10.0.26100", runtime: "Electron 44.7.0" },
@@ -92,4 +92,21 @@ test("describeVerify and redactHome", () => {
   assert.equal(redactHome("C:\\Users\\kaleb\\AppData", "C:\\Users\\kaleb"), "~\\AppData");
   assert.equal(redactHome("/var/lib/odm", "/home/kaleb"), "/var/lib/odm");
   assert.equal(redactHome("/home/kaleb/x", ""), "/home/kaleb/x");
+});
+
+test("a report file names the local AI by model and state, never where it answers, with home folders shortened", () => {
+  const home = "/home/sam";
+  const local = reportLocalAi({ ...facts.localAi, running: true, error: `llama-server crashed; see ${home}/.config/odm/llama-server.log` }, home);
+  assert.deepEqual(local, {
+    localStory: "Qwen story model (Q4) (qwen-q4), running (llama-server crashed; see ~/.config/odm/llama-server.log)",
+    localImages: "ComfyUI running, z-image-turbo.safetensors",
+  });
+  assert.ok(!JSON.stringify(local).includes("127.0.0.1"), "the engine's address reached the report");
+  assert.equal(reportLocalAi(null), null);
+  const bare = reportLocalAi({ ...facts.localAi, installedTierId: "", comfy: { ...facts.localAi.comfy, installed: false } });
+  assert.deepEqual(bare, { localStory: "not installed", localImages: "not installed" });
+  // The page's facts carry the lines through, and an app that sends none
+  // adds no empty keys.
+  assert.equal(reportAppFacts({ ...facts.app, ...local }, true).localStory, local.localStory);
+  assert.ok(!("localStory" in reportAppFacts(facts.app, false)));
 });

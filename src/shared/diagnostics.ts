@@ -97,8 +97,9 @@ export function diagnosticSummary(facts: DiagnosticFacts, now = new Date()): str
 }
 
 // ---- Report a problem ----
-// The server's Report a problem (its ReportProblemDialog) saves one JSON
-// file for a GitHub issue. In the game screens the page hands that file to
+// The server's Report a problem (its ReportProblemDialog, the server
+// admin's alone) saves one JSON file for a GitHub bug report. In the game
+// screens the page hands that file to
 // the app (window.odmShell.saveReport) and asks the app about itself
 // (reportFacts): the facts the server cannot see. The same facts as the
 // summary's first line, plus how the app shows the pages and whether the
@@ -107,12 +108,35 @@ export function diagnosticSummary(facts: DiagnosticFacts, now = new Date()): str
 
 export type AppFacts = DiagnosticFacts["app"];
 
-export interface ReportAppFacts extends AppFacts {
+// The local AI the app manages, as a report file names it: each engine,
+// its model and whether it runs, never where it answers. Most reported
+// problems turn out to be the model, so the report says which one.
+export interface ReportLocalAi {
+  localStory: string;
+  localImages: string;
+}
+
+export function reportLocalAi(ai: DiagnosticFacts["localAi"], home = ""): ReportLocalAi | null {
+  if (!ai) return null;
+  // An engine's error can quote a path anywhere in it, not only at the start.
+  const error = (text: string) => (text ? ` (${home ? text.split(home).join("~") : text})` : "");
+  const localStory = !ai.installedTierId
+    ? "not installed"
+    : `${ai.installedLabel || ai.installedTierId} (${ai.installedTierId}), ${
+        ai.running ? (ai.external ? "answering, started outside the app" : "running") : "stopped"
+      }${error(ai.error)}`;
+  const localImages = !ai.comfy.installed
+    ? "not installed"
+    : `ComfyUI ${ai.comfy.running ? "running" : "stopped"}${ai.comfy.checkpoint ? `, ${ai.comfy.checkpoint}` : ""}${error(ai.comfy.error)}`;
+  return { localStory, localImages };
+}
+
+export interface ReportAppFacts extends AppFacts, Partial<ReportLocalAi> {
   screens: "native";
   localWorld: boolean;
 }
 
-export function reportAppFacts(app: AppFacts, localWorld: boolean): ReportAppFacts {
+export function reportAppFacts(app: AppFacts & Partial<ReportLocalAi>, localWorld: boolean): ReportAppFacts {
   return {
     version: app.version,
     installKind: app.installKind,
@@ -120,6 +144,8 @@ export function reportAppFacts(app: AppFacts, localWorld: boolean): ReportAppFac
     arch: app.arch,
     os: app.os,
     runtime: app.runtime,
+    ...(typeof app.localStory === "string" ? { localStory: app.localStory } : {}),
+    ...(typeof app.localImages === "string" ? { localImages: app.localImages } : {}),
     screens: "native",
     localWorld,
   };
