@@ -62,6 +62,17 @@ test("a new element with autoFocus focuses too, and a callback ref still runs", 
   assert.equal(element.focusCount, 1);
 });
 
+test("a callback ref's cleanup is handed back, so Preact runs it on unmount", async () => {
+  const seen = [];
+  const element = new FakeElement();
+  const cleanup = () => seen.push("cleaned up");
+  const vnode = h("input", { autoFocus: true, ref: (value) => (seen.push(value), cleanup) });
+  assert.equal(vnode.ref(element), cleanup, "the wrapped ref returns the page's cleanup");
+  await settle();
+  assert.deepEqual(seen, [element]);
+  assert.equal(element.focusCount, 1);
+});
+
 test("an element without autoFocus, or a component, is left alone", () => {
   const own = { current: null };
   assert.equal(h("input", { ref: own }).ref, own);

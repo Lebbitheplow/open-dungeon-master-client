@@ -10,11 +10,13 @@ import { options, type VNode } from "preact";
 
 const focused = new WeakSet<Element>();
 
-type RefLike = ((value: Element | null) => void) | { current: Element | null } | null | undefined;
+type RefLike = ((value: Element | null) => void | (() => void)) | { current: Element | null } | null | undefined;
 
-function setRef(ref: RefLike, value: Element | null) {
-  if (typeof ref === "function") ref(value);
-  else if (ref) ref.current = value;
+// A callback ref may hand back a cleanup, as React 19 allows; it is passed
+// on, so Preact calls it on unmount in place of calling the ref with null.
+function setRef(ref: RefLike, value: Element | null): void | (() => void) {
+  if (typeof ref === "function") return ref(value);
+  if (ref) ref.current = value;
 }
 
 function focusOnce(element: Element | null) {
@@ -39,7 +41,7 @@ export function installAutoFocus() {
       const own = vnode.ref as RefLike;
       vnode.ref = (element: Element | null) => {
         focusOnce(element);
-        setRef(own, element);
+        return setRef(own, element);
       };
     }
     previous?.(vnode);
