@@ -123,7 +123,12 @@ export function portalEligible(input: { bundled: string; remote: string }): Port
 // Workshop's Draft pregens posts to a route an older host does not have, and
 // the reason chips after a fix to the AI DM save through a route an older
 // host does not have, so each would fail where the screen offers it.
-export const NATIVE_MIN_SERVER = "0.30.1";
+// Raised again for the Workshop's test fights (server issue 553): a prepared
+// fight's button in the Workshop is Test fight, which asks a route an older
+// host does not have (/api/workshops/:id/test-fight) and opens a test table
+// whose way back an older host never sends, so the button would fail with
+// the Deploy it replaced already gone.
+export const NATIVE_MIN_SERVER = "0.30.3";
 
 export function nativeEligible(remote: string): PortalVerdict {
   const version = parseVersion(remote);
