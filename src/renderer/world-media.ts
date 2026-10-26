@@ -68,7 +68,17 @@ const media: {
   alive: null,
 };
 
-let sample: HTMLAudioElement | null = null;
+// The sample playing, and the blob address it plays from.
+let sample: { audio: HTMLAudioElement; url: string } | null = null;
+
+// A sample replaced or left behind is paused, which never fires "ended", so
+// its blob address is given back here rather than held for the session.
+function stopSample(): void {
+  if (!sample) return;
+  sample.audio.pause();
+  URL.revokeObjectURL(sample.url);
+  sample = null;
+}
 
 // A fresh visit to Settings asks the world again (Kokoro may have been
 // started meanwhile); a download in flight keeps its progress.
@@ -149,14 +159,14 @@ async function choose(choice: NarrationChoice): Promise<void> {
 
 // The sample comes back as a data URL; the desktop's page policy plays only
 // blob: audio, so it is handed over as one.
-function audioFrom(dataUrl: string): HTMLAudioElement {
+function audioFrom(dataUrl: string): { audio: HTMLAudioElement; url: string } {
   const comma = dataUrl.indexOf(",");
   const type = /^data:([^;,]+)/.exec(dataUrl)?.[1] ?? "audio/mpeg";
   const bytes = Uint8Array.from(atob(dataUrl.slice(comma + 1)), (c) => c.charCodeAt(0));
   const url = URL.createObjectURL(new Blob([bytes], { type }));
   const audio = new Audio(url);
   audio.addEventListener("ended", () => URL.revokeObjectURL(url), { once: true });
-  return audio;
+  return { audio, url };
 }
 
 async function hearSample(): Promise<void> {
@@ -170,9 +180,9 @@ async function hearSample(): Promise<void> {
     setNote({ kind: "error", message: result.error });
     return;
   }
-  sample?.pause();
+  stopSample();
   sample = audioFrom(result.audio);
-  void sample.play().catch(() => undefined);
+  void sample.audio.play().catch(() => undefined);
   setNote({ kind: "done", text: "That is how your tables will hear the story." });
 }
 
@@ -378,8 +388,7 @@ export function worldMediaSection(setup = false): HTMLElement | null {
   onLeaveScreen(() => {
     window.setTimeout(() => {
       if (media.alive?.()) return;
-      sample?.pause();
-      sample = null;
+      stopSample();
     }, 0);
   });
 
