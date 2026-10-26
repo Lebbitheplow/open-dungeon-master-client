@@ -12,6 +12,7 @@ import { localAsset } from "./local-assets.js";
 import { forgetObjectUrls, hold, keepObjectUrlsFor, objectUrlFor } from "./object-urls.js";
 import { canStreamAudio, liveAudioUrl } from "./live-audio.js";
 import { isLiveNarrationPath } from "../../shared/live-audio.js";
+import { createDeferredPlay } from "../../shared/deferred-play.js";
 import { watchStreamEvent } from "./offer-watch.js";
 
 // Public static files of the host: no session needed, so the address is
@@ -256,6 +257,76 @@ function resolveMedia(
   return null;
 }
 
+// One src assignment through the wrapped setter below. For a protected
+// address, fetched first, it returns when that address reaches the element
+// (false if it never will); null when the element has its address already.
+function assignSource(element: HTMLElement, value: string, nativeSet: (this: HTMLElement, value: string) => void): Promise<boolean> | null {
+  const client = active;
+  const raw = String(value);
+  const local = isRootRelative(raw) ? localAsset(raw) : null;
+  if (local) {
+    element.setAttribute("data-odm-src", raw);
+    nativeSet.call(element, local);
+    return null;
+  }
+  if (!client || !isRootRelative(raw)) {
+    // The page's own address (a blob, a full URL, "" to let go): a host file
+    // still being fetched for an older one must not land over it.
+    element.removeAttribute("data-odm-src");
+    nativeSet.call(element, value);
+    return null;
+  }
+  element.setAttribute("data-odm-src", raw);
+  element.removeAttribute("data-odm-failed");
+  // Narration still being rendered is read as it arrives rather than
+  // fetched whole, so its first line is heard at once.
+  if (element instanceof HTMLMediaElement && isLiveNarrationPath(raw) && canStreamAudio()) {
+    nativeSet.call(element, liveAudioUrl(() => patchedFetch(raw, { cache: "no-store" })));
+    return null;
+  }
+  let settle: (landed: boolean) => void = () => undefined;
+  const landed = new Promise<boolean>((resolve) => (settle = resolve));
+  const direct = resolveMedia(
+    client,
+    raw,
+    (url) => {
+      const current = element.getAttribute("data-odm-src") === raw;
+      if (current) {
+        hold(element, url);
+        nativeSet.call(element, url);
+      }
+      settle(current);
+    },
+    () => {
+      if (element.getAttribute("data-odm-src") === raw) reportRefused(element);
+      settle(false);
+    },
+  );
+  if (!direct) return landed;
+  nativeSet.call(element, direct);
+  return null;
+}
+
+// A page sets a sound's src and calls play() at once, as it may in a browser.
+// Here a protected address reaches the element only after its fetch, so
+// play() and pause() go through deferred-play.ts: a play() asked meanwhile
+// waits for that address instead of restarting the element's last file and
+// being called off when the new one lands (server issue 539).
+const deferredPlay = createDeferredPlay<HTMLMediaElement>();
+
+function patchPlayback(): void {
+  const proto = HTMLMediaElement.prototype;
+  const nativePlay = proto.play;
+  const nativePause = proto.pause;
+  proto.play = function play(this: HTMLMediaElement): Promise<void> {
+    return deferredPlay.play(this, () => nativePlay.call(this));
+  };
+  proto.pause = function pause(this: HTMLMediaElement): void {
+    deferredPlay.paused(this);
+    nativePause.call(this);
+  };
+}
+
 // new Audio(url), new Image() and element.src = "/..." never touch an
 // attribute the observer would see before the load starts, so the src
 // setters are wrapped: a public path is redirected at once, a protected
@@ -272,42 +343,12 @@ function patchMediaSetters(): void {
       enumerable: descriptor.enumerable,
       get: descriptor.get,
       set(this: HTMLElement, value: string) {
-        const client = active;
-        const raw = String(value);
-        const local = isRootRelative(raw) ? localAsset(raw) : null;
-        if (local) {
-          this.setAttribute("data-odm-src", raw);
-          nativeSet.call(this, local);
-          return;
-        }
-        if (!client || !isRootRelative(raw)) {
-          nativeSet.call(this, value);
-          return;
-        }
-        this.setAttribute("data-odm-src", raw);
-        this.removeAttribute("data-odm-failed");
-        // Narration still being rendered is read as it arrives rather than
-        // fetched whole, so its first line is heard at once.
-        if (this instanceof HTMLMediaElement && isLiveNarrationPath(raw) && canStreamAudio()) {
-          nativeSet.call(this, liveAudioUrl(() => patchedFetch(raw, { cache: "no-store" })));
-          return;
-        }
-        const direct = resolveMedia(
-          client,
-          raw,
-          (url) => {
-            if (this.getAttribute("data-odm-src") !== raw) return;
-            hold(this, url);
-            nativeSet.call(this, url);
-          },
-          () => {
-            if (this.getAttribute("data-odm-src") === raw) reportRefused(this);
-          },
-        );
-        if (direct) nativeSet.call(this, direct);
+        const landed = assignSource(this, value, nativeSet);
+        if (this instanceof HTMLMediaElement) deferredPlay.assigned(this, landed ?? undefined);
       },
     });
   }
+  patchPlayback();
   // An SVG <image> takes its address from an href attribute, which Preact
   // sets with setAttribute before the element is in the page. The browser
   // starts loading at once, so a host path ("/uploads/...") was asked of the
