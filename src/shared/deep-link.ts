@@ -7,11 +7,19 @@ export const CODE_SHAPE = /^[A-HJ-NP-Z2-9]{4,12}$/;
 
 // The broker mints host codes from the same alphabet minus L, eight long
 // (workers/tunnel-broker in the server repo), and the address it hands out
-// is play-CODE.opendungeonmaster.com. Host code and hostname are the same
+// is play-CODE.opengamemaster.com. Host code and hostname are the same
 // string, which is what lets a spoken code find a host with nothing to look
-// up: no broker call, no directory, just the name.
+// up: no broker call, no directory, just the name. Until the old domain,
+// opendungeonmaster.com, lapses, the broker names every session in both
+// zones, so a code read out by a host on an older app reaches it here too;
+// an address in either zone is still recognised as the broker's.
 export const HOST_CODE_SHAPE = /^[A-HJKMNP-Z2-9]{8}$/;
-const BROKER_ZONE = "opendungeonmaster.com";
+const BROKER_ZONE = "opengamemaster.com";
+const BROKER_ORIGIN = /^https:\/\/play-([a-z0-9]+)\.(?:opengamemaster|opendungeonmaster)\.com\/?$/;
+const TUNNEL_ORIGIN =
+  /^https:\/\/(play-[a-z0-9]+\.(?:opengamemaster|opendungeonmaster)\.com|[a-z0-9-]+\.trycloudflare\.com)$/;
+// The /j invite page answers on both domains until the old one lapses.
+const INVITE_HOSTS = new Set(["opengamemaster.com", "opendungeonmaster.com"]);
 
 // The room code a host reads out loud: the host's code and the table's,
 // joined by a dash (ABCD2345-EFGH6789). Either half alone leaves a
@@ -30,7 +38,7 @@ export function roomCode(hostCode: string, inviteCode: string): string {
 // quick tunnel, a LAN address, someone's own domain). What the share
 // screen shows, and how a server reads its own code out of its publicUrl.
 export function hostCodeFromOrigin(origin: string): string {
-  const host = /^https:\/\/play-([a-z0-9]+)\.opendungeonmaster\.com\/?$/.exec(
+  const host = BROKER_ORIGIN.exec(
     (origin || "").trim().toLowerCase(),
   )?.[1];
   const code = (host ?? "").toUpperCase();
@@ -114,7 +122,7 @@ function privateHost(raw: string): boolean {
 }
 
 export function trustedTunnelOrigin(origin: string): boolean {
-  return /^https:\/\/(play-[a-z0-9]+\.opendungeonmaster\.com|[a-z0-9-]+\.trycloudflare\.com)$/.test(
+  return TUNNEL_ORIGIN.test(
     (origin || "").trim().toLowerCase(),
   );
 }
@@ -217,7 +225,7 @@ export function parseJoinLink(raw: string): JoinLink | null {
 
 // Any invite shape a person might paste, scan, or open: the odm:// link, the
 // https interstitial link the QR codes carry
-// (https://opendungeonmaster.com/j?s=...&c=CODE, also /j/CODE?s=...), or a
+// (https://opengamemaster.com/j?s=...&c=CODE, also /j/CODE?s=...), or a
 // server's own readable join link (https://host/join/CODE), which is the one
 // people see printed next to the room code.
 export function parseAnyLink(raw: string): JoinLink | null {
@@ -230,7 +238,7 @@ export function parseAnyLink(raw: string): JoinLink | null {
   } catch {
     return null;
   }
-  if (url.protocol === "https:" && url.host === "opendungeonmaster.com") {
+  if (url.protocol === "https:" && INVITE_HOSTS.has(url.host)) {
     if (!url.pathname.startsWith("/j")) return null;
     const origin = normalizeOrigin(url.searchParams.get("s") ?? "");
     const code = (url.searchParams.get("c") ?? url.pathname.split("/")[2] ?? "")

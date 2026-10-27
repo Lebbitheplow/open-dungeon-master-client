@@ -50,6 +50,12 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
                     android:scheme="https"
+                    android:host="opengamemaster.com"
+                    android:pathPrefix="/j" />
+                <!-- The old domain, whose invite links still answer until it
+                     lapses. Both hosts serve the same assetlinks.json. -->
+                <data
+                    android:scheme="https"
                     android:host="opendungeonmaster.com"
                     android:pathPrefix="/j" />
             </intent-filter>

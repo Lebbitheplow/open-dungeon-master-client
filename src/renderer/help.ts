@@ -12,7 +12,7 @@ import { startAppTour } from "./tour.js";
 import { LOCAL_AI_MINIMUM_GB } from "../shared/ai-setup.js";
 
 // The full guide on the site, kept current between app releases.
-export const GUIDE_URL = "https://opendungeonmaster.com/guide/";
+export const GUIDE_URL = "https://opengamemaster.com/guide/";
 
 function section(iconName: IconName, title: string, ...paragraphs: string[]): HTMLElement {
   const card = el("section", "panel ornate grain guide-section");

@@ -37,9 +37,9 @@ agent subscription like Codex or Grok Build, which also paint the scene art), an
 the game screens natively for whichever host you play on.
 
 > [!TIP]
-> **New here? Start with the [knowledge base](https://opendungeonmaster.com/guide/).**
+> **New here? Start with the [knowledge base](https://opengamemaster.com/guide/).**
 > It covers which setup fits your table, the
-> [system requirements](https://opendungeonmaster.com/guide/start/system-requirements/),
+> [system requirements](https://opengamemaster.com/guide/start/system-requirements/),
 > installing on each platform, hosting and joining, playing, leading a table, Story AI
 > and every setting, and it is checked against each release. This README is the
 > reference for building and packaging the apps.
@@ -60,12 +60,12 @@ Every build ships first as a beta (marked Pre-release there) and is promoted to 
 unchanged once it holds up; the desktop app offers the betas too with App settings >
 This app > Beta updates. How the channels work:
 [releases.md](https://github.com/Lebbitheplow/open-dungeon-master/blob/main/docs/releases.md).
-More help lives in the [knowledge base](https://opendungeonmaster.com/guide/):
-installing on [Windows](https://opendungeonmaster.com/guide/desktop/install-windows/),
-[macOS](https://opendungeonmaster.com/guide/desktop/install-macos/),
-[Linux](https://opendungeonmaster.com/guide/desktop/install-linux/) and
-[Android](https://opendungeonmaster.com/guide/android/install/), and
-[desktop troubleshooting](https://opendungeonmaster.com/guide/desktop/troubleshooting/).
+More help lives in the [knowledge base](https://opengamemaster.com/guide/):
+installing on [Windows](https://opengamemaster.com/guide/desktop/install-windows/),
+[macOS](https://opengamemaster.com/guide/desktop/install-macos/),
+[Linux](https://opengamemaster.com/guide/desktop/install-linux/) and
+[Android](https://opengamemaster.com/guide/android/install/), and
+[desktop troubleshooting](https://opengamemaster.com/guide/desktop/troubleshooting/).
 
 | Platform | File | Notes |
 | --- | --- | --- |
@@ -82,7 +82,7 @@ needs nothing more. A local model needs at least 16 GB of graphics memory, and
 runs on Windows x64, Linux x64 and Apple Silicon only (not Intel Macs, ARM PCs,
 the Flatpak or Android). Local pictures need 8 GB of graphics memory. Every
 setup, with the machines it was measured on and what hosting a group needs:
-[System requirements](https://opendungeonmaster.com/guide/start/system-requirements/).
+[System requirements](https://opengamemaster.com/guide/start/system-requirements/).
 
 **Checking a download.** The release page lists a SHA-256 checksum beside every
 file; compare it with `sha256sum <file>` (or `Get-FileHash <file>` in PowerShell).
@@ -158,7 +158,7 @@ at release time, and runs it privately on your device:
 
 Your world stays offline until you share it. Opening a campaign lobby starts sharing
 automatically: the app asks the Open Dungeon Master broker for a public
-`play-CODE.opendungeonmaster.com` address, runs `cloudflared` to it, and hands out a
+`play-CODE.opengamemaster.com` address, runs `cloudflared` to it, and hands out a
 room code. The code never changes for that table; it only works while you are
 sharing. Voice chat relays through Cloudflare TURN, so it works across networks
 without opening ports either.
@@ -170,7 +170,7 @@ computer runs: a local model or a CLI agent is a desktop-only Story AI.
 
 **Story AI** (on the title screen's menu, in Settings, and in the first launch)
 decides who narrates the world on your device. The
-[knowledge base](https://opendungeonmaster.com/guide/desktop/story-ai-on-desktop/)
+[knowledge base](https://opengamemaster.com/guide/desktop/story-ai-on-desktop/)
 walks each door:
 
 - **A human Dungeon Master.** The app keeps the sheets, dice, maps and record; a

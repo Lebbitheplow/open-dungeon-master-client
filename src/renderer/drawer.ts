@@ -175,8 +175,8 @@ function hosts(): HTMLElement {
 function legal(): HTMLElement {
   const wrap = el("div", "drawer-legal");
   for (const [label, href] of [
-    ["Privacy policy", "https://opendungeonmaster.com/privacy/"],
-    ["Terms", "https://opendungeonmaster.com/terms/"],
+    ["Privacy policy", "https://opengamemaster.com/privacy/"],
+    ["Terms", "https://opengamemaster.com/terms/"],
   ] as const) {
     const link = el("a", "", label);
     link.href = href;

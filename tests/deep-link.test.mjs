@@ -70,10 +70,15 @@ test("parseAnyLink accepts both the odm and https invite shapes", () => {
     parseAnyLink("  https://opendungeonmaster.com/j?s=https%3A%2F%2Fplay.example.com&c=ABCD2345 "),
     expected,
   );
+  // The new domain, and the old one until it lapses.
+  assert.deepEqual(parseAnyLink("https://opengamemaster.com/j?s=https%3A%2F%2Fplay.example.com&c=ABCD2345"), expected);
+  assert.deepEqual(parseAnyLink("https://opengamemaster.com/j/abcd2345?s=https%3A%2F%2Fplay.example.com"), expected);
 });
 
 test("parseAnyLink rejects lookalike hosts, plain http and bad codes", () => {
   assert.equal(parseAnyLink("https://evil.com/j?s=https%3A%2F%2Fx.com&c=ABCD2345"), null);
+  assert.equal(parseAnyLink("https://opengamemaster.com.evil.com/j?s=https%3A%2F%2Fx.com&c=ABCD2345"), null);
+  assert.equal(parseAnyLink("http://opengamemaster.com/j?s=https%3A%2F%2Fx.com&c=ABCD2345"), null);
   assert.equal(parseAnyLink("http://opendungeonmaster.com/j?s=https%3A%2F%2Fx.com&c=ABCD2345"), null);
   assert.equal(parseAnyLink("https://opendungeonmaster.com/other?s=https%3A%2F%2Fx.com&c=ABCD2345"), null);
   assert.equal(parseAnyLink("https://opendungeonmaster.com/j?s=https%3A%2F%2Fx.com&c=ABCD01"), null);
@@ -156,19 +161,19 @@ test("malformed percent escapes in a join link return invalid input", () => {
 
 test("parseRoomCode expands a room code into the host it names", () => {
   assert.deepEqual(parseRoomCode("ABCD2345-EFGH6789"), {
-    origin: "https://play-abcd2345.opendungeonmaster.com",
+    origin: "https://play-abcd2345.opengamemaster.com",
     code: "EFGH6789",
   });
   // The host half alone is a join with no table chosen.
   assert.deepEqual(parseRoomCode("ABCD2345"), {
-    origin: "https://play-abcd2345.opendungeonmaster.com",
+    origin: "https://play-abcd2345.opengamemaster.com",
     code: "",
   });
 });
 
 test("parseRoomCode forgives how people actually type a code", () => {
   const expected = {
-    origin: "https://play-abcd2345.opendungeonmaster.com",
+    origin: "https://play-abcd2345.opengamemaster.com",
     code: "EFGH6789",
   };
   assert.deepEqual(parseRoomCode("abcd2345-efgh6789"), expected);
@@ -193,7 +198,7 @@ test("parseRoomCode rejects what cannot be a host code", () => {
 
 test("parseLinkOrAddress takes a room code alongside links and addresses", () => {
   assert.deepEqual(parseLinkOrAddress("ABCD2345-EFGH6789"), {
-    origin: "https://play-abcd2345.opendungeonmaster.com",
+    origin: "https://play-abcd2345.opengamemaster.com",
     code: "EFGH6789",
   });
   // An invite link still wins: it names its own server, code and all.
@@ -206,6 +211,8 @@ test("parseLinkOrAddress takes a room code alongside links and addresses", () =>
 test("hostCodeFromOrigin reads a code back out of a broker address", () => {
   assert.equal(hostCodeFromOrigin("https://play-abcd2345.opendungeonmaster.com"), "ABCD2345");
   assert.equal(hostCodeFromOrigin("https://play-abcd2345.opendungeonmaster.com/"), "ABCD2345");
+  assert.equal(hostCodeFromOrigin("https://play-abcd2345.opengamemaster.com"), "ABCD2345");
+  assert.equal(hostCodeFromOrigin("https://play-abcd2345.opengamemaster.com.evil.example"), "");
   // Quick tunnels, LAN addresses and other domains have no code to show.
   assert.equal(hostCodeFromOrigin("https://abc.trycloudflare.com"), "");
   assert.equal(hostCodeFromOrigin("http://192.168.1.50:3005"), "");
@@ -218,7 +225,7 @@ test("roomCode joins the halves, and round-trips through the parser", () => {
   assert.equal(roomCode("ABCD2345", ""), "ABCD2345");
   assert.equal(roomCode("", "EFGH6789"), "");
   assert.deepEqual(parseRoomCode(roomCode("ABCD2345", "EFGH6789")), {
-    origin: "https://play-abcd2345.opendungeonmaster.com",
+    origin: "https://play-abcd2345.opengamemaster.com",
     code: "EFGH6789",
   });
 });
@@ -230,7 +237,7 @@ test("a bare code offers the registry lookup first, the host shape second", () =
   // never connected while the tunnel itself was fine.
   assert.deepEqual(codeCandidates("EFGH6789"), {
     table: "EFGH6789",
-    hostOrigin: "https://play-efgh6789.opendungeonmaster.com",
+    hostOrigin: "https://play-efgh6789.opengamemaster.com",
   });
   // An L can only be a table code: the broker's alphabet leaves it out.
   assert.deepEqual(codeCandidates("klmn2345"), {
@@ -281,6 +288,8 @@ test("a typed code is cleaned before the registry is asked", () => {
 
 test("a saved seat follows only a tunnel hostname or a registry-confirmed address", () => {
   assert.equal(trustedTunnelOrigin("https://play-abcd2345.opendungeonmaster.com"), true);
+  assert.equal(trustedTunnelOrigin("https://play-abcd2345.opengamemaster.com"), true);
+  assert.equal(trustedTunnelOrigin("https://play-abcd2345.opengamemaster.com.evil.example"), false);
   assert.equal(trustedTunnelOrigin("https://quiet-river-1234.trycloudflare.com"), true);
   assert.equal(trustedTunnelOrigin("https://evil.example"), false);
   assert.equal(trustedTunnelOrigin("http://play-abcd2345.opendungeonmaster.com"), false);
