@@ -252,6 +252,18 @@ function fakeHost(overrides = {}) {
   return { host, log };
 }
 
+// The host script goes on by itself once it has said "up"
+// (afterThisFlatpak); its last act is a `flatpak run`.
+async function untilRun(calls) {
+  const fsp = await import("node:fs/promises");
+  for (let waited = 0; waited < 15_000; waited += 100) {
+    const lines = (await fsp.readFile(calls, "utf8").catch(() => "")).trim().split("\n");
+    if (lines.some((line) => line.startsWith("run "))) return lines;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error("the host script never ran the app");
+}
+
 async function tempFolder() {
   const fsp = await import("node:fs/promises");
   const os = await import("node:os");
@@ -761,7 +773,7 @@ test("the flatpak relaunch waits for the old sandbox, then runs the app", async 
     );
   });
   assert.equal(stdout, "up\n");
-  const lines = (await fsp.readFile(calls, "utf8")).trim().split("\n");
+  const lines = await untilRun(calls);
   assert.equal(lines.filter((line) => line.startsWith("ps")).length, 3);
   assert.equal(lines[lines.length - 1], "run com.opengamemaster.client");
   // A Steam Deck launch option rides along to the new run.
@@ -772,7 +784,7 @@ test("the flatpak relaunch waits for the old sandbox, then runs the app", async 
       err ? reject(err) : resolve(),
     );
   });
-  const flagged = (await fsp.readFile(calls, "utf8")).trim().split("\n");
+  const flagged = await untilRun(calls);
   assert.equal(flagged[flagged.length - 1], "run com.opengamemaster.client --steam-deck");
   await fsp.rm(folder, { recursive: true, force: true });
 });
@@ -1001,7 +1013,7 @@ async function runMove({ installed = true, seed = async () => {} } = {}) {
     );
   });
   assert.equal(stdout, "up\n");
-  const lines = (await fsp.readFile(calls, "utf8")).trim().split("\n").filter((line) => !line.startsWith("ps"));
+  const lines = (await untilRun(calls)).filter((line) => !line.startsWith("ps"));
   return { home, lines, cleanup: () => fsp.rm(folder, { recursive: true, force: true }) };
 }
 

@@ -160,28 +160,38 @@ export function flatpakIsSystemWide(info: string): boolean {
   return appPath.startsWith("/var/lib/flatpak/");
 }
 
+// A script the host runs for a flatpak once this copy has gone. "up" tells
+// the app the host has it; the script then goes on by itself, so the
+// flatpak-spawn that asked for it returns at once instead of holding this
+// sandbox open for as long as the script runs (an open sandbox still reads
+// as running in `flatpak ps`, and the wait below would only time out).
+function afterThisFlatpak(body: string, args: readonly string[]): [string, string[]] {
+  const script = [
+    "echo up",
+    'body="$1"; shift',
+    'if command -v setsid >/dev/null 2>&1; then setsid sh -c "$body" sh "$@" </dev/null >/dev/null 2>&1 &',
+    'else sh -c "$body" sh "$@" </dev/null >/dev/null 2>&1 &',
+    "fi",
+  ].join("\n");
+  return ["flatpak-spawn", ["--host", "sh", "-c", script, "sh", body, ...args]];
+}
+
+// Waits, up to a minute, for the flatpak $1 to stop running.
+const WAIT_FOR_FIRST = 'i=0; while [ "$i" -lt 120 ] && flatpak ps --columns=application | grep -qx "$1"; do sleep 0.5; i=$((i + 1)); done';
+
 // Starts a flatpak again from outside its sandbox once the running copy is
 // gone: a relaunch from inside would start the old build still mounted at
 // /app, and one started too soon meets the single-instance lock and quits.
-// "up" tells the app the host has the command before it quits; the wait
-// gives up after a minute. Any args follow the id to the new run.
+// Any args follow the id to the new run.
 export function flatpakRelaunchCommand(id: string, args: readonly string[] = []): [string, string[]] {
-  const script = [
-    "echo up",
-    "exec >/dev/null 2>&1",
-    "i=0",
-    'while [ "$i" -lt 120 ] && flatpak ps --columns=application | grep -qx "$1"; do sleep 0.5; i=$((i + 1)); done',
-    'exec flatpak run "$@"',
-  ].join("; ");
-  return ["flatpak-spawn", ["--host", "sh", "-c", script, "sh", id, ...args]];
+  return afterThisFlatpak([WAIT_FOR_FIRST, 'exec flatpak run "$@"'].join("\n"), [id, ...args]);
 }
 
 // Hands a flatpak from before the rename over to the renamed app, once the
 // old copy is gone: its data folder becomes the new id's (unless that one
 // has data of its own, which is never overwritten), the old copy is removed
 // from its installation, and the new one starts with any args. With the new
-// id not installed it only starts the old one again. "up" and the wait are
-// flatpakRelaunchCommand's.
+// id not installed it only starts the old one again.
 export function flatpakMoveCommand(
   fromId: string,
   toId: string,
@@ -189,15 +199,12 @@ export function flatpakMoveCommand(
   home: string,
   args: readonly string[] = [],
 ): [string, string[]] {
-  const script = [
-    "echo up",
-    "exec >/dev/null 2>&1",
+  const body = [
+    WAIT_FOR_FIRST,
     'from="$1"; to="$2"; scope="$3"; old="$4/.var/app/$1"; new="$4/.var/app/$2"; shift 4',
-    "i=0",
-    'while [ "$i" -lt 120 ] && flatpak ps --columns=application | grep -qx "$from"; do sleep 0.5; i=$((i + 1)); done',
-    'flatpak info "$to" || exec flatpak run "$from" "$@"',
+    'flatpak info "$to" >/dev/null 2>&1 || exec flatpak run "$from" "$@"',
     // The data folder the app pins (index.ts), under the sandbox's config.
-    'data=config/open-dungeon-master-client',
+    "data=config/open-dungeon-master-client",
     "moved=yes",
     'if [ -d "$old" ]; then',
     '  if [ ! -e "$new" ]; then mv "$old" "$new" || moved=no',
@@ -208,7 +215,7 @@ export function flatpakMoveCommand(
     '[ "$moved" = yes ] && flatpak uninstall "$scope" -y "$from"',
     'exec flatpak run "$to" "$@"',
   ].join("\n");
-  return ["flatpak-spawn", ["--host", "sh", "-c", script, "sh", fromId, toId, system ? "--system" : "--user", home, ...args]];
+  return afterThisFlatpak(body, [fromId, toId, system ? "--system" : "--user", home, ...args]);
 }
 
 // POSIX single quotes for a shell word.
