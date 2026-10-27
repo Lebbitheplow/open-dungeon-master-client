@@ -589,7 +589,7 @@ function statusLine(): HTMLElement {
 
 // ---------- the recap ----------
 
-// "When last we left": the last thing the Dungeon Master said at that
+// "When last we left": the last thing the Game Master said at that
 // table, with the drop cap, and a mono line saying when.
 function recapPanel(pick: ContinuePick): HTMLElement {
   const { campaign } = pick;

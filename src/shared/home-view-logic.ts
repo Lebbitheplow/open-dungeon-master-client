@@ -363,7 +363,7 @@ export function recapText(campaign: HomeCampaign): { text: string; quiet: boolea
   if (campaign.status === "ended") {
     return { text: "This tale has been told to its end. The chronicle keeps every page.", quiet: true };
   }
-  return { text: "The Dungeon Master has not spoken yet. Step in and the first scene is yours.", quiet: true };
+  return { text: "The Game Master has not spoken yet. Step in and the first scene is yours.", quiet: true };
 }
 
 // The status line at the foot of the menu, the way a title screen shows

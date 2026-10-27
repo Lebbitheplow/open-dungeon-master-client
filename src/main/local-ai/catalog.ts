@@ -69,7 +69,7 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "qwen-q8",
     label: "Story model, full quality",
-    detail: "Qwen3.6-35B-A3B at Q8: what the AI DM was tuned on, effectively lossless.",
+    detail: "Qwen3.6-35B-A3B at Q8: what the AI GM was tuned on, effectively lossless.",
     alias: "qwen3.6-35b",
     url: `${QWEN_BASE}/Qwen3.6-35B-A3B-UD-Q8_K_XL.gguf`,
     file: "Qwen3.6-35B-A3B-UD-Q8_K_XL.gguf",

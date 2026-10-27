@@ -91,7 +91,7 @@ export interface RepairResult {
 }
 
 // The offline-play setup wizard's AI step. "human" changes nothing on the
-// server; campaigns simply run with a human Dungeon Master.
+// server; campaigns simply run with a human Game Master.
 export interface AiSetup {
   choice: "openai" | "human" | "harness";
   apiKey: string;
@@ -374,7 +374,7 @@ export interface UpdateProgress {
 // One campaign as the home screen lists it, from any host. playingAs is the
 // player's character name there, null when they have none yet or run it.
 // The title screen's glance at a table (server 0.23.5 and up): the last
-// thing the Dungeon Master said, the open chapter, the newest painted
+// thing the Game Master said, the open chapter, the newest painted
 // scene and the party's faces. Absent from hosts older than that.
 export interface HomeGlanceFace {
   name: string;
