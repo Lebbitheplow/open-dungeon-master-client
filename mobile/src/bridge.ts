@@ -203,7 +203,7 @@ async function probeOrigin(origin: string): Promise<ServerProbe> {
     needsSetup?: boolean;
   } | null;
   if (reply.status !== 200 || !body || typeof body.password !== "boolean") {
-    throw new Error(`${origin} does not look like an Open Dungeon Master server.`);
+    throw new Error(`${origin} does not look like an Open Game Master server.`);
   }
   const signupMode: SignupMode =
     body.signupMode === "invite" || body.signupMode === "closed" ? body.signupMode : "open";
@@ -1686,7 +1686,7 @@ const bridge: OdmBridge = {
       if (!link) {
         return {
           ok: false,
-          error: "That QR code is not an Open Dungeon Master invite or server address.",
+          error: "That QR code is not an Open Game Master invite or server address.",
         };
       }
       // A bare address is the same path an invite takes, minus the join. A

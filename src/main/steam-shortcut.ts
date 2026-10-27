@@ -28,7 +28,7 @@ import {
   type VdfNode,
 } from "./steam-vdf";
 
-export const SHORTCUT_NAME = "Open Dungeon Master";
+export const SHORTCUT_NAME = "Open Game Master";
 
 // The name an AppImage takes for its shortcut: no version in it, so the
 // updater replaces the file in place (replaceAppImage) and Steam's

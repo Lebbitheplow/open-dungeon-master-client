@@ -46,7 +46,7 @@ test("a linux binary outside /usr and /opt is a portable unpack", () => {
 
 test("the rpm and deb builds name themselves through package-type", async () => {
   const { packageFormatOf } = await import("../dist/main/updater.js");
-  const RPM_EXEC = "/opt/Open Dungeon Master/open-dungeon-master-client";
+  const RPM_EXEC = "/opt/Open Game Master/open-dungeon-master-client";
   assert.equal(detectInstallKind({}, RPM_EXEC, "linux", true, "rpm"), "managed");
   // Moved somewhere unusual, the package still owns it.
   assert.equal(detectInstallKind({}, LINUX_HOME, "linux", true, "deb"), "managed");
@@ -234,7 +234,7 @@ function fakeHost(overrides = {}) {
     format: "rpm",
     platform: "linux",
     arch: "x64",
-    execPath: "/opt/Open Dungeon Master/open-dungeon-master-client",
+    execPath: "/opt/Open Game Master/open-dungeon-master-client",
     appImagePath: "",
     downloadsDir: () => "",
     open: async (file) => void log.opened.push(file),
@@ -426,21 +426,21 @@ test("a Mac install swaps the bundle from the release zip", async () => {
   const path = await import("node:path");
   const folder = await tempFolder();
   const apps = path.join(folder, "Applications");
-  const bundle = path.join(apps, "Open Dungeon Master.app");
+  const bundle = path.join(apps, "Open Game Master.app");
   await fsp.mkdir(path.join(bundle, "Contents", "MacOS"), { recursive: true });
-  await fsp.writeFile(path.join(bundle, "Contents", "MacOS", "Open Dungeon Master"), "old");
+  await fsp.writeFile(path.join(bundle, "Contents", "MacOS", "Open Game Master"), "old");
   const { host, log } = fakeHost({
     platform: "darwin",
     arch: "arm64",
     format: "",
-    execPath: path.join(bundle, "Contents", "MacOS", "Open Dungeon Master"),
+    execPath: path.join(bundle, "Contents", "MacOS", "Open Game Master"),
     downloadsDir: () => folder,
     // ditto stands in: it drops a new bundle into the staging folder.
     run: async (command, args) => {
       log.ran.push([command, ...args]);
       const staging = args[args.length - 1];
-      await fsp.mkdir(path.join(staging, "Open Dungeon Master.app", "Contents", "MacOS"), { recursive: true });
-      await fsp.writeFile(path.join(staging, "Open Dungeon Master.app", "Contents", "MacOS", "Open Dungeon Master"), "new");
+      await fsp.mkdir(path.join(staging, "Open Game Master.app", "Contents", "MacOS"), { recursive: true });
+      await fsp.writeFile(path.join(staging, "Open Game Master.app", "Contents", "MacOS", "Open Game Master"), "new");
       return { code: 0, stderr: "" };
     },
   });
@@ -449,10 +449,95 @@ test("a Mac install swaps the bundle from the release zip", async () => {
   const zip = path.join(folder, "open-dungeon-master-client-0.12.1-arm64-mac.zip");
   assert.equal(log.ran.length, 1);
   assert.deepEqual(log.ran[0].slice(0, 4), ["ditto", "-x", "-k", zip]);
-  assert.equal(await fsp.readFile(path.join(bundle, "Contents", "MacOS", "Open Dungeon Master"), "utf8"), "new");
+  assert.equal(await fsp.readFile(path.join(bundle, "Contents", "MacOS", "Open Game Master"), "utf8"), "new");
   // No staging folder or retired bundle left beside it.
-  assert.deepEqual(await fsp.readdir(apps), ["Open Dungeon Master.app"]);
+  assert.deepEqual(await fsp.readdir(apps), ["Open Game Master.app"]);
   assert.deepEqual(log.relaunched, [""]);
+  await fsp.rm(folder, { recursive: true, force: true });
+});
+
+// A bundle named for the product before the rename, and the zip of a build
+// named after it. Returns the folders and a ditto stand-in.
+async function renamedMacSetup(fsp, path, { handInstalled = false } = {}) {
+  const folder = await tempFolder();
+  const apps = path.join(folder, "Applications");
+  const oldExe = path.join(apps, "Open Dungeon Master.app", "Contents", "MacOS", "Open Dungeon Master");
+  await fsp.mkdir(path.dirname(oldExe), { recursive: true });
+  await fsp.writeFile(oldExe, "old");
+  if (handInstalled) {
+    const copy = path.join(apps, "Open Game Master.app", "Contents", "MacOS", "Open Game Master");
+    await fsp.mkdir(path.dirname(copy), { recursive: true });
+    await fsp.writeFile(copy, "by hand");
+  }
+  const newExe = path.join(apps, "Open Game Master.app", "Contents", "MacOS", "Open Game Master");
+  const ditto = async (args) => {
+    const staging = args[args.length - 1];
+    await fsp.mkdir(path.join(staging, "Open Game Master.app", "Contents", "MacOS"), { recursive: true });
+    await fsp.writeFile(path.join(staging, "Open Game Master.app", "Contents", "MacOS", "Open Game Master"), "new");
+  };
+  return { folder, apps, oldExe, newExe, ditto };
+}
+
+test("a Mac install from before the rename lands under the new name and starts from there", async () => {
+  const { Updater } = await import("../dist/main/updater.js");
+  const fsp = await import("node:fs/promises");
+  const path = await import("node:path");
+  for (const handInstalled of [false, true]) {
+    const { folder, apps, oldExe, newExe, ditto } = await renamedMacSetup(fsp, path, { handInstalled });
+    const { host, log } = fakeHost({
+      platform: "darwin",
+      arch: "arm64",
+      format: "",
+      execPath: oldExe,
+      downloadsDir: () => folder,
+      run: async (command, args) => {
+        log.ran.push([command, ...args]);
+        await ditto(args);
+        return { code: 0, stderr: "" };
+      },
+    });
+    const updater = new Updater("mac", "0.21.3", async () => "0.22.0", 0, host);
+    await updater.downloadAndInstall();
+    assert.equal(await fsp.readFile(newExe, "utf8"), "new", `hand installed: ${handInstalled}`);
+    // The old bundle, the hand-installed copy and the staging folder are gone.
+    assert.deepEqual(await fsp.readdir(apps), ["Open Game Master.app"], `hand installed: ${handInstalled}`);
+    assert.deepEqual(log.relaunched, [newExe]);
+    await fsp.rm(folder, { recursive: true, force: true });
+  }
+});
+
+test("a Mac install from before the rename takes its new name behind the password prompt too", async () => {
+  const { Updater } = await import("../dist/main/updater.js");
+  const fsp = await import("node:fs/promises");
+  const path = await import("node:path");
+  const { execFile } = await import("node:child_process");
+  const { folder, apps, oldExe, newExe, ditto } = await renamedMacSetup(fsp, path);
+  const downloads = path.join(folder, "Downloads");
+  await fsp.mkdir(downloads, { recursive: true });
+  const { host, log } = fakeHost({
+    platform: "darwin",
+    arch: "x64",
+    format: "",
+    execPath: oldExe,
+    downloadsDir: () => downloads,
+    writable: async (dir) => dir !== apps,
+    run: async (command, args) => {
+      log.ran.push([command, ...args]);
+      if (command === "ditto") {
+        await ditto(args);
+        return { code: 0, stderr: "" };
+      }
+      return new Promise((resolve) => {
+        execFile("sh", ["-c", adminScript(args)], (err, _out, stderr) => resolve({ code: err ? 1 : 0, stderr }));
+      });
+    },
+  });
+  const updater = new Updater("mac", "0.21.3", async () => "0.22.0", 0, host);
+  await updater.downloadAndInstall();
+  assert.deepEqual(log.ran.map((call) => call[0]), ["ditto", "osascript"]);
+  assert.equal(await fsp.readFile(newExe, "utf8"), "new");
+  assert.deepEqual(await fsp.readdir(apps), ["Open Game Master.app"]);
+  assert.deepEqual(log.relaunched, [newExe]);
   await fsp.rm(folder, { recursive: true, force: true });
 });
 
@@ -474,8 +559,8 @@ test("a Mac install the account cannot write moves the bundle behind the passwor
   const apps = path.join(folder, "Kaleb's \"Apps\"");
   const downloads = path.join(folder, "Downloads");
   await fsp.mkdir(downloads, { recursive: true });
-  const bundle = path.join(apps, "Open Dungeon Master.app");
-  const exe = path.join(bundle, "Contents", "MacOS", "Open Dungeon Master");
+  const bundle = path.join(apps, "Open Game Master.app");
+  const exe = path.join(bundle, "Contents", "MacOS", "Open Game Master");
   await fsp.mkdir(path.dirname(exe), { recursive: true });
   await fsp.writeFile(exe, "old");
   const { host, log } = fakeHost({
@@ -489,8 +574,8 @@ test("a Mac install the account cannot write moves the bundle behind the passwor
       log.ran.push([command, ...args]);
       if (command === "ditto") {
         const staging = args[args.length - 1];
-        await fsp.mkdir(path.join(staging, "Open Dungeon Master.app", "Contents", "MacOS"), { recursive: true });
-        await fsp.writeFile(path.join(staging, "Open Dungeon Master.app", "Contents", "MacOS", "Open Dungeon Master"), "new");
+        await fsp.mkdir(path.join(staging, "Open Game Master.app", "Contents", "MacOS"), { recursive: true });
+        await fsp.writeFile(path.join(staging, "Open Game Master.app", "Contents", "MacOS", "Open Game Master"), "new");
         return { code: 0, stderr: "" };
       }
       // osascript stands in by running the shell command it was handed.
@@ -505,7 +590,7 @@ test("a Mac install the account cannot write moves the bundle behind the passwor
   // Unpacked next to the download, where this account can write.
   assert.equal(path.dirname(log.ran[0][log.ran[0].length - 1]), downloads);
   assert.equal(await fsp.readFile(exe, "utf8"), "new");
-  assert.deepEqual(await fsp.readdir(apps), ["Open Dungeon Master.app"]);
+  assert.deepEqual(await fsp.readdir(apps), ["Open Game Master.app"]);
   assert.deepEqual(await fsp.readdir(downloads), []);
   assert.deepEqual(log.relaunched, [""]);
   await fsp.rm(folder, { recursive: true, force: true });
@@ -515,7 +600,7 @@ test("a Mac copy run from where Gatekeeper put it is installed into Applications
   const { Updater } = await import("../dist/main/updater.js");
   const fsp = await import("node:fs/promises");
   const folder = await tempFolder();
-  const exe = "/private/var/folders/xy/T/AppTranslocation/1234/d/Open Dungeon Master.app/Contents/MacOS/Open Dungeon Master";
+  const exe = "/private/var/folders/xy/T/AppTranslocation/1234/d/Open Game Master.app/Contents/MacOS/Open Game Master";
   const { host, log } = fakeHost({
     platform: "darwin",
     arch: "arm64",
@@ -527,7 +612,7 @@ test("a Mac copy run from where Gatekeeper put it is installed into Applications
     run: async (command, args) => {
       log.ran.push([command, ...args]);
       if (command === "ditto") {
-        await fsp.mkdir(`${args[args.length - 1]}/Open Dungeon Master.app`, { recursive: true });
+        await fsp.mkdir(`${args[args.length - 1]}/Open Game Master.app`, { recursive: true });
       }
       return { code: 0, stderr: "" };
     },
@@ -536,9 +621,9 @@ test("a Mac copy run from where Gatekeeper put it is installed into Applications
   await updater.downloadAndInstall();
   assert.equal(log.ran[1][0], "osascript");
   const script = adminScript(log.ran[1].slice(1));
-  assert.match(script, /mv '[^']*\/Open Dungeon Master\.app' '\/Applications\/Open Dungeon Master\.app'/);
+  assert.match(script, /mv '[^']*\/Open Game Master\.app' '\/Applications\/Open Game Master\.app'/);
   assert.doesNotMatch(script, /AppTranslocation/);
-  assert.deepEqual(log.relaunched, ["/Applications/Open Dungeon Master.app/Contents/MacOS/Open Dungeon Master"]);
+  assert.deepEqual(log.relaunched, ["/Applications/Open Game Master.app/Contents/MacOS/Open Game Master"]);
   await fsp.rm(folder, { recursive: true, force: true });
 });
 
@@ -550,13 +635,13 @@ test("a closed Mac password prompt keeps the old app and says so", async () => {
     platform: "darwin",
     arch: "arm64",
     format: "",
-    execPath: "/Applications/Open Dungeon Master.app/Contents/MacOS/Open Dungeon Master",
+    execPath: "/Applications/Open Game Master.app/Contents/MacOS/Open Game Master",
     downloadsDir: () => folder,
     writable: async (dir) => dir === folder,
     run: async (command, args) => {
       log.ran.push([command, ...args]);
       if (command === "ditto") {
-        await fsp.mkdir(`${args[args.length - 1]}/Open Dungeon Master.app`, { recursive: true });
+        await fsp.mkdir(`${args[args.length - 1]}/Open Game Master.app`, { recursive: true });
         return { code: 0, stderr: "" };
       }
       return { code: 1, stderr: "0:180: execution error: User canceled. (-128)\n" };

@@ -82,7 +82,7 @@ public class WorldService extends Service {
             "Hosting a world",
             NotificationManager.IMPORTANCE_LOW
         );
-        channel.setDescription("Shown while this device shares your Open Dungeon Master world with friends.");
+        channel.setDescription("Shown while this device shares your Open Game Master world with friends.");
         manager.createNotificationChannel(channel);
     }
 

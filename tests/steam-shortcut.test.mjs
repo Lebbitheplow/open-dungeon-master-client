@@ -112,10 +112,10 @@ test("the shortcut's app id is the CRC-32 of the quoted program and the name, to
 });
 
 test("each Linux install starts the way it can: a flatpak through flatpak, the rest by their file with --no-sandbox", () => {
-  const place = { execPath: "/opt/Open Dungeon Master/open-dungeon-master-client", appImagePath: "", flatpakId: "" };
+  const place = { execPath: "/opt/Open Game Master/open-dungeon-master-client", appImagePath: "", flatpakId: "" };
   assert.deepEqual(steamTarget({ ...place, kind: "managed" }), {
-    exe: '"/opt/Open Dungeon Master/open-dungeon-master-client"',
-    startDir: '"/opt/Open Dungeon Master"',
+    exe: '"/opt/Open Game Master/open-dungeon-master-client"',
+    startDir: '"/opt/Open Game Master"',
     launchOptions: "--no-sandbox",
     flatpakId: "",
   });
@@ -234,7 +234,7 @@ test("a flatpak shortcut Steam's own dialog made is found by its app id in the l
   const steamMade = entry(
     1,
     n("appid", -777),
-    s("AppName", "Open Dungeon Master"),
+    s("AppName", "Open Game Master"),
     s("Exe", '"/usr/bin/flatpak"'),
     s("LaunchOptions", "run --branch=stable --arch=x86_64 --command=open-dungeon-master-client com.opendungeonmaster.client"),
   );
@@ -296,7 +296,7 @@ async function fakeHome({ running = false, closes = true, list: initial = null, 
 }
 
 const request = (home, extra = {}) => ({
-  place: { kind: "managed", execPath: "/opt/Open Dungeon Master/open-dungeon-master-client", appImagePath: "", flatpakId: "" },
+  place: { kind: "managed", execPath: "/opt/Open Game Master/open-dungeon-master-client", appImagePath: "", flatpakId: "" },
   home,
   artDir: ART_DIR,
   launchedBySteam: false,

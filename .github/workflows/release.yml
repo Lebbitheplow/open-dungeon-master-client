@@ -250,7 +250,7 @@ jobs:
           app=$(ls -d release/mac*/*.app)
           codesign --verify --deep --strict --verbose=2 "$app"
           codesign -dv "$app" 2>&1 | grep -E '^(Signature|CodeDirectory)'
-          ELECTRON_RUN_AS_NODE=1 "$app/Contents/MacOS/Open Dungeon Master" \
+          ELECTRON_RUN_AS_NODE=1 "$app/Contents/MacOS/Open Game Master" \
             -e 'console.log("electron", process.versions.electron, process.arch)'
 
   flatpak:
@@ -477,21 +477,24 @@ jobs:
         run: |
           previous=$(gh release list --exclude-drafts --exclude-pre-releases --limit 10 --json tagName -q '.[].tagName' | grep -vx "${GITHUB_REF_NAME}" | head -n 1)
           echo "previous release: $previous"
-          gh release download "$previous" --pattern 'Open-Dungeon-Master-Setup-*.exe' --dir previous
+          # Releases from before the rename ship Open-Dungeon-Master-Setup-*.exe.
+          gh release download "$previous" --pattern '*-Setup-*.exe' --dir previous
       - name: Install the previous release and start its world
         run: |
-          node scripts/smoke-installed.mjs install previous/Open-Dungeon-Master-Setup-*.exe "$RUNNER_TEMP/odm"
-          node scripts/smoke-installed.mjs world "$RUNNER_TEMP/odm/Open Dungeon Master.exe" seed "$RUNNER_TEMP/odm-world"
+          node scripts/smoke-installed.mjs install previous/*-Setup-*.exe "$RUNNER_TEMP/odm"
+          node scripts/smoke-installed.mjs world "$(node scripts/smoke-installed.mjs exe "$RUNNER_TEMP/odm")" seed "$RUNNER_TEMP/odm-world"
       - name: Install this build over it; the same world comes back whole
-        # The artifact keeps electron-builder's own name, "Open Dungeon Master
+        # The artifact keeps electron-builder's own name, "Open Game Master
         # Setup x.y.z.exe"; only the release asset is renamed with dashes.
+        # Over a release from before the rename this also proves the
+        # renamed program replaces Open Dungeon Master.exe in place.
         run: |
-          node scripts/smoke-installed.mjs install new/*Setup*.exe "$RUNNER_TEMP/odm"
-          node scripts/smoke-installed.mjs world "$RUNNER_TEMP/odm/Open Dungeon Master.exe" verify "$RUNNER_TEMP/odm-world"
+          node scripts/smoke-installed.mjs install new/*Setup*.exe "$RUNNER_TEMP/odm" "Open Game Master.exe"
+          node scripts/smoke-installed.mjs world "$RUNNER_TEMP/odm/Open Game Master.exe" verify "$RUNNER_TEMP/odm-world"
       - name: A world in an empty profile starts on this build
-        run: node scripts/smoke-installed.mjs world "$RUNNER_TEMP/odm/Open Dungeon Master.exe" start "$RUNNER_TEMP/odm-fresh"
+        run: node scripts/smoke-installed.mjs world "$RUNNER_TEMP/odm/Open Game Master.exe" start "$RUNNER_TEMP/odm-fresh"
       - name: The installed app opens and stays up
-        run: node scripts/smoke-installed.mjs launch "$RUNNER_TEMP/odm/Open Dungeon Master.exe"
+        run: node scripts/smoke-installed.mjs launch "$RUNNER_TEMP/odm/Open Game Master.exe"
 
   # The signed, minified x86_64 APK this run built, installed on an
   # emulator and started: what debug builds and unit tests never run.

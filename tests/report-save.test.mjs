@@ -11,7 +11,7 @@ import { test } from "node:test";
 import { saveReportFile } from "../dist/main/report-save.js";
 import { MAX_REPORT_CHARS, reportAppFacts, reportFileInput } from "../dist/shared/diagnostics.js";
 
-const REPORT = `${JSON.stringify({ kind: "odm-report", format: 1, readable: ["Open Dungeon Master report."] }, null, 2)}\n`;
+const REPORT = `${JSON.stringify({ kind: "odm-report", format: 1, readable: ["Open Game Master report."] }, null, 2)}\n`;
 const NAME = "odm-report-2026-10-24-10-00-00.json";
 
 function deps(over = {}) {

@@ -28,7 +28,7 @@ const facts = {
 test("the summary names versions, the state of the world and the wrong files, one fact a line", () => {
   const text = diagnosticSummary(facts, new Date("2026-10-12T20:00:00.000Z"));
   assert.deepEqual(text.split("\n"), [
-    "Open Dungeon Master 0.17.4 (nsis) on win32 x64, Windows_NT 10.0.26100, Electron 44.7.0",
+    "Open Game Master 0.17.4 (nsis) on win32 x64, Windows_NT 10.0.26100, Electron 44.7.0",
     "Written 2026-10-12T20:00:00.000Z",
     "Bundled server: 0.26.3 built 2026-10-12T07:54:39.545Z",
     "Unpacked server: 0.26.2 built 2026-10-11T00:00:00.000Z (not the bundled build; the next start replaces it)",

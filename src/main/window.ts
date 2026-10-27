@@ -198,7 +198,9 @@ export class ShellWindow {
     return Menu.buildFromTemplate([
       {
         label: "File",
-        submenu: [{ role: "quit" }],
+        // The Mac labels Quit with the app's internal name, which stays the
+        // old one for the keychain (src/main/index.ts), so it is named here.
+        submenu: [process.platform === "darwin" ? { role: "quit", label: "Quit Open Game Master" } : { role: "quit" }],
       },
       editMenu(),
       {

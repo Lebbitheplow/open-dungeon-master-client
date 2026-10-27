@@ -11,7 +11,7 @@
 pkgname=open-dungeon-master-client-bin
 pkgver=0.1.0
 pkgrel=1
-pkgdesc="Desktop client for Open Dungeon Master, the self-hostable TTRPG platform"
+pkgdesc="Desktop client for Open Game Master, the self-hostable TTRPG platform"
 arch=('x86_64')
 url="https://opendungeonmaster.com"
 license=('MIT')
@@ -30,7 +30,7 @@ package() {
   install -Dm644 /dev/stdin \
     "$pkgdir/usr/share/applications/open-dungeon-master-client.desktop" <<'EOF'
 [Desktop Entry]
-Name=Open Dungeon Master
+Name=Open Game Master
 Comment=Multiplayer TTRPG campaigns with an AI or human Dungeon Master
 Exec=/opt/open-dungeon-master/open-dungeon-master-client %u
 Terminal=false

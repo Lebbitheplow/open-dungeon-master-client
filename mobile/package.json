@@ -2,7 +2,7 @@
   "name": "open-dungeon-master-mobile",
   "version": "0.21.3",
   "private": true,
-  "description": "Android client for Open Dungeon Master: hosts a world on the phone, or connects to any server",
+  "description": "Android client for Open Game Master: hosts a world on the phone, or connects to any server",
   "license": "MIT",
   "scripts": {
     "build": "node scripts/build-www.mjs",

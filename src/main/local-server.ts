@@ -13,7 +13,7 @@ import { verifyRunTree } from "./payload-manifest";
 import { PayloadStore } from "./payload-store";
 import { reapStaleServer } from "./stale-server";
 
-// Runs the bundled Open Dungeon Master server (a Next.js standalone build
+// Runs the bundled Open Game Master server (a Next.js standalone build
 // produced by scripts/bundle-server.mjs) as a child process on localhost,
 // using Electron's own binary in Node mode so no separate runtime ships.
 

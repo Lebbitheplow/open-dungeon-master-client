@@ -2,7 +2,7 @@
   "name": "open-dungeon-master-client",
   "version": "0.21.3",
   "private": true,
-  "description": "Desktop client for Open Dungeon Master: connect to any server, or play fully offline",
+  "description": "Desktop client for Open Game Master: connect to any server, or play fully offline",
   "license": "MIT",
   "author": {
     "name": "Kaleb Lutterman",

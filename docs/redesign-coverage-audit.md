@@ -6,7 +6,7 @@ cannot use. Written 2026-09-04.
 
 Sources:
 
-- Mockups: `/NAS/Open Dungeon Master mobile redesign.zip` (Claude Design export).
+- Mockups: `/NAS/Open Game Master mobile redesign.zip` (Claude Design export).
   `ODM Mobile Directions.dc.html` holds the history (9 turns, 22 options, 1a to 9c).
   `ODM Prototype.dc.html` is the navigable build: 11 screens, three frames
   (Mobile 384x760, Foldable 880x660, Desktop 1180x720), three roles (Player, DM,

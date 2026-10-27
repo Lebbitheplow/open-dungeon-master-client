@@ -92,8 +92,8 @@ export function topbar(): HTMLElement {
   const brand = el("button", atHome ? "brand" : "brand link");
   brand.type = "button";
   brand.dataset.tour = "brand";
-  brand.append(bookMark(), el("span", "wordmark", "Open Dungeon Master"));
-  brand.setAttribute("aria-label", atHome ? "Open Dungeon Master" : "Back home");
+  brand.append(bookMark(), el("span", "wordmark", "Open Game Master"));
+  brand.setAttribute("aria-label", atHome ? "Open Game Master" : "Back home");
   if (!atHome) {
     brand.addEventListener("click", goHome);
     brand.title = "Back home";
@@ -433,8 +433,8 @@ export function legalLinks(): HTMLElement[] {
 export function footer(): HTMLElement {
   const foot = el("footer", "foot");
   const version = state.appInfo?.version
-    ? `Open Dungeon Master ${state.appInfo.version}`
-    : "Open Dungeon Master";
+    ? `Open Game Master ${state.appInfo.version}`
+    : "Open Game Master";
   foot.append(el("span", "", state.updateNote || version));
   if (!isAndroid) {
     foot.append(updateControls(rerenderHome));

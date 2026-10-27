@@ -1,7 +1,7 @@
 import type { AccountDeletionResult, ServerProbe, SignupMode } from "../shared/types";
 import type { WorldRequest } from "../shared/world-transfer";
 
-// Thin fetch helpers for talking to an Open Dungeon Master server's REST API
+// Thin fetch helpers for talking to an Open Game Master server's REST API
 // from the main process. Errors are thrown as ApiError with a message safe to
 // show in the shell UI.
 
@@ -40,7 +40,7 @@ export async function probeServer(origin: string): Promise<ServerProbe> {
       } | null)
     : null;
   if (!body || typeof body.password !== "boolean") {
-    throw new ApiError(`${origin} does not look like an Open Dungeon Master server.`);
+    throw new ApiError(`${origin} does not look like an Open Game Master server.`);
   }
   const signupMode: SignupMode =
     body.signupMode === "invite" || body.signupMode === "closed" ? body.signupMode : "open";

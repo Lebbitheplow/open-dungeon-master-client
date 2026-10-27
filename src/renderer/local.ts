@@ -73,7 +73,7 @@ function qrPanel(url: string): HTMLElement {
     el(
       "p",
       "hint center",
-      "Scan with the Open Dungeon Master app to add this world, or with a phone camera to open it in a browser.",
+      "Scan with the Open Game Master app to add this world, or with a phone camera to open it in a browser.",
     ),
   );
   return panel;
@@ -119,8 +119,8 @@ export function shareRow(): HTMLElement {
       row.append(
         button("secondary", "Share", () => {
           void window.odm.shareLink?.({
-            title: "Join my world on Open Dungeon Master",
-            text: `Join my world on Open Dungeon Master: ${tunnel.url}`,
+            title: "Join my world on Open Game Master",
+            text: `Join my world on Open Game Master: ${tunnel.url}`,
             url: tunnel.url,
           });
         }, "share"),

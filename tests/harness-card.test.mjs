@@ -27,7 +27,7 @@ const OLD_OPENCODE = card({
   auth: { state: "unknown" },
   models: [],
   message:
-    "opencode 1.19.0 is installed; Open Dungeon Master drives opencode 2.x. Upgrade with `opencode upgrade --major` (opencode 1.19 or later), or install it with `curl -fsSL https://opencode.ai/v2/install | bash`.",
+    "opencode 1.19.0 is installed; Open Game Master drives opencode 2.x. Upgrade with `opencode upgrade --major` (opencode 1.19 or later), or install it with `curl -fsSL https://opencode.ai/v2/install | bash`.",
 });
 
 test("an installed agent that lists no model and says why is not ready: it needs attention, with the server's message", () => {
