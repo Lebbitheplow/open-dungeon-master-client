@@ -281,6 +281,7 @@ function rerenderHome(): void {
 export function updateNoteFor(update: UpdateStatus | null, latest = ""): string {
   if (!update) return `Version ${latest} is available.`;
   if (!update.available) return "You have the latest version.";
+  if (update.renamed && update.canDownload) return "Open Game Master is ready to install.";
   if (update.canSelfUpdate || update.canDownload) return `Version ${update.latest} is ready to install.`;
   return `Version ${update.latest} is available. ${update.instruction}`;
 }
@@ -300,7 +301,7 @@ export function updateControls(rerender: () => void): HTMLElement {
     return get;
   }
   if (update?.available && (update.canSelfUpdate || update.canDownload)) {
-    const install = button("primary", `Update to ${update.latest}`, (btn) => {
+    const install = button("primary", installLabel(update), (btn) => {
       btn.disabled = true;
       state.updateNote = "Starting the download...";
       void window.odm.updateInstall().then((result) => {
@@ -330,6 +331,10 @@ export function updateControls(rerender: () => void): HTMLElement {
   });
 }
 
+function installLabel(update: UpdateStatus): string {
+  return update.renamed ? "Install Open Game Master" : `Update to ${update.latest}`;
+}
+
 // The update popup: a modal over whatever screen is up, so a new version is
 // never a line of small print. Shown once per run, when the background check
 // (or an explicit one) finds a newer build. "Later" only closes it; the
@@ -353,29 +358,34 @@ export function showUpdatePopup(update: UpdateStatus): void {
   const scrim = el("div", "update-popup-scrim");
   scrim.setAttribute("role", "alertdialog");
   scrim.setAttribute("aria-modal", "true");
-  scrim.setAttribute("aria-label", "Update available");
+  scrim.setAttribute("aria-label", update.renamed ? "Open Game Master" : "Update available");
   const card = el("section", "update-popup card ornate");
   const canInstall = update.canSelfUpdate || update.canDownload;
   const note = el("p", "update-popup-note", "");
   const paint = () => {
     note.textContent = state.updateNote && state.updateNote !== updateNoteFor(update) ? state.updateNote : "";
   };
+  // A flatpak from before the rename is offered the renamed app instead
+  // (src/main/updater.ts renamedFlatpak).
+  const renamed = update.renamed && canInstall;
   card.append(
-    el("p", "eyebrow", "Update available"),
-    el("h2", "", `Version ${update.latest}`),
+    el("p", "eyebrow", renamed ? "New name" : "Update available"),
+    el("h2", "", renamed ? "Open Game Master" : `Version ${update.latest}`),
     el(
       "p",
       "sub",
-      canInstall
-        ? `You are on ${update.current}. Hosts on a newer version may not open in an older app, so it is worth taking now.`
-        : `You are on ${update.current}. ${update.instruction}`,
+      renamed
+        ? "This app has a new name. Install it under that name to keep getting updates: your servers, worlds and settings move into it, a Steam shortcut to this app moves too (Steam closes for a moment), and this copy is removed."
+        : canInstall
+          ? `You are on ${update.current}. Hosts on a newer version may not open in an older app, so it is worth taking now.`
+          : `You are on ${update.current}. ${update.instruction}`,
     ),
     note,
   );
   const actions = el("div", "update-popup-actions");
   const later = button("quiet", "Later", () => closeUpdatePopup());
   if (canInstall) {
-    const install = button("primary", `Update to ${update.latest}`, (btn) => {
+    const install = button("primary", installLabel(update), (btn) => {
       btn.disabled = true;
       later.disabled = true;
       state.updateNote = "Starting the download...";
@@ -417,7 +427,7 @@ export function legalLinks(): HTMLElement[] {
   for (const [label, href] of [
     ["Privacy policy", "https://opengamemaster.com/privacy/"],
     ["Terms of service", "https://opengamemaster.com/terms/"],
-    ["GitHub", "https://github.com/Lebbitheplow/open-dungeon-master-client"],
+    ["GitHub", "https://github.com/Lebbitheplow/open-game-master-client"],
   ] as const) {
     const link = el("a", "foot-link", label);
     link.href = href;

@@ -19,9 +19,10 @@ import {
   storyModelsFrom,
   storyModelsRequest,
 } from "../dist/shared/ai-setup.js";
+import { serverDir as findServerDir } from "../scripts/server-dir.mjs";
 
 const repo = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const serverDir = path.resolve(process.env.ODM_SERVER_DIR ?? path.join(repo, "..", "open-dungeon-master"));
+const serverDir = findServerDir(repo);
 const serverSpeedTier = path.join(serverDir, "src", "lib", "speed-tier.ts");
 
 const setup = (apiKey, model = "", utilityModel = "") => ({ choice: "openai", apiKey, model, utilityModel });

@@ -1,8 +1,10 @@
 import path from "node:path";
 import fs from "node:fs";
+import os from "node:os";
 import { spawn } from "node:child_process";
 import { app, safeStorage, session, shell } from "electron";
-import { deckLaunchArgs, detectDeck } from "../shared/deck";
+import { deckLaunchArgs, detectDeck, steamLaunched } from "../shared/deck";
+import { APP_ID, LEGACY_APP_ID } from "./app-names";
 import { joinLinkFromArgv, parseJoinLink, type JoinLink } from "../shared/deep-link";
 import { LocalAiManager } from "./local-ai/manager";
 import { LocalServer } from "./local-server";
@@ -11,7 +13,16 @@ import { applyPendingReset } from "./reset";
 import { LOCAL_SERVER_ID, ServerStore, type TokenCrypt } from "./servers";
 import { storyMemoryEnv, storyMemorySupported } from "../shared/story-memory";
 import { QuickTunnel } from "./tunnel";
-import { detectInstallKind, flatpakIsSystemWide, flatpakRelaunchCommand, packageFormatOf, Updater } from "./updater";
+import { repointRenamedShortcut } from "./steam-shortcut";
+import { systemSteamHost } from "./steam-host";
+import {
+  detectInstallKind,
+  flatpakIsSystemWide,
+  flatpakMoveCommand,
+  flatpakRelaunchCommand,
+  packageFormatOf,
+  Updater,
+} from "./updater";
 import { ShellWindow } from "./window";
 import { wireContextMenus } from "./edit-menu";
 import { isolateShellPages } from "./isolation";
@@ -96,7 +107,7 @@ function main(): void {
     // Windows shows an app's notifications (an offer only this player may
     // answer) under the id of its Start menu shortcut, which electron-builder
     // names after appId.
-    if (process.platform === "win32") app.setAppUserModelId("com.opendungeonmaster.client");
+    if (process.platform === "win32") app.setAppUserModelId(APP_ID);
     // The shell's own pages (the main window and the table screen) are
     // cross-origin isolated before either loads (src/main/isolation.ts).
     isolateShellPages(session.defaultSession);
@@ -167,13 +178,24 @@ function main(): void {
     // sandbox to close; the app quits once the host has the command.
     // A Steam Deck launch option goes along either way. The updater and
     // the reset (Settings, Troubleshooting) both leave this way.
-    const relaunch = (execPath?: string): void => {
-      if (!flatpak) {
-        app.relaunch(execPath ? { execPath, args: deckLaunchArgs(process.argv) } : undefined);
-        app.quit();
-        return;
-      }
-      const [command, args] = flatpakRelaunchCommand(flatpak.id, deckLaunchArgs(process.argv));
+    const launchedBySteam = steamLaunched(process.env);
+    // A flatpak from before the rename, started from the desktop, hands
+    // over to the renamed app once that is installed (flatpakMoveCommand),
+    // taking a Steam shortcut to it along first.
+    const flatpakCommand = async (id: string, system: boolean, args: string[]): Promise<[string, string[]]> => {
+      if (id !== LEGACY_APP_ID || launchedBySteam) return flatpakRelaunchCommand(id, args);
+      const installed = await new Promise<boolean>((resolve) => {
+        const probe = spawn("flatpak-spawn", ["--host", "flatpak", "info", APP_ID], { stdio: "ignore" });
+        probe.once("error", () => resolve(false));
+        probe.once("exit", (code) => resolve(code === 0));
+      });
+      if (!installed) return flatpakRelaunchCommand(id, args);
+      await repointRenamedShortcut({ home: os.homedir(), artDir: path.join(process.resourcesPath, "steam") }, systemSteamHost(true)).catch(
+        (err: unknown) => console.error("[rename] the Steam shortcut still starts the old app", err),
+      );
+      return flatpakMoveCommand(id, APP_ID, system, os.homedir(), args);
+    };
+    const startFromHost = (command: string, args: string[]): void => {
       const child = spawn(command, args, { detached: true, stdio: ["ignore", "pipe", "ignore"] });
       let quitting = false;
       const quit = (): void => {
@@ -186,6 +208,14 @@ function main(): void {
       child.once("exit", quit);
       setTimeout(quit, 5_000);
       child.unref();
+    };
+    const relaunch = (execPath?: string): void => {
+      if (!flatpak) {
+        app.relaunch(execPath ? { execPath, args: deckLaunchArgs(process.argv) } : undefined);
+        app.quit();
+        return;
+      }
+      void flatpakCommand(flatpak.id, flatpak.system, deckLaunchArgs(process.argv)).then(([command, args]) => startFromHost(command, args));
     };
     const updater = new Updater(
       detectInstallKind(process.env, process.execPath, process.platform, app.isPackaged, packageType),
@@ -232,6 +262,7 @@ function main(): void {
           }),
         relaunch,
         flatpak,
+        launchedBySteam,
       },
       // Settings > This app > Beta updates, read at every check.
       () => store.updateChannel(),

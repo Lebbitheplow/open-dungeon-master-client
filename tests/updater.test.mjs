@@ -11,9 +11,9 @@ import {
   versionFromTag,
 } from "../dist/main/updater.js";
 
-const LINUX_OPT = "/opt/open-dungeon-master/open-dungeon-master-client";
-const LINUX_USR = "/usr/lib/open-dungeon-master/open-dungeon-master-client";
-const LINUX_HOME = "/home/kaleb/apps/odm/open-dungeon-master-client";
+const LINUX_OPT = "/opt/open-game-master/open-game-master-client";
+const LINUX_USR = "/usr/lib/open-game-master/open-game-master-client";
+const LINUX_HOME = "/home/kaleb/apps/odm/open-game-master-client";
 const WIN_EXE = "C:\\Users\\kaleb\\AppData\\Local\\Programs\\odm\\odm.exe";
 
 test("an unpackaged run is dev no matter what the environment claims", () => {
@@ -41,12 +41,12 @@ test("package-manager territory (/usr, /opt) reads as managed", () => {
 test("a linux binary outside /usr and /opt is a portable unpack", () => {
   assert.equal(detectInstallKind({}, LINUX_HOME, "linux", true), "portable");
   // /usr/local is never a package manager's.
-  assert.equal(detectInstallKind({}, "/usr/local/odm/open-dungeon-master-client", "linux", true), "portable");
+  assert.equal(detectInstallKind({}, "/usr/local/odm/open-game-master-client", "linux", true), "portable");
 });
 
 test("the rpm and deb builds name themselves through package-type", async () => {
   const { packageFormatOf } = await import("../dist/main/updater.js");
-  const RPM_EXEC = "/opt/Open Game Master/open-dungeon-master-client";
+  const RPM_EXEC = "/opt/Open Game Master/open-game-master-client";
   assert.equal(detectInstallKind({}, RPM_EXEC, "linux", true, "rpm"), "managed");
   // Moved somewhere unusual, the package still owns it.
   assert.equal(detectInstallKind({}, LINUX_HOME, "linux", true, "deb"), "managed");
@@ -62,7 +62,7 @@ test("a tar.gz unpacked under /opt is not mistaken for an rpm", async () => {
   // No package-type: whatever owns /opt (the AUR package) is left to update
   // it, instead of installing the rpm beside it and restarting the old copy.
   const { Updater, packageFormatOf } = await import("../dist/main/updater.js");
-  const { host } = fakeHost({ format: packageFormatOf(""), execPath: "/opt/odm/open-dungeon-master-client" });
+  const { host } = fakeHost({ format: packageFormatOf(""), execPath: "/opt/odm/open-game-master-client" });
   const kind = detectInstallKind({}, host.execPath, "linux", true, "");
   assert.equal(kind, "managed");
   const status = await new Updater(kind, "0.12.0", async () => "0.12.1", 0, host).checkForUpdates();
@@ -72,12 +72,12 @@ test("a tar.gz unpacked under /opt is not mistaken for an rpm", async () => {
 
 test("flatpak-info says which installation holds the app", async () => {
   const { flatpakIsSystemWide } = await import("../dist/main/updater.js");
-  const info = (appPath) => `[Application]\nname=com.opendungeonmaster.client\n\n[Instance]\napp-path=${appPath}\n`;
-  assert.equal(flatpakIsSystemWide(info("/var/lib/flatpak/app/com.opendungeonmaster.client/x86_64/master/abc/files")), true);
-  assert.equal(flatpakIsSystemWide(info("/home/kaleb/.local/share/flatpak/app/com.opendungeonmaster.client/x86_64/master/abc/files")), false);
+  const info = (appPath) => `[Application]\nname=com.opengamemaster.client\n\n[Instance]\napp-path=${appPath}\n`;
+  assert.equal(flatpakIsSystemWide(info("/var/lib/flatpak/app/com.opengamemaster.client/x86_64/master/abc/files")), true);
+  assert.equal(flatpakIsSystemWide(info("/home/kaleb/.local/share/flatpak/app/com.opengamemaster.client/x86_64/master/abc/files")), false);
   assert.equal(flatpakIsSystemWide(""), false);
   // An installation flatpak was pointed elsewhere for counts as the player's.
-  assert.equal(flatpakIsSystemWide(info("/tmp/odm-flatpak-user/app/com.opendungeonmaster.client/x86_64/master/abc/files")), false);
+  assert.equal(flatpakIsSystemWide(info("/tmp/odm-flatpak-user/app/com.opengamemaster.client/x86_64/master/abc/files")), false);
 });
 
 test("windows splits on the portable marker, defaulting to nsis", () => {
@@ -234,7 +234,7 @@ function fakeHost(overrides = {}) {
     format: "rpm",
     platform: "linux",
     arch: "x64",
-    execPath: "/opt/Open Game Master/open-dungeon-master-client",
+    execPath: "/opt/Open Game Master/open-game-master-client",
     appImagePath: "",
     downloadsDir: () => "",
     open: async (file) => void log.opened.push(file),
@@ -261,13 +261,13 @@ async function tempFolder() {
 
 test("packageAssetName picks the one release file an install updates from", async () => {
   const { packageAssetName } = await import("../dist/main/updater.js");
-  assert.equal(packageAssetName("0.12.1", "managed", "linux", "x64", "rpm"), "open-dungeon-master-client-0.12.1-x86_64.rpm");
-  assert.equal(packageAssetName("0.12.1", "managed", "linux", "x64", "deb"), "open-dungeon-master-client-0.12.1-amd64.deb");
-  assert.equal(packageAssetName("0.12.1", "portable", "linux", "x64", ""), "open-dungeon-master-client-0.12.1-x64.tar.gz");
-  assert.equal(packageAssetName("0.12.1", "flatpak", "linux", "x64", "rpm"), "open-dungeon-master-client-0.12.1-x86_64.flatpak");
+  assert.equal(packageAssetName("0.12.1", "managed", "linux", "x64", "rpm"), "open-game-master-client-0.12.1-x86_64.rpm");
+  assert.equal(packageAssetName("0.12.1", "managed", "linux", "x64", "deb"), "open-game-master-client-0.12.1-amd64.deb");
+  assert.equal(packageAssetName("0.12.1", "portable", "linux", "x64", ""), "open-game-master-client-0.12.1-x64.tar.gz");
+  assert.equal(packageAssetName("0.12.1", "flatpak", "linux", "x64", "rpm"), "open-game-master-client-0.12.1-x86_64.flatpak");
   // The zip unpacks into a bundle the app can swap in; the dmg would need mounting.
-  assert.equal(packageAssetName("0.12.1", "mac", "darwin", "arm64", ""), "open-dungeon-master-client-0.12.1-arm64-mac.zip");
-  assert.equal(packageAssetName("0.12.1", "mac", "darwin", "x64", ""), "open-dungeon-master-client-0.12.1-x64-mac.zip");
+  assert.equal(packageAssetName("0.12.1", "mac", "darwin", "arm64", ""), "open-game-master-client-0.12.1-arm64-mac.zip");
+  assert.equal(packageAssetName("0.12.1", "mac", "darwin", "x64", ""), "open-game-master-client-0.12.1-x64-mac.zip");
   // No package manager we know, a store install, another architecture: the app says where to go instead.
   assert.equal(packageAssetName("0.12.1", "managed", "linux", "x64", ""), "");
   assert.equal(packageAssetName("0.12.1", "snap", "linux", "x64", "rpm"), "");
@@ -296,13 +296,13 @@ test("an rpm install downloads the package, installs it through pkexec and resta
   assert.equal(status.canSelfUpdate, false);
   assert.equal(status.canDownload, true);
   await updater.downloadAndInstall();
-  const file = path.join(folder, "open-dungeon-master-client-0.12.1-x86_64.rpm");
+  const file = path.join(folder, "open-game-master-client-0.12.1-x86_64.rpm");
   assert.deepEqual(asked, [
     // The check: does this release have an rpm at all.
-    "https://api.github.com/repos/Lebbitheplow/open-dungeon-master-client/releases/tags/v0.12.1",
+    "https://api.github.com/repos/Lebbitheplow/open-game-master-client/releases/tags/v0.12.1",
     // The download: the rpm's checksum, then the rpm.
-    "https://api.github.com/repos/Lebbitheplow/open-dungeon-master-client/releases/tags/v0.12.1",
-    "https://github.com/Lebbitheplow/open-dungeon-master-client/releases/download/v0.12.1/open-dungeon-master-client-0.12.1-x86_64.rpm",
+    "https://api.github.com/repos/Lebbitheplow/open-game-master-client/releases/tags/v0.12.1",
+    "https://github.com/Lebbitheplow/open-game-master-client/releases/download/v0.12.1/open-game-master-client-0.12.1-x86_64.rpm",
   ]);
   assert.deepEqual(log.ran, [["pkexec", "dnf", "install", "-y", file]]);
   assert.deepEqual(log.relaunched, [""]);
@@ -358,7 +358,7 @@ test("without pkexec the package is handed to the system's installer", async () 
   const { host, log } = fakeHost({ downloadsDir: () => folder, has: async (command) => command === "dnf" });
   const updater = new Updater("managed", "0.12.0", async () => "0.12.1", 0, host);
   await updater.downloadAndInstall();
-  assert.deepEqual(log.opened, [path.join(folder, "open-dungeon-master-client-0.12.1-x86_64.rpm")]);
+  assert.deepEqual(log.opened, [path.join(folder, "open-game-master-client-0.12.1-x86_64.rpm")]);
   assert.deepEqual(log.ran, []);
   assert.deepEqual(log.relaunched, []);
   assert.match(updater.progress().message, /installer/);
@@ -372,12 +372,12 @@ test("a tar.gz install unpacks over itself and restarts, or reveals the archive 
   const folder = await tempFolder();
   const { host, log } = fakeHost({
     format: "",
-    execPath: "/home/kaleb/apps/odm/open-dungeon-master-client",
+    execPath: "/home/kaleb/apps/odm/open-game-master-client",
     downloadsDir: () => folder,
   });
   const updater = new Updater("portable", "0.12.0", async () => "0.12.1", 0, host);
   await updater.downloadAndInstall();
-  const file = path.join(folder, "open-dungeon-master-client-0.12.1-x64.tar.gz");
+  const file = path.join(folder, "open-game-master-client-0.12.1-x64.tar.gz");
   assert.deepEqual(log.ran, [["tar", "-xzf", file, "-C", "/home/kaleb/apps/odm", "--strip-components=1"]]);
   assert.deepEqual(log.relaunched, [""]);
   assert.equal(updater.progress().state, "ready");
@@ -405,13 +405,13 @@ test("a tar.gz install in a folder only root can write goes through pkexec", asy
   const folder = await tempFolder();
   const { host, log } = fakeHost({
     format: "",
-    execPath: "/usr/local/odm/open-dungeon-master-client",
+    execPath: "/usr/local/odm/open-game-master-client",
     downloadsDir: () => folder,
     writable: async () => false,
   });
   const updater = new Updater("portable", "0.12.0", async () => "0.12.1", 0, host);
   await updater.downloadAndInstall();
-  const file = path.join(folder, "open-dungeon-master-client-0.12.1-x64.tar.gz");
+  const file = path.join(folder, "open-game-master-client-0.12.1-x64.tar.gz");
   assert.deepEqual(log.ran, [
     ["pkexec", "tar", "-xzf", file, "-C", "/usr/local/odm", "--strip-components=1", "--no-same-owner"],
   ]);
@@ -446,7 +446,7 @@ test("a Mac install swaps the bundle from the release zip", async () => {
   });
   const updater = new Updater("mac", "0.12.0", async () => "0.12.1", 0, host);
   await updater.downloadAndInstall();
-  const zip = path.join(folder, "open-dungeon-master-client-0.12.1-arm64-mac.zip");
+  const zip = path.join(folder, "open-game-master-client-0.12.1-arm64-mac.zip");
   assert.equal(log.ran.length, 1);
   assert.deepEqual(log.ran[0].slice(0, 4), ["ditto", "-x", "-k", zip]);
   assert.equal(await fsp.readFile(path.join(bundle, "Contents", "MacOS", "Open Game Master"), "utf8"), "new");
@@ -651,7 +651,7 @@ test("a closed Mac password prompt keeps the old app and says so", async () => {
   await assert.rejects(() => updater.downloadAndInstall(), /cancelled/);
   assert.deepEqual(log.relaunched, []);
   // The zip stays for a manual install; the staging folder does not.
-  assert.deepEqual(await fsp.readdir(folder), ["open-dungeon-master-client-0.12.1-arm64-mac.zip"]);
+  assert.deepEqual(await fsp.readdir(folder), ["open-game-master-client-0.12.1-arm64-mac.zip"]);
   await fsp.rm(folder, { recursive: true, force: true });
 });
 
@@ -663,12 +663,12 @@ test("a flatpak installs its bundle through the host's flatpak and restarts", as
   const { host, log } = fakeHost({
     format: "",
     downloadsDir: () => folder,
-    flatpak: { id: "com.opendungeonmaster.client", system: true },
+    flatpak: { id: "com.opengamemaster.client", system: true },
   });
   const updater = new Updater("flatpak", "0.12.0", async () => "0.12.1", 0, host);
   assert.equal((await updater.checkForUpdates()).canDownload, true);
   await updater.downloadAndInstall();
-  const file = path.join(folder, "open-dungeon-master-client-0.12.1-x86_64.flatpak");
+  const file = path.join(folder, "open-game-master-client-0.12.1-x86_64.flatpak");
   assert.deepEqual(log.ran, [
     ["flatpak-spawn", "--host", "true"],
     // -y, not --noninteractive: that would also refuse the password prompt.
@@ -679,7 +679,7 @@ test("a flatpak installs its bundle through the host's flatpak and restarts", as
   assert.deepEqual(await fsp.readdir(folder), []);
   assert.equal(updater.progress().state, "ready");
 
-  const user = fakeHost({ format: "", downloadsDir: () => folder, flatpak: { id: "com.opendungeonmaster.client", system: false } });
+  const user = fakeHost({ format: "", downloadsDir: () => folder, flatpak: { id: "com.opengamemaster.client", system: false } });
   await new Updater("flatpak", "0.12.0", async () => "0.12.1", 0, user.host).downloadAndInstall();
   assert.equal(user.log.ran[1][4], "--user");
   await fsp.rm(folder, { recursive: true, force: true });
@@ -693,7 +693,7 @@ test("a flatpak that cannot reach the host hands its bundle to the software cent
   const { host, log } = fakeHost({
     format: "",
     downloadsDir: () => folder,
-    flatpak: { id: "com.opendungeonmaster.client", system: false },
+    flatpak: { id: "com.opengamemaster.client", system: false },
     // A bundle from before the org.freedesktop.Flatpak permission.
     run: async (command, args) => {
       log.ran.push([command, ...args]);
@@ -703,7 +703,7 @@ test("a flatpak that cannot reach the host hands its bundle to the software cent
   const updater = new Updater("flatpak", "0.12.0", async () => "0.12.1", 0, host);
   await updater.downloadAndInstall();
   assert.deepEqual(log.ran, [["flatpak-spawn", "--host", "true"]]);
-  assert.deepEqual(log.opened, [path.join(folder, "open-dungeon-master-client-0.12.1-x86_64.flatpak")]);
+  assert.deepEqual(log.opened, [path.join(folder, "open-game-master-client-0.12.1-x86_64.flatpak")]);
   assert.deepEqual(log.relaunched, []);
   assert.match(updater.progress().message, /software center/);
   await fsp.rm(folder, { recursive: true, force: true });
@@ -716,7 +716,7 @@ test("a failed flatpak install says why and keeps the bundle", async () => {
   const { host, log } = fakeHost({
     format: "",
     downloadsDir: () => folder,
-    flatpak: { id: "com.opendungeonmaster.client", system: true },
+    flatpak: { id: "com.opengamemaster.client", system: true },
     run: async (command, args) => {
       log.ran.push([command, ...args]);
       return args[1] === "true" ? { code: 0, stderr: "" } : { code: 1, stderr: "error: Not authorized\n" };
@@ -746,13 +746,13 @@ test("the flatpak relaunch waits for the old sandbox, then runs the app", async 
       `echo "$*" >> '${calls}'`,
       'if [ "$1" = ps ]; then',
       `  n=$(grep -c '^ps' '${calls}')`,
-      '  [ "$n" -le 2 ] && echo com.opendungeonmaster.client',
+      '  [ "$n" -le 2 ] && echo com.opengamemaster.client',
       "fi",
       "exit 0",
     ].join("\n"),
     { mode: 0o755 },
   );
-  const [command, args] = flatpakRelaunchCommand("com.opendungeonmaster.client");
+  const [command, args] = flatpakRelaunchCommand("com.opengamemaster.client");
   assert.equal(command, "flatpak-spawn");
   assert.deepEqual(args.slice(0, 2), ["--host", "sh"]);
   const stdout = await new Promise((resolve, reject) => {
@@ -763,9 +763,9 @@ test("the flatpak relaunch waits for the old sandbox, then runs the app", async 
   assert.equal(stdout, "up\n");
   const lines = (await fsp.readFile(calls, "utf8")).trim().split("\n");
   assert.equal(lines.filter((line) => line.startsWith("ps")).length, 3);
-  assert.equal(lines[lines.length - 1], "run com.opendungeonmaster.client");
+  assert.equal(lines[lines.length - 1], "run com.opengamemaster.client");
   // A Steam Deck launch option rides along to the new run.
-  const [, withFlag] = flatpakRelaunchCommand("com.opendungeonmaster.client", ["--steam-deck"]);
+  const [, withFlag] = flatpakRelaunchCommand("com.opengamemaster.client", ["--steam-deck"]);
   await fsp.writeFile(calls, "");
   await new Promise((resolve, reject) => {
     execFile(withFlag[1], withFlag.slice(2), { env: { ...process.env, PATH: `${folder}:${process.env.PATH}` } }, (err) =>
@@ -773,7 +773,7 @@ test("the flatpak relaunch waits for the old sandbox, then runs the app", async 
     );
   });
   const flagged = (await fsp.readFile(calls, "utf8")).trim().split("\n");
-  assert.equal(flagged[flagged.length - 1], "run com.opendungeonmaster.client --steam-deck");
+  assert.equal(flagged[flagged.length - 1], "run com.opengamemaster.client --steam-deck");
   await fsp.rm(folder, { recursive: true, force: true });
 });
 
@@ -784,18 +784,18 @@ test("replaceAppImage keeps a renamed file's name and replaces a versioned one",
   const folder = await tempFolder();
   const renamed = path.join(folder, "odm.AppImage");
   await fsp.writeFile(renamed, "old");
-  const fresh = path.join(folder, "pending", "open-dungeon-master-client-0.12.1-x86_64.AppImage");
+  const fresh = path.join(folder, "pending", "open-game-master-client-0.12.1-x86_64.AppImage");
   await fsp.mkdir(path.dirname(fresh), { recursive: true });
   await fsp.writeFile(fresh, "new");
   assert.equal(await replaceAppImage(renamed, fresh), renamed);
   assert.equal(await fsp.readFile(renamed, "utf8"), "new");
   assert.equal(((await fsp.stat(renamed)).mode & 0o111) !== 0, true);
 
-  const versioned = path.join(folder, "open-dungeon-master-client-0.12.0-x86_64.AppImage");
+  const versioned = path.join(folder, "open-game-master-client-0.12.0-x86_64.AppImage");
   await fsp.writeFile(versioned, "old");
   await fsp.writeFile(fresh, "new");
   const destination = await replaceAppImage(versioned, fresh);
-  assert.equal(destination, path.join(folder, "open-dungeon-master-client-0.12.1-x86_64.AppImage"));
+  assert.equal(destination, path.join(folder, "open-game-master-client-0.12.1-x86_64.AppImage"));
   assert.equal(await fsp.readFile(destination, "utf8"), "new");
   await assert.rejects(() => fsp.stat(versioned));
   await fsp.rm(folder, { recursive: true, force: true });
@@ -851,7 +851,7 @@ test("a release that lists no checksum for the package downloads nothing", async
     downloadsDir: () => folder,
     fetchImpl: async (url) => {
       asked.push(String(url));
-      return Response.json({ assets: [{ name: "open-dungeon-master-client-0.12.1-amd64.deb", digest: null }] });
+      return Response.json({ assets: [{ name: "open-game-master-client-0.12.1-amd64.deb", digest: null }] });
     },
   });
   const updater = new Updater("managed", "0.12.0", async () => "0.12.1", 0, host);
@@ -885,7 +885,7 @@ test("a release published without this install's package is not offered to it", 
     const all = releaseListing(tag[1], PACKAGE);
     return Response.json({ assets: all.assets.filter((asset) => !asset.name.endsWith(".flatpak")) });
   };
-  const flatpak = fakeHost({ format: "", flatpak: { id: "com.opendungeonmaster.client", system: false }, fetchImpl: listing });
+  const flatpak = fakeHost({ format: "", flatpak: { id: "com.opengamemaster.client", system: false }, fetchImpl: listing });
   const status = await new Updater("flatpak", "0.12.0", async () => "0.12.1", 0, flatpak.host).checkForUpdates();
   assert.equal(status.available, false);
   assert.equal(status.latest, "0.12.0");
@@ -895,4 +895,180 @@ test("a release published without this install's package is not offered to it", 
   // A listing GitHub would not give does not hide the update.
   const offline = fakeHost({ format: "", flatpak: { id: "x", system: false }, fetchImpl: async () => new Response("", { status: 503 }) });
   assert.equal((await new Updater("flatpak", "0.12.0", async () => "0.12.1", 0, offline.host).checkForUpdates()).available, true);
+});
+
+// A flatpak from before the rename to Open Game Master has the old app id
+// (src/main/app-names.ts): from the desktop it is offered the renamed app,
+// started by Steam it keeps updating as itself.
+const LEGACY_FLATPAK = "com.opendungeonmaster.client";
+
+test("release files keep a name from before the rename on request", async () => {
+  const { packageAssetName } = await import("../dist/main/updater.js");
+  assert.equal(packageAssetName("0.12.1", "flatpak", "linux", "x64", "", "open-dungeon-master-client"), "open-dungeon-master-client-0.12.1-x86_64.flatpak");
+  assert.equal(packageAssetName("0.12.1", "flatpak", "linux", "x64", ""), "open-game-master-client-0.12.1-x86_64.flatpak");
+});
+
+test("an old-id flatpak from the desktop is offered the renamed app at its own version, and installs it", async () => {
+  const { Updater } = await import("../dist/main/updater.js");
+  const fsp = await import("node:fs/promises");
+  const path = await import("node:path");
+  const folder = await tempFolder();
+  const { host, log } = fakeHost({
+    format: "",
+    downloadsDir: () => folder,
+    flatpak: { id: LEGACY_FLATPAK, system: false },
+    // The renamed app is not installed yet.
+    run: async (command, args) => {
+      log.ran.push([command, ...args]);
+      return { code: args.includes("info") ? 1 : 0, stderr: "" };
+    },
+  });
+  const updater = new Updater("flatpak", "0.12.1", async () => "0.12.1", 0, host);
+  const status = await updater.checkForUpdates();
+  assert.equal(status.available, true);
+  assert.equal(status.renamed, true);
+  assert.equal(status.latest, "0.12.1");
+  assert.equal(status.canDownload, true);
+  await updater.downloadAndInstall();
+  const file = path.join(folder, "open-game-master-client-0.12.1-x86_64.flatpak");
+  const info = ["flatpak-spawn", "--host", "flatpak", "info", "com.opengamemaster.client"];
+  assert.deepEqual(log.ran.at(-2), ["flatpak-spawn", "--host", "true"]);
+  assert.deepEqual(log.ran.at(-1), ["flatpak-spawn", "--host", "flatpak", "install", "--user", "-y", "--bundle", file]);
+  assert.ok(log.ran.slice(0, -2).every((call) => call.join(" ") === info.join(" ")), "before that it only asked whether the renamed app is there");
+  assert.deepEqual(log.relaunched, [""], "the restart is the hand-over (index.ts)");
+  assert.match(updater.progress().message, /Moving your servers and worlds/);
+  // A newer release is the one offered, still as the renamed app.
+  const newer = new Updater("flatpak", "0.12.1", async () => "0.12.2", 0, fakeHost({ format: "", flatpak: { id: LEGACY_FLATPAK, system: false } }).host);
+  assert.equal((await newer.checkForUpdates()).latest, "0.12.2");
+  await fsp.rm(folder, { recursive: true, force: true });
+});
+
+test("an old-id flatpak hands over straight away when the renamed app is installed", async () => {
+  const { Updater } = await import("../dist/main/updater.js");
+  const { host, log } = fakeHost({
+    format: "",
+    flatpak: { id: LEGACY_FLATPAK, system: true },
+    // A release with no renamed bundle at all.
+    fetchImpl: async () => Response.json({ assets: [] }),
+  });
+  const updater = new Updater("flatpak", "0.12.1", async () => "0.12.1", 0, host);
+  assert.equal((await updater.checkForUpdates()).renamed, true);
+  log.ran.length = 0;
+  await updater.downloadAndInstall();
+  assert.deepEqual(log.ran, [["flatpak-spawn", "--host", "flatpak", "info", "com.opengamemaster.client"]]);
+  assert.deepEqual(log.relaunched, [""]);
+});
+
+test("an old-id flatpak started by Steam updates in place from the old-name bundle", async () => {
+  const { Updater } = await import("../dist/main/updater.js");
+  const viaSteam = () => fakeHost({ format: "", flatpak: { id: LEGACY_FLATPAK, system: false }, launchedBySteam: true }).host;
+  assert.equal((await new Updater("flatpak", "0.12.1", async () => "0.12.1", 0, viaSteam()).checkForUpdates()).available, false);
+  const listed = [];
+  const host = viaSteam();
+  host.fetchImpl = async (url) => {
+    listed.push(String(url));
+    return Response.json({ assets: [{ name: "open-dungeon-master-client-0.12.2-x86_64.flatpak" }] });
+  };
+  const status = await new Updater("flatpak", "0.12.1", async () => "0.12.2", 0, host).checkForUpdates();
+  assert.equal(status.available, true);
+  assert.equal(status.renamed, undefined);
+  assert.equal(status.canDownload, true);
+});
+
+// The host half of flatpakMoveCommand, run for real in a scratch home against
+// a stand-in flatpak that logs what it was asked and says whether the
+// renamed app is installed.
+async function runMove({ installed = true, seed = async () => {} } = {}) {
+  const { flatpakMoveCommand } = await import("../dist/main/updater.js");
+  const fsp = await import("node:fs/promises");
+  const path = await import("node:path");
+  const { execFile } = await import("node:child_process");
+  const folder = await tempFolder();
+  const home = path.join(folder, "home");
+  await fsp.mkdir(path.join(home, ".var", "app"), { recursive: true });
+  await seed(home);
+  const calls = path.join(folder, "calls");
+  await fsp.writeFile(
+    path.join(folder, "flatpak"),
+    ["#!/bin/sh", `echo "$*" >> '${calls}'`, `[ "$1" = info ] && exit ${installed ? 0 : 1}`, "exit 0"].join("\n"),
+    { mode: 0o755 },
+  );
+  const [command, args] = flatpakMoveCommand(LEGACY_FLATPAK, "com.opengamemaster.client", false, home, ["--steam-deck"]);
+  assert.equal(command, "flatpak-spawn");
+  const stdout = await new Promise((resolve, reject) => {
+    execFile(args[1], args.slice(2), { env: { ...process.env, PATH: `${folder}:${process.env.PATH}` } }, (err, out) =>
+      err ? reject(err) : resolve(out),
+    );
+  });
+  assert.equal(stdout, "up\n");
+  const lines = (await fsp.readFile(calls, "utf8")).trim().split("\n").filter((line) => !line.startsWith("ps"));
+  return { home, lines, cleanup: () => fsp.rm(folder, { recursive: true, force: true }) };
+}
+
+test("the move hands the old flatpak's data to the renamed app, removes the old one and starts the new", async () => {
+  const fsp = await import("node:fs/promises");
+  const path = await import("node:path");
+  const data = (home, id) => path.join(home, ".var", "app", id, "config", "open-dungeon-master-client");
+  const run = await runMove({
+    seed: async (home) => {
+      await fsp.mkdir(data(home, LEGACY_FLATPAK), { recursive: true });
+      await fsp.writeFile(path.join(data(home, LEGACY_FLATPAK), "servers.json"), "{}");
+    },
+  });
+  try {
+    assert.equal(await fsp.readFile(path.join(data(run.home, "com.opengamemaster.client"), "servers.json"), "utf8"), "{}");
+    assert.equal(await fsp.stat(path.join(run.home, ".var", "app", LEGACY_FLATPAK)).catch(() => null), null);
+    assert.deepEqual(run.lines, [
+      "info com.opengamemaster.client",
+      `uninstall --user -y ${LEGACY_FLATPAK}`,
+      "run com.opengamemaster.client --steam-deck",
+    ]);
+  } finally {
+    await run.cleanup();
+  }
+});
+
+test("the move puts the data into a renamed app that ran once but has none, and never over data it has", async () => {
+  const fsp = await import("node:fs/promises");
+  const path = await import("node:path");
+  const data = (home, id) => path.join(home, ".var", "app", id, "config", "open-dungeon-master-client");
+  const seedOld = async (home) => {
+    await fsp.mkdir(data(home, LEGACY_FLATPAK), { recursive: true });
+    await fsp.writeFile(path.join(data(home, LEGACY_FLATPAK), "servers.json"), "old");
+  };
+  const empty = await runMove({
+    seed: async (home) => {
+      await seedOld(home);
+      await fsp.mkdir(path.join(home, ".var", "app", "com.opengamemaster.client", "cache"), { recursive: true });
+    },
+  });
+  try {
+    assert.equal(await fsp.readFile(path.join(data(empty.home, "com.opengamemaster.client"), "servers.json"), "utf8"), "old");
+    assert.ok(empty.lines.includes(`uninstall --user -y ${LEGACY_FLATPAK}`));
+  } finally {
+    await empty.cleanup();
+  }
+  const own = await runMove({
+    seed: async (home) => {
+      await seedOld(home);
+      await fsp.mkdir(data(home, "com.opengamemaster.client"), { recursive: true });
+      await fsp.writeFile(path.join(data(home, "com.opengamemaster.client"), "servers.json"), "new");
+    },
+  });
+  try {
+    assert.equal(await fsp.readFile(path.join(data(own.home, "com.opengamemaster.client"), "servers.json"), "utf8"), "new");
+    assert.equal(await fsp.readFile(path.join(data(own.home, LEGACY_FLATPAK), "servers.json"), "utf8"), "old");
+    assert.deepEqual(own.lines, ["info com.opengamemaster.client", "run com.opengamemaster.client --steam-deck"], "the old app stays with its data");
+  } finally {
+    await own.cleanup();
+  }
+});
+
+test("without the renamed app the move only starts the old flatpak again", async () => {
+  const run = await runMove({ installed: false });
+  try {
+    assert.deepEqual(run.lines, ["info com.opengamemaster.client", `run ${LEGACY_FLATPAK} --steam-deck`]);
+  } finally {
+    await run.cleanup();
+  }
 });

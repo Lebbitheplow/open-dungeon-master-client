@@ -17,13 +17,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { scopeCss } from "./scope-css.mjs";
+import { serverDir as findServerDir } from "./server-dir.mjs";
 
 const repo = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 export const RENDERER_ENTRIES = ["app", "topo", "bluetooth-picker"];
 
 export function serverDir() {
-  const dir = path.resolve(process.env.ODM_SERVER_DIR ?? path.join(repo, "..", "open-dungeon-master"));
+  const dir = findServerDir(repo);
   if (!fs.existsSync(path.join(dir, "src", "app", "page.tsx"))) {
     throw new Error(`No server checkout at ${dir}. Set ODM_SERVER_DIR.`);
   }

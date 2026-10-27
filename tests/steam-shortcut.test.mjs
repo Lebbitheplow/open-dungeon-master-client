@@ -15,6 +15,8 @@ import {
   deckOffersSteam,
   mergeLaunchOptions,
   mostRecentAccount,
+  renamedLaunchOptions,
+  repointRenamedShortcut,
   shortcutAppId,
   stableAppImagePath,
   steamShortcutState,
@@ -481,6 +483,77 @@ test("a fresh Steam with no list yet is a library the app is missing from", asyn
   const steam = await fakeHome();
   try {
     assert.equal(await steamShortcutState(request(steam.home).place, steam.home), "missing");
+  } finally {
+    await steam.cleanup();
+  }
+});
+
+// The flatpak from before the rename to Open Game Master had its own id
+// (src/main/app-names.ts); its Steam shortcut follows the app to the new one.
+const LEGACY_FLATPAK = "com.opendungeonmaster.client";
+const FLATPAK = "com.opengamemaster.client";
+const flatpakWish = {
+  name: SHORTCUT_NAME,
+  target: { exe: '"/usr/bin/flatpak"', startDir: '"/usr/bin"', launchOptions: `run ${FLATPAK}`, flatpakId: FLATPAK },
+  formerPaths: [],
+  gridDir: "/g",
+};
+
+test("the renamed flatpak takes over a shortcut to the old id, Steam's own --command included", () => {
+  assert.equal(
+    renamedLaunchOptions(`run --branch=stable --arch=x86_64 --command=open-dungeon-master-client ${LEGACY_FLATPAK} --steam-deck`),
+    `run --branch=stable --arch=x86_64 --command=open-game-master-client ${FLATPAK} --steam-deck`,
+  );
+  const steamMade = entry(
+    0,
+    n("appid", -777),
+    s("AppName", "Open Dungeon Master"),
+    s("Exe", '"/usr/bin/flatpak"'),
+    s("LaunchOptions", `run --branch=stable --arch=x86_64 --command=open-dungeon-master-client ${LEGACY_FLATPAK}`),
+    s("FlatpakAppID", LEGACY_FLATPAK),
+  );
+  const root = parseBinaryVdf(list(steamMade));
+  const { appid, added } = upsertShortcut(root, flatpakWish);
+  assert.equal(added, false);
+  assert.equal(appid, -777 >>> 0, "the library entry, its play time and artwork stay");
+  const [ours] = findEntry(root, "shortcuts").node.entries;
+  assert.equal(stringOf(ours.node.entries, "FlatpakAppID"), FLATPAK);
+  assert.equal(stringOf(ours.node.entries, "AppName"), SHORTCUT_NAME);
+  assert.equal(stringOf(ours.node.entries, "LaunchOptions"), `run --branch=stable --arch=x86_64 --command=open-game-master-client ${FLATPAK}`);
+});
+
+test("a shortcut still on the old flatpak counts as missing for the renamed one, and moves with it", async () => {
+  const legacyEntry = entry(
+    0,
+    n("appid", -777),
+    s("AppName", "Open Game Master"),
+    s("Exe", '"/usr/bin/flatpak"'),
+    s("LaunchOptions", `run ${LEGACY_FLATPAK}`),
+    s("FlatpakAppID", LEGACY_FLATPAK),
+  );
+  const steam = await fakeHome({ running: true, list: list(legacyEntry) });
+  try {
+    const renamed = { kind: "flatpak", execPath: "", appImagePath: "", flatpakId: FLATPAK };
+    assert.equal(await steamShortcutState(renamed, steam.home), "missing");
+    assert.equal(await steamShortcutState({ ...renamed, flatpakId: LEGACY_FLATPAK }, steam.home), "found");
+    const result = await repointRenamedShortcut({ home: steam.home, artDir: ART_DIR }, steam.host);
+    assert.equal(result.ok, true);
+    assert.equal(result.state, "updated");
+    assert.deepEqual(steam.calls.filter((call) => call !== "isRunning" && call !== "wait"), ["shutdown", "start"]);
+    const [ours] = findEntry(parseBinaryVdf(await readFile(path.join(steam.account, "config", "shortcuts.vdf"))), "shortcuts").node.entries;
+    assert.equal(stringOf(ours.node.entries, "FlatpakAppID"), FLATPAK);
+    assert.equal(stringOf(ours.node.entries, "LaunchOptions"), `run ${FLATPAK}`);
+    assert.equal(await steamShortcutState(renamed, steam.home), "found");
+  } finally {
+    await steam.cleanup();
+  }
+});
+
+test("with no shortcut to the old flatpak, the move leaves Steam alone", async () => {
+  const steam = await fakeHome({ running: true });
+  try {
+    assert.equal(await repointRenamedShortcut({ home: steam.home, artDir: ART_DIR }, steam.host), null);
+    assert.deepEqual(steam.calls, []);
   } finally {
     await steam.cleanup();
   }

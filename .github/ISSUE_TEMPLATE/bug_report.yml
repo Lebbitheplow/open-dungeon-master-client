@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        This form is for the app itself: installing or updating it, its title screen and Settings, sharing your world, and the local story or image AI it installs. A bug in the game screens, the rules or the AI Dungeon Master goes to the [main repository's bug form](https://github.com/Lebbitheplow/open-dungeon-master/issues/new?template=bug_report.yml). Questions about setting things up go to [Q&A in Discussions](https://github.com/Lebbitheplow/open-dungeon-master/discussions/categories/q-a) or [Discord](https://discord.gg/B2tQFr3TYD), where other players can help.
+        This form is for the app itself: installing or updating it, its title screen and Settings, sharing your world, and the local story or image AI it installs. A bug in the game screens, the rules or the AI Game Master goes to the [main repository's bug form](https://github.com/Lebbitheplow/open-game-master/issues/new?template=bug_report.yml). Questions about setting things up go to [Q&A in Discussions](https://github.com/Lebbitheplow/open-game-master/discussions/categories/q-a) or [Discord](https://discord.gg/B2tQFr3TYD), where other players can help.
 
         **Playing on someone else's server?** Tell whoever runs it first. Most problems come from how a server is set up, and they can check that.
   - type: checkboxes
@@ -17,7 +17,7 @@ body:
           required: true
         - label: I searched the open and closed issues here and in the main repository, and this is not one of them.
           required: true
-        - label: This is the app itself, not the game screens, the rules or the AI Dungeon Master.
+        - label: This is the app itself, not the game screens, the rules or the AI Game Master.
           required: true
   - type: textarea
     id: what-happened

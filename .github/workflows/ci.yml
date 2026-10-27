@@ -25,7 +25,7 @@ permissions:
   contents: read
 
 env:
-  ODM_SERVER_DIR: ${{ github.workspace }}/open-dungeon-master
+  ODM_SERVER_DIR: ${{ github.workspace }}/open-game-master
 
 defaults:
   run:
@@ -41,7 +41,7 @@ jobs:
         env:
           HEAD_REF: ${{ github.head_ref }}
         run: |
-          if [ -n "$HEAD_REF" ] && git ls-remote --exit-code --heads https://github.com/Lebbitheplow/open-dungeon-master.git "refs/heads/$HEAD_REF" >/dev/null; then
+          if [ -n "$HEAD_REF" ] && git ls-remote --exit-code --heads https://github.com/Lebbitheplow/open-game-master.git "refs/heads/$HEAD_REF" >/dev/null; then
             echo "ref=$HEAD_REF" >> "$GITHUB_OUTPUT"
             echo "Building against the server branch $HEAD_REF"
           else
@@ -49,14 +49,14 @@ jobs:
           fi
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          repository: Lebbitheplow/open-dungeon-master
-          path: open-dungeon-master
+          repository: Lebbitheplow/open-game-master
+          path: open-game-master
           ref: ${{ steps.server.outputs.ref }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
       - name: Install server dependencies
-        working-directory: open-dungeon-master
+        working-directory: open-game-master
         run: npm ci
       - run: npm ci
       - run: npm run lint
@@ -108,7 +108,7 @@ jobs:
         env:
           HEAD_REF: ${{ github.head_ref }}
         run: |
-          if [ -n "$HEAD_REF" ] && git ls-remote --exit-code --heads https://github.com/Lebbitheplow/open-dungeon-master.git "refs/heads/$HEAD_REF" >/dev/null; then
+          if [ -n "$HEAD_REF" ] && git ls-remote --exit-code --heads https://github.com/Lebbitheplow/open-game-master.git "refs/heads/$HEAD_REF" >/dev/null; then
             echo "ref=$HEAD_REF" >> "$GITHUB_OUTPUT"
             echo "Building against the server branch $HEAD_REF"
           else
@@ -116,8 +116,8 @@ jobs:
           fi
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          repository: Lebbitheplow/open-dungeon-master
-          path: open-dungeon-master
+          repository: Lebbitheplow/open-game-master
+          path: open-game-master
           ref: ${{ steps.server.outputs.ref }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -127,7 +127,7 @@ jobs:
           distribution: temurin
           java-version: 21
       - name: Install server dependencies
-        working-directory: open-dungeon-master
+        working-directory: open-game-master
         run: npm ci
       - run: npm ci
       - name: Install mobile dependencies
