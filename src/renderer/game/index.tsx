@@ -17,8 +17,27 @@ import { resolvedParams } from "./params.js";
 import { installLocalAssets, installRuntime, uninstallRuntime } from "./runtime.js";
 import { installAutoFocus } from "./autofocus.js";
 import { useSyncExternalStore } from "preact/compat";
+import { applyTheme, readThemeChoice, readUiScale } from "@/lib/theme-mode";
 
 installAutoFocus();
+
+// The reader's saved theme and text size. The server applies them from its
+// root layout (ThemeApplier), which the apps never load, so a day or night
+// theme or a larger text size chosen in Settings was lost at every start
+// until it was changed again. A theme left on Auto keeps the shells' dark
+// start.
+function applySavedTheme(): void {
+  if (readThemeChoice() !== "auto") {
+    applyTheme();
+    return;
+  }
+  const scale = readUiScale();
+  if (scale === 1) return;
+  const root = document.documentElement;
+  root.style.setProperty("--ui-scale", String(scale));
+  root.style.fontSize = `${scale * 100}%`;
+}
+applySavedTheme();
 
 type PageModule = { default: ComponentType<{ params: unknown; searchParams?: unknown }> };
 

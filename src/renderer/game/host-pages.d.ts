@@ -29,3 +29,13 @@ declare module "@/components/ui/ConfirmDialog" {
   import type { ComponentType } from "preact/compat";
   export const ConfirmHost: ComponentType<Record<string, never>>;
 }
+
+// The reader's theme and interface scale (src/lib/theme-mode.ts), which the
+// server applies from its root layout; the game root applies a saved choice
+// here when the screens load.
+declare module "@/lib/theme-mode" {
+  export type ThemeChoice = "auto" | "dark" | "light";
+  export function applyTheme(): void;
+  export function readThemeChoice(): ThemeChoice;
+  export function readUiScale(): number;
+}
