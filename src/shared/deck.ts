@@ -8,7 +8,7 @@
 export type DeckChoice = "auto" | "on" | "off";
 
 export interface DeckSignals {
-  env: Record<string, string | undefined>;
+  env: Env;
   argv: readonly string[];
   // /sys/devices/virtual/dmi/id/board_vendor and product_name, "" when
   // unreadable (not Linux, or a sandbox that hides them).
@@ -59,6 +59,23 @@ export function deckLaunchArgs(argv: readonly string[]): string[] {
   return flag === "on" ? ["--steam-deck"] : flag === "off" ? ["--no-steam-deck"] : [];
 }
 
+type Env = Record<string, string | undefined>;
+
+function inGameMode(env: Env): boolean {
+  return /gamescope/i.test(env.XDG_CURRENT_DESKTOP ?? "") || Boolean(env.GAMESCOPE_WAYLAND_DISPLAY);
+}
+
+// Did Steam start this run? Steam sets these for everything it launches,
+// non-Steam shortcuts too.
+export function steamLaunched(env: Env): boolean {
+  return (
+    inGameMode(env) ||
+    Boolean(env.SteamGameId || env.SteamAppId || env.SteamOverlayGameId) ||
+    env.SteamClientLaunch === "1" ||
+    env.SteamEnv === "1"
+  );
+}
+
 function osId(osRelease: string): string {
   const match = /^ID=["']?([^"'\n]*)/m.exec(osRelease);
   return (match?.[1] ?? "").trim().toLowerCase();
@@ -70,13 +87,8 @@ export function detectDeck(signals: DeckSignals): DeckInfo {
     (signals.dmiVendor.trim().toLowerCase() === "valve" && DECK_BOARDS.test(signals.dmiProduct.trim())) ||
     env.SteamDeck === "1" ||
     osId(signals.osRelease) === "steamos";
-  const gameMode = /gamescope/i.test(env.XDG_CURRENT_DESKTOP ?? "") || Boolean(env.GAMESCOPE_WAYLAND_DISPLAY);
-  // Steam sets these for everything it launches, non-Steam shortcuts too.
-  const steam =
-    gameMode ||
-    Boolean(env.SteamGameId || env.SteamAppId || env.SteamOverlayGameId) ||
-    env.SteamClientLaunch === "1" ||
-    env.SteamEnv === "1";
+  const gameMode = inGameMode(env);
+  const steam = steamLaunched(env);
   const choice = parseDeckChoice(signals.choice);
   const forced = deckFlag(signals.argv);
   const wanted = forced || choice;

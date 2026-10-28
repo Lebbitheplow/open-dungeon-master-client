@@ -19,6 +19,10 @@
 //       start:  starts a world in an empty folder: a clean install.
 //   node scripts/smoke-installed.mjs launch <app binary>
 //       Opens the app itself and checks it is still up 25 seconds later.
+//   node scripts/smoke-installed.mjs entries
+//       Checks Windows lists the app once, under the installer's upgrade key
+//       (electron-builder.yml nsis.guid) at this package.json version: an
+//       upgrade whose key changed installs a second copy beside the first.
 //
 // The world phases run inside the installed binary and must keep working
 // with the LocalServer of the release before this one, which seed runs on.
@@ -63,6 +67,33 @@ async function install(setup, dir, program) {
     await sleep(1000);
   }
   console.log(`installed ${setup} into ${dir}: ${path.basename(installedProgram(dir, names))}`);
+}
+
+// The uninstall entries in a `reg query <root> /s` listing, by key.
+export function uninstallEntries(listing) {
+  const entries = [];
+  for (const line of listing.split(/\r?\n/)) {
+    if (line.startsWith("HKEY_")) entries.push({ key: line.trim(), values: {} });
+    const value = /^\s+(\S+)\s+REG_\w+\s*(.*)$/.exec(line);
+    if (value && entries.length) entries[entries.length - 1].values[value[1]] = value[2].trim();
+  }
+  return entries;
+}
+
+function checkEntries() {
+  const guid = /^\s*guid:\s*(\S+)/m.exec(fs.readFileSync("electron-builder.yml", "utf8"))?.[1];
+  const version = JSON.parse(fs.readFileSync("package.json", "utf8")).version;
+  if (!guid) fail("electron-builder.yml names no nsis.guid");
+  const roots = ["HKCU", "HKLM", "HKLM\\Software\\WOW6432Node"].map((root) =>
+    root.includes("WOW6432Node") ? `${root}\\Microsoft\\Windows\\CurrentVersion\\Uninstall` : `${root}\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall`,
+  );
+  const ours = roots
+    .flatMap((root) => uninstallEntries(spawnSync("reg", ["query", root, "/s"], { encoding: "utf8" }).stdout ?? ""))
+    .filter((entry) => /^Open (Game|Dungeon) Master\b/.test(entry.values.DisplayName ?? ""));
+  for (const entry of ours) console.log(`${entry.key}: ${entry.values.DisplayName} (${entry.values.DisplayVersion})`);
+  if (ours.length !== 1) fail(`Windows lists the app ${ours.length} times; an upgrade must leave one`);
+  if (!ours[0].key.toLowerCase().endsWith(guid.toLowerCase())) fail(`the install is under ${ours[0].key}, not the upgrade key ${guid}`);
+  if (ours[0].values.DisplayVersion !== version) fail(`the listed version is ${ours[0].values.DisplayVersion}, not ${version}`);
 }
 
 function world(binary, phase, work) {
@@ -175,4 +206,5 @@ else if (mode === "exe") {
 }
 else if (mode === "world") world(args[0], args[1], args[2]);
 else if (mode === "launch") await launch(args[0]);
-else fail("usage: install | exe | world | launch (see the top of this file)");
+else if (mode === "entries") checkEntries();
+else fail("usage: install | exe | world | launch | entries (see the top of this file)");

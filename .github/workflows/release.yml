@@ -41,7 +41,7 @@
 # (windows-install), and the signed Android APK must start on an emulator
 # (android-launch). Every file a tag publishes gets a build provenance
 # attestation, which `gh attestation verify <file> --repo
-# Lebbitheplow/open-dungeon-master-client` checks; the downloads are not
+# Lebbitheplow/open-game-master-client` checks; the downloads are not
 # code signed, so this is how a player can tell one came from this build.
 name: release
 on:
@@ -58,7 +58,7 @@ on:
 # game screens, scripts/build-renderer.mjs), so every job that builds the
 # renderer checks the server repo out beside the client.
 env:
-  ODM_SERVER_DIR: ${{ github.workspace }}/open-dungeon-master
+  ODM_SERVER_DIR: ${{ github.workspace }}/open-game-master
 
 # The default workflow token is read-only; creating the release and
 # uploading assets needs contents write.
@@ -83,7 +83,7 @@ jobs:
         id: pick
         env:
           GH_TOKEN: ${{ github.token }}
-          SERVER_REPO: Lebbitheplow/open-dungeon-master
+          SERVER_REPO: Lebbitheplow/open-game-master
           WANTED: ${{ inputs.server_ref }}
         run: |
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
@@ -107,15 +107,15 @@ jobs:
           echo "Bundles server $ref" | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          repository: Lebbitheplow/open-dungeon-master
-          path: open-dungeon-master
+          repository: Lebbitheplow/open-game-master
+          path: open-game-master
           ref: ${{ steps.pick.outputs.ref }}
           # bundle-server.mjs creates a worktree from HEAD, so it needs real
           # history, not a shallow grafted checkout.
           fetch-depth: 0
       - name: The server commit this release ships
         id: server
-        run: echo "sha=$(git -C open-dungeon-master rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        run: echo "sha=$(git -C open-game-master rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
@@ -123,18 +123,18 @@ jobs:
         working-directory: client
         run: npm ci
       - name: Install server dependencies
-        working-directory: open-dungeon-master
+        working-directory: open-game-master
         run: npm ci
       - name: Bundle the server payload
         working-directory: client
         env:
-          ODM_SERVER_DIR: ${{ github.workspace }}/open-dungeon-master
+          ODM_SERVER_DIR: ${{ github.workspace }}/open-game-master
         run: npm run bundle-server
       # This one Linux-built payload ships to Windows and macOS too. Until
       # server 0.24.6 the bundler compiled its Windows branches away, and the
       # Windows app could not find an installed agent program (issue 14).
       - name: The payload keeps its Windows code
-        run: node open-dungeon-master/scripts/check-built-platform.mjs client/vendor/server/.next/server
+        run: node open-game-master/scripts/check-built-platform.mjs client/vendor/server/.next/server
       - name: Pack the payload without symlinks (Windows tar cannot extract
           them; each platform job recreates the module aliases)
         working-directory: client
@@ -177,8 +177,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          repository: Lebbitheplow/open-dungeon-master
-          path: open-dungeon-master
+          repository: Lebbitheplow/open-game-master
+          path: open-game-master
           ref: ${{ needs.payload.outputs.server_sha }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -194,7 +194,7 @@ jobs:
       - name: The payload and these screens come from the same server commit
         run: |
           built=$(node -p "require('./vendor/server/odm-payload.json').commit")
-          here=$(git -C open-dungeon-master rev-parse HEAD)
+          here=$(git -C open-game-master rev-parse HEAD)
           case "$here" in
             "$built"*) echo "server $here" ;;
             *) echo "::error::payload is server $built, screens are server $here"; exit 1 ;;
@@ -216,6 +216,25 @@ jobs:
           npm run build && node scripts/stage-desktop-payload.mjs &&
           npx electron-builder ${{ matrix.args }}
           --publish ${{ startsWith(github.ref, 'refs/tags/v') && 'always' || 'never' }}
+      # Installs from before the rename to Open Game Master look for their
+      # update by the old file names (src/main/app-names.ts), so the files
+      # they update from go up under those names too, until those installs
+      # have moved. The AppImage and the Windows installer find theirs
+      # through latest-linux.yml and latest.yml, which name the new files.
+      - name: Publish copies under the file names from before the rename
+        if: startsWith(github.ref, 'refs/tags/v') && runner.os != 'Windows'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p legacy
+          for file in release/open-game-master-client-*.rpm release/open-game-master-client-*.deb \
+            release/open-game-master-client-*.tar.gz release/open-game-master-client-*-mac.zip; do
+            [ -e "$file" ] || continue
+            name=$(basename "$file")
+            cp "$file" "legacy/open-dungeon-master-client-${name#open-game-master-client-}"
+          done
+          ls legacy
+          gh release upload "$GITHUB_REF_NAME" legacy/* --clobber
       - name: Keep the Windows installer for the install check
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -267,8 +286,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          repository: Lebbitheplow/open-dungeon-master
-          path: open-dungeon-master
+          repository: Lebbitheplow/open-game-master
+          path: open-game-master
           ref: ${{ needs.payload.outputs.server_sha }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -293,7 +312,7 @@ jobs:
       - name: The payload and these screens come from the same server commit
         run: |
           built=$(node -p "require('./vendor/server/odm-payload.json').commit")
-          here=$(git -C open-dungeon-master rev-parse HEAD)
+          here=$(git -C open-game-master rev-parse HEAD)
           case "$here" in
             "$built"*) echo "server $here" ;;
             *) echo "::error::payload is server $built, screens are server $here"; exit 1 ;;
@@ -305,7 +324,31 @@ jobs:
           npm run build && node scripts/stage-desktop-payload.mjs &&
           npx electron-builder --linux flatpak
           --publish ${{ startsWith(github.ref, 'refs/tags/v') && 'always' || 'never' }}
-      - name: Attest where the bundle was built
+      # A flatpak from before the rename has the old app id, and updates from
+      # a bundle under the old file name: this same build with that id. Run
+      # from the desktop it offers the renamed app and moves its data into it
+      # (src/main/updater.ts renamedFlatpak); run by Steam it keeps updating
+      # as itself.
+      - name: Build and publish the bundle for flatpaks from before the rename
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          npx electron-builder --linux flatpak --publish never \
+            -c.appId=com.opendungeonmaster.client \
+            '-c.flatpak.artifactName=open-dungeon-master-client-${version}-${arch}.${ext}'
+          ls release/*.flatpak
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            gh release upload "$GITHUB_REF_NAME" release/open-dungeon-master-client-*.flatpak --clobber
+          fi
+      # A dry run keeps both bundles, to try the move from an old-id install.
+      - name: Keep a dry run's bundles
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: flatpak-bundles
+          path: release/*.flatpak
+          retention-days: 3
+      - name: Attest where the bundles were built
         if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
@@ -332,8 +375,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          repository: Lebbitheplow/open-dungeon-master
-          path: open-dungeon-master
+          repository: Lebbitheplow/open-game-master
+          path: open-game-master
           ref: ${{ needs.payload.outputs.server_sha }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -357,7 +400,7 @@ jobs:
       - name: The payload and these screens come from the same server commit
         run: |
           built=$(node -p "require('./vendor/server/odm-payload.json').commit")
-          here=$(git -C open-dungeon-master rev-parse HEAD)
+          here=$(git -C open-game-master rev-parse HEAD)
           case "$here" in
             "$built"*) echo "server $here" ;;
             *) echo "::error::payload is server $built, screens are server $here"; exit 1 ;;
@@ -438,19 +481,19 @@ jobs:
             exit 1
           fi
           cp mobile/android/app/build/outputs/apk/release/app-arm64-v8a-release.apk \
-            "open-dungeon-master-client-$version.apk"
+            "open-game-master-client-$version.apk"
           cp mobile/android/app/build/outputs/bundle/release/app-release.aab \
-            "open-dungeon-master-client-$version.aab"
+            "open-game-master-client-$version.aab"
           gh release upload "v$version" \
-            "open-dungeon-master-client-$version.apk" \
-            "open-dungeon-master-client-$version.aab" --clobber
+            "open-game-master-client-$version.apk" \
+            "open-game-master-client-$version.aab" --clobber
       - name: Attest where they were built
         if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           subject-path: |
-            open-dungeon-master-client-*.apk
-            open-dungeon-master-client-*.aab
+            open-game-master-client-*.apk
+            open-game-master-client-*.aab
 
   # The NSIS installer this run built, installed silently over the release
   # before it on a clean Windows runner: the previous version starts its
@@ -491,6 +534,11 @@ jobs:
         run: |
           node scripts/smoke-installed.mjs install new/*Setup*.exe "$RUNNER_TEMP/odm" "Open Game Master.exe"
           node scripts/smoke-installed.mjs world "$RUNNER_TEMP/odm/Open Game Master.exe" verify "$RUNNER_TEMP/odm-world"
+      # The installer's upgrade key is pinned (electron-builder.yml nsis.guid)
+      # so a build over one from before the rename replaces it; a changed key
+      # would leave Windows listing two copies.
+      - name: Windows lists the app once, as this version
+        run: node scripts/smoke-installed.mjs entries
       - name: A world in an empty profile starts on this build
         run: node scripts/smoke-installed.mjs world "$RUNNER_TEMP/odm/Open Game Master.exe" start "$RUNNER_TEMP/odm-fresh"
       - name: The installed app opens and stays up
@@ -530,8 +578,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          repository: Lebbitheplow/open-dungeon-master
-          path: open-dungeon-master
+          repository: Lebbitheplow/open-game-master
+          path: open-game-master
           ref: ${{ needs.payload.outputs.server_sha }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -541,7 +589,7 @@ jobs:
           distribution: temurin
           java-version: 21
       - name: Install server dependencies
-        working-directory: open-dungeon-master
+        working-directory: open-game-master
         run: npm ci
       - run: npm ci
       - run: npm run lint

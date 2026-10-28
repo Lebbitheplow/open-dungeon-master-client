@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 import Module from "node:module";
+import { serverDir as findServerDir } from "../scripts/server-dir.mjs";
 
 // isolation.js imports electron for net and the session type; a stub stands
 // in under node and records what the module asks of it.
@@ -49,7 +50,7 @@ test("the server pages this app is built from make the board view frame credenti
   // Without it, an isolated shell refuses the view of every server older
   // than the frame's own embedder policy: the two ship together.
   const repo = path.resolve(import.meta.dirname, "..");
-  const serverDir = path.resolve(process.env.ODM_SERVER_DIR ?? path.join(repo, "..", "open-dungeon-master"));
+  const serverDir = findServerDir(repo);
   const view = fs.readFileSync(path.join(serverDir, "src", "app", "campaigns", "[campaignId]", "AddonBoardView.tsx"), "utf8");
   assert.match(view, /credentialless/);
 });

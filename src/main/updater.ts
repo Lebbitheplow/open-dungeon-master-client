@@ -1,5 +1,6 @@
 import type { AppUpdater, ProgressInfo } from "electron-updater";
 import type { InstallKind, UpdateChannel, UpdateProgress, UpdateStatus } from "../shared/types";
+import { APP_ID, LEGACY_APP_ID, LEGACY_PACKAGE_NAME, PACKAGE_NAME } from "./app-names";
 
 // Desktop updates against the GitHub Releases feed (electron-builder.yml
 // publish block). Every install channel applies the new build its own way:
@@ -33,7 +34,7 @@ import type { InstallKind, UpdateChannel, UpdateProgress, UpdateStatus } from ".
 // mismatched app and host is its own source of trouble.
 const STARTUP_CHECK_DELAY_MS = 1_200;
 
-const REPO = "Lebbitheplow/open-dungeon-master-client";
+const REPO = "Lebbitheplow/open-game-master-client";
 export const RELEASES_URL = `https://github.com/${REPO}/releases/latest`;
 const LATEST_RELEASE_API = `https://api.github.com/repos/${REPO}/releases/latest`;
 // Newest first by date, so one page holds the newest beta and anything
@@ -53,8 +54,9 @@ export function packageAssetName(
   platform: NodeJS.Platform,
   arch: string,
   format: PackageFormat,
+  prefix = PACKAGE_NAME,
 ): string {
-  const base = `open-dungeon-master-client-${version}`;
+  const base = `${prefix}-${version}`;
   // The zip, not the dmg: it unpacks straight into a bundle the app can
   // move over its own, with no disk image to mount and eject.
   if (platform === "darwin" && kind === "mac") return `${base}-${arch === "arm64" ? "arm64" : "x64"}-mac.zip`;
@@ -97,6 +99,8 @@ export interface InstallHost {
   // The flatpak this run is, and whether it sits in the system-wide
   // installation; null outside a flatpak.
   flatpak?: { id: string; system: boolean } | null;
+  // Steam started this run (src/shared/deck.ts steamLaunched).
+  launchedBySteam?: boolean;
   fetchImpl?: typeof fetch;
 }
 
@@ -156,20 +160,62 @@ export function flatpakIsSystemWide(info: string): boolean {
   return appPath.startsWith("/var/lib/flatpak/");
 }
 
+// A script the host runs for a flatpak once this copy has gone. "up" tells
+// the app the host has it; the script then goes on by itself, so the
+// flatpak-spawn that asked for it returns at once instead of holding this
+// sandbox open for as long as the script runs (an open sandbox still reads
+// as running in `flatpak ps`, and the wait below would only time out).
+function afterThisFlatpak(body: string, args: readonly string[]): [string, string[]] {
+  const script = [
+    "echo up",
+    'body="$1"; shift',
+    'if command -v setsid >/dev/null 2>&1; then setsid sh -c "$body" sh "$@" </dev/null >/dev/null 2>&1 &',
+    'else sh -c "$body" sh "$@" </dev/null >/dev/null 2>&1 &',
+    "fi",
+  ].join("\n");
+  return ["flatpak-spawn", ["--host", "sh", "-c", script, "sh", body, ...args]];
+}
+
+// Waits, up to a minute, for the flatpak $1 to stop running.
+const WAIT_FOR_FIRST = 'i=0; while [ "$i" -lt 120 ] && flatpak ps --columns=application | grep -qx "$1"; do sleep 0.5; i=$((i + 1)); done';
+
 // Starts a flatpak again from outside its sandbox once the running copy is
 // gone: a relaunch from inside would start the old build still mounted at
 // /app, and one started too soon meets the single-instance lock and quits.
-// "up" tells the app the host has the command before it quits; the wait
-// gives up after a minute. Any args follow the id to the new run.
+// Any args follow the id to the new run.
 export function flatpakRelaunchCommand(id: string, args: readonly string[] = []): [string, string[]] {
-  const script = [
-    "echo up",
-    "exec >/dev/null 2>&1",
-    "i=0",
-    'while [ "$i" -lt 120 ] && flatpak ps --columns=application | grep -qx "$1"; do sleep 0.5; i=$((i + 1)); done',
-    'exec flatpak run "$@"',
-  ].join("; ");
-  return ["flatpak-spawn", ["--host", "sh", "-c", script, "sh", id, ...args]];
+  return afterThisFlatpak([WAIT_FOR_FIRST, 'exec flatpak run "$@"'].join("\n"), [id, ...args]);
+}
+
+// Hands a flatpak from before the rename over to the renamed app, once the
+// old copy is gone: its data folder becomes the new id's (unless that one
+// has data of its own, which is never overwritten), the old copy is removed
+// from its installation, and the new one starts with any args. With the new
+// id not installed it only starts the old one again.
+export function flatpakMoveCommand(
+  fromId: string,
+  toId: string,
+  system: boolean,
+  home: string,
+  args: readonly string[] = [],
+): [string, string[]] {
+  const body = [
+    WAIT_FOR_FIRST,
+    'from="$1"; to="$2"; scope="$3"; old="$4/.var/app/$1"; new="$4/.var/app/$2"; shift 4',
+    'flatpak info "$to" >/dev/null 2>&1 || exec flatpak run "$from" "$@"',
+    // The data folder the app pins (index.ts), under the sandbox's config.
+    "data=config/open-dungeon-master-client",
+    "moved=yes",
+    'if [ -d "$old" ]; then',
+    '  if [ ! -e "$new" ]; then mv "$old" "$new" || moved=no',
+    '  elif [ -d "$old/$data" ] && [ ! -e "$new/$data" ]; then mkdir -p "$new/config" && mv "$old/$data" "$new/$data" || moved=no',
+    '  elif [ -d "$old/$data" ]; then moved=no',
+    "  fi",
+    "fi",
+    '[ "$moved" = yes ] && flatpak uninstall "$scope" -y "$from"',
+    'exec flatpak run "$to" "$@"',
+  ].join("\n");
+  return afterThisFlatpak(body, [fromId, toId, system ? "--system" : "--user", home, ...args]);
 }
 
 // POSIX single quotes for a shell word.
@@ -211,7 +257,7 @@ export type LatestVersionFetcher = (channel: UpdateChannel) => Promise<string>;
 // update to" rather than a failure worth showing the player.
 export async function fetchLatestReleaseVersion(fetchImpl: typeof fetch = fetch): Promise<string> {
   const res = await fetchImpl(LATEST_RELEASE_API, {
-    headers: { Accept: "application/vnd.github+json", "User-Agent": "open-dungeon-master-client" },
+    headers: { Accept: "application/vnd.github+json", "User-Agent": "open-game-master-client" },
   });
   if (res.status === 404) return "";
   if (!res.ok) throw new Error(`GitHub answered ${res.status} while checking for updates.`);
@@ -225,7 +271,7 @@ export async function fetchLatestReleaseVersion(fetchImpl: typeof fetch = fetch)
 export async function fetchNewestReleaseVersion(channel: UpdateChannel, fetchImpl: typeof fetch = fetch): Promise<string> {
   if (channel !== "beta") return fetchLatestReleaseVersion(fetchImpl);
   const res = await fetchImpl(RELEASES_API, {
-    headers: { Accept: "application/vnd.github+json", "User-Agent": "open-dungeon-master-client" },
+    headers: { Accept: "application/vnd.github+json", "User-Agent": "open-game-master-client" },
   });
   if (res.status === 404) return "";
   if (!res.ok) throw new Error(`GitHub answered ${res.status} while checking for updates.`);
@@ -244,7 +290,7 @@ export async function fetchNewestReleaseVersion(channel: UpdateChannel, fetchImp
 // bytes do not hash to it is never opened, unpacked or installed.
 export async function releaseAssetDigest(fetchImpl: typeof fetch, version: string, asset: string): Promise<string> {
   const res = await fetchImpl(`https://api.github.com/repos/${REPO}/releases/tags/v${version}`, {
-    headers: { Accept: "application/vnd.github+json", "User-Agent": "open-dungeon-master-client" },
+    headers: { Accept: "application/vnd.github+json", "User-Agent": "open-game-master-client" },
     signal: AbortSignal.timeout(30_000),
   });
   if (!res.ok) throw new Error(`GitHub answered ${res.status} while looking up version ${version}.`);
@@ -263,7 +309,7 @@ export async function releaseAssetDigest(fetchImpl: typeof fetch, version: strin
 export async function releaseHasAsset(fetchImpl: typeof fetch, version: string, asset: string): Promise<boolean> {
   try {
     const res = await fetchImpl(`https://api.github.com/repos/${REPO}/releases/tags/v${version}`, {
-      headers: { Accept: "application/vnd.github+json", "User-Agent": "open-dungeon-master-client" },
+      headers: { Accept: "application/vnd.github+json", "User-Agent": "open-game-master-client" },
       signal: AbortSignal.timeout(30_000),
     });
     if (!res.ok) return true;
@@ -359,7 +405,27 @@ export class Updater {
 
   private assetFor(version: string): string {
     if (!this.host || this.canSelfUpdate()) return "";
-    return packageAssetName(version, this.kind, this.host.platform, this.host.arch, this.host.format);
+    const prefix = this.renamedFlatpak() === "stay" ? LEGACY_PACKAGE_NAME : PACKAGE_NAME;
+    return packageAssetName(version, this.kind, this.host.platform, this.host.arch, this.host.format, prefix);
+  }
+
+  // A flatpak installed under the id from before the rename. Started from
+  // the desktop it offers the renamed app as its update, at this version or
+  // a newer one, and installing that moves its data across (index.ts hands
+  // over through flatpakMoveCommand). Started by Steam it keeps updating in
+  // place under its own id: moving would leave the library's shortcut on an
+  // app that is gone, and closing Steam to repoint it would close this app.
+  private renamedFlatpak(): "move" | "stay" | "" {
+    if (this.kind !== "flatpak" || this.host?.flatpak?.id !== LEGACY_APP_ID) return "";
+    return this.host.launchedBySteam ? "stay" : "move";
+  }
+
+  // Is the renamed app installed on the host already? Then the move needs
+  // no download.
+  private async renamedInstalled(): Promise<boolean> {
+    const host = this.host;
+    if (!host || !(await host.has("flatpak-spawn"))) return false;
+    return (await host.run("flatpak-spawn", ["--host", "flatpak", "info", APP_ID])).code === 0;
   }
 
   onStatus(listener: () => void): void {
@@ -396,6 +462,7 @@ export class Updater {
       // "Latest" on GitHub is the stable release, so a beta links to its own page.
       releasesUrl: channel === "beta" && available ? `https://github.com/${REPO}/releases/tag/v${latest}` : RELEASES_URL,
       channel,
+      ...(available && this.renamedFlatpak() === "move" ? { renamed: true } : {}),
     };
   }
 
@@ -444,6 +511,17 @@ export class Updater {
   private async checkGitHub(askForAsset = true): Promise<UpdateStatus> {
     const latest = await this.fetchLatest(this.channel());
     const newer = Boolean(latest) && isNewerVersion(latest, this.currentVersion);
+    if (this.renamedFlatpak() === "move") {
+      // The renamed app is the update even at this same version, and one
+      // installed already (from the website, say) needs no release file.
+      const version = newer ? latest : this.currentVersion;
+      if (await this.renamedInstalled()) return this.statusOf(version, true);
+      const asset = askForAsset ? this.assetFor(version) : "";
+      if (asset && this.host && !(await releaseHasAsset(this.host.fetchImpl ?? fetch, version, asset))) {
+        return this.statusOf(this.currentVersion, false);
+      }
+      return this.statusOf(version, true);
+    }
     const asset = newer && askForAsset ? this.assetFor(latest) : "";
     if (asset && this.host && !(await releaseHasAsset(this.host.fetchImpl ?? fetch, latest, asset))) {
       return this.statusOf(this.currentVersion, false);
@@ -766,7 +844,8 @@ export class Updater {
     ]);
     if (code !== 0) throw new Error(`Flatpak could not install version ${version}${lastLine(stderr)}`);
     await this.discard(file);
-    this.installed(version);
+    if (this.renamedFlatpak() === "move") this.moving();
+    else this.installed(version);
     host.relaunch();
   }
 
@@ -812,7 +891,7 @@ export class Updater {
       const expected = await releaseAssetDigest(fetcher, status.latest, asset);
       stillAlive();
       const res = await fetcher(`https://github.com/${REPO}/releases/download/v${status.latest}/${asset}`, {
-        headers: { "User-Agent": "open-dungeon-master-client" },
+        headers: { "User-Agent": "open-game-master-client" },
         signal: idle.signal,
       });
       if (!res.ok || !res.body) throw new Error(`GitHub answered ${res.status} for ${asset}.`);
@@ -858,7 +937,16 @@ export class Updater {
   async downloadAndInstall(): Promise<void> {
     if (this.kind === "nsis") return this.installNsis();
     if (this.kind === "appimage") return this.installAppImage();
+    if (this.renamedFlatpak() === "move" && (await this.renamedInstalled())) {
+      this.moving();
+      this.host!.relaunch();
+      return;
+    }
     return this.downloadPackage();
+  }
+
+  private moving(): void {
+    this.setProgress({ state: "ready", percent: 100, message: "Open Game Master is installed. Moving your servers and worlds into it..." });
   }
 
   // One quiet background check per app run, once the page can hear the

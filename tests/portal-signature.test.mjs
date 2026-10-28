@@ -10,9 +10,10 @@ import { pathToFileURL } from "node:url";
 import { test } from "node:test";
 import { LocalServer } from "../dist/main/local-server.js";
 import { PORTAL_ORIGIN_COOKIE, PORTAL_SIG_COOKIE, PORTAL_TOKEN_COOKIE } from "../dist/shared/portal-logic.js";
+import { serverDir as findServerDir } from "../scripts/server-dir.mjs";
 
 const repo = path.dirname(path.dirname(new URL(import.meta.url).pathname));
-const serverDir = path.resolve(process.env.ODM_SERVER_DIR ?? path.join(repo, "..", "open-dungeon-master"));
+const serverDir = findServerDir(repo);
 const serverPortal = path.join(serverDir, "src", "lib", "portal.ts");
 
 test("the shell's signature is the one the bundled server accepts", async (t) => {

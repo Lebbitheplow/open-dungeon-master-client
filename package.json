@@ -1,5 +1,5 @@
 {
-  "name": "open-dungeon-master-client",
+  "name": "open-game-master-client",
   "version": "0.21.3",
   "private": true,
   "description": "Desktop client for Open Game Master: connect to any server, or play fully offline",
@@ -8,10 +8,10 @@
     "name": "Kaleb Lutterman",
     "email": "kaleblutterman@gmail.com"
   },
-  "homepage": "https://opendungeonmaster.com",
+  "homepage": "https://opengamemaster.com",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Lebbitheplow/open-dungeon-master-client.git"
+    "url": "https://github.com/Lebbitheplow/open-game-master-client.git"
   },
   "main": "dist/main/index.js",
   "engines": {

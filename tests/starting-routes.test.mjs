@@ -5,13 +5,14 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { STARTING_ROUTES } from "../dist/shared/starting-routes.js";
 import { creationHosts, nextCreationHost, pickPrimaryHost } from "../dist/shared/home-view-logic.js";
+import { serverDir as findServerDir } from "../scripts/server-dir.mjs";
 
 // The home's ways into a game say where they lead in the same words as the
 // server's title screen (audit F06/C02), and the home says which host its
 // New campaign, Characters and Workshop open on, with a way to pick another.
 
 const repo = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const serverDir = path.resolve(process.env.ODM_SERVER_DIR ?? path.join(repo, "..", "open-dungeon-master"));
+const serverDir = findServerDir(repo);
 
 test("the shell's route lines match the server's", () => {
   const tiles = fs.readFileSync(path.join(serverDir, "src/app/home/QuickTiles.tsx"), "utf8");

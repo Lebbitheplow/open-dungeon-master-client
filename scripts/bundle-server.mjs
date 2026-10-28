@@ -3,7 +3,7 @@
 // offline play. Builds from a clean git worktree of the server repo so the
 // server checkout's own .next (often serving a live instance) is untouched.
 //
-//   ODM_SERVER_DIR=/path/to/open-dungeon-master npm run bundle-server
+//   ODM_SERVER_DIR=/path/to/open-game-master npm run bundle-server
 //
 // The native better-sqlite3 module is rebuilt for Electron's ABI, because the
 // bundled server runs under the Electron binary in Node mode.
@@ -16,11 +16,10 @@ import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
 import { pruneServerPayload } from "./prune-server-payload.mjs";
 import { addEmbeddingBindings } from "./stage-desktop-payload.mjs";
+import { serverDir as findServerDir } from "./server-dir.mjs";
 
 const repo = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const serverDir = path.resolve(
-  process.env.ODM_SERVER_DIR ?? path.join(repo, "..", "open-dungeon-master"),
-);
+const serverDir = findServerDir(repo);
 const vendorDir = path.join(repo, "vendor", "server");
 
 function run(cmd, args, opts = {}) {
@@ -111,7 +110,7 @@ try {
     // server version.
     pack = path.join(buildDir, packRel);
     fs.mkdirSync(path.dirname(pack), { recursive: true });
-    const asset = `https://github.com/Lebbitheplow/open-dungeon-master/releases/download/v${serverPkg.version}/open5e.sqlite.gz`;
+    const asset = `https://github.com/Lebbitheplow/open-game-master/releases/download/v${serverPkg.version}/open5e.sqlite.gz`;
     const fetched = await fetchPack(asset, pack);
     if (!fetched) {
       console.log("No content pack in the server checkout or its release; importing one for the payload");

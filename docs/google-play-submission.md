@@ -424,7 +424,7 @@ Uploading the current universal build as a single artifact would be near that
 cap for no reason.
 
 **Done 2026-09-05.** `release.yml` runs `assembleRelease bundleRelease` and
-uploads both `open-dungeon-master-client-<v>.apk` and `<v>.aab` to the GitHub
+uploads both `open-game-master-client-<v>.apk` and `<v>.aab` to the GitHub
 release; the AAB is what goes into the Play Console. Verified locally: the
 bundle task builds at API 36 alongside the APK.
 

@@ -47,8 +47,11 @@ async function setupShutdown() {
     electron: { app, safeStorage: {}, shell: {}, session: { defaultSession: {} } },
     // The shell's pages are isolated at start (src/main/isolation.ts): nothing to do here.
     "./isolation": { isolateShellPages: () => {} },
-    "../shared/deck": { detectDeck: () => ({ gameMode: false, active: false, device: false }) },
+    "../shared/deck": { detectDeck: () => ({ gameMode: false, active: false, device: false }), steamLaunched: () => false },
     "../shared/deep-link": { joinLinkFromArgv: () => null },
+    "./app-names": { APP_ID: "com.opengamemaster.client", LEGACY_APP_ID: "com.opendungeonmaster.client" },
+    "./steam-shortcut": { repointRenamedShortcut: async () => null },
+    "./steam-host": { systemSteamHost: () => ({}) },
     "./local-ai/manager": { LocalAiManager: class { stop() { aiStops++; return ai.promise; } } },
     "./local-server": { LocalServer: class { stop() { localStops++; return local.promise; } } },
     // A reset the previous run asked for (src/main/reset.ts): none here.

@@ -3,9 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { serverDir as findServerDir } from "../scripts/server-dir.mjs";
 
 const repo = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const serverDir = path.resolve(process.env.ODM_SERVER_DIR ?? path.join(repo, "..", "open-dungeon-master"));
+const serverDir = findServerDir(repo);
 
 // The server pages the apps open the old way, on purpose: the legal pages,
 // which read the same anywhere.

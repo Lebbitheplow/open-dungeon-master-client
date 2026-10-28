@@ -1,40 +1,42 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/docs/banner.png" alt="Open Game Master" width="100%">
+<img src="https://raw.githubusercontent.com/Lebbitheplow/open-game-master/main/docs/banner.png" alt="Open Game Master" width="100%">
 
 <br>
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-d4ab3a?labelColor=151229&style=flat-square)](package.json)
-[![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android-d4ab3a?labelColor=151229&style=flat-square)](https://github.com/Lebbitheplow/open-dungeon-master-client/releases/latest)
+[![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android-d4ab3a?labelColor=151229&style=flat-square)](https://github.com/Lebbitheplow/open-game-master-client/releases/latest)
 [![Hosts its own world](https://img.shields.io/badge/server-built%20in-d4ab3a?labelColor=151229&style=flat-square)](#a-world-on-your-device)
-[![Latest release](https://img.shields.io/github/v/release/Lebbitheplow/open-dungeon-master-client?color=d4ab3a&labelColor=151229&style=flat-square)](https://github.com/Lebbitheplow/open-dungeon-master-client/releases/latest)
+[![Latest release](https://img.shields.io/github/v/release/Lebbitheplow/open-game-master-client?color=d4ab3a&labelColor=151229&style=flat-square)](https://github.com/Lebbitheplow/open-game-master-client/releases/latest)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-e0703a?labelColor=151229&style=flat-square)](#building-from-source)
-[![Main codebase](https://img.shields.io/badge/main%20codebase-open--dungeon--master-d4ab3a?labelColor=151229&style=flat-square&logo=github)](https://github.com/Lebbitheplow/open-dungeon-master)
+[![Main codebase](https://img.shields.io/badge/main%20codebase-open--game--master-d4ab3a?labelColor=151229&style=flat-square&logo=github)](https://github.com/Lebbitheplow/open-game-master)
 
 </div>
 
 > [!NOTE]
 > Open Game Master was called Open Dungeon Master until October 2026. Installed
-> apps update in place and keep their servers, sign-ins and worlds; only the
-> name and the website ([opengamemaster.com](https://opengamemaster.com)) moved.
+> apps update in place and keep their servers, sign-ins and worlds; the name, the
+> website ([opengamemaster.com](https://opengamemaster.com)), this repository and
+> the release file names moved. A flatpak installed before the rename has an id of
+> its own: it offers the renamed app as its next update and moves its data into it.
 
 > [!IMPORTANT]
 > **The main codebase is
-> [Lebbitheplow/open-dungeon-master](https://github.com/Lebbitheplow/open-dungeon-master).**
+> [Lebbitheplow/open-game-master](https://github.com/Lebbitheplow/open-game-master).**
 > The game itself (rules engines, the AI Game Master, the game screens and the
 > server) lives there, and so do most issues and contributions. This repository only
 > packages that server into the desktop and Android apps. If you are looking to run a
 > server, change how the game plays, or report a bug at the table, start there.
 
 These are the **desktop and Android apps for
-[Open Game Master](https://github.com/Lebbitheplow/open-dungeon-master)**, the
+[Open Game Master](https://github.com/Lebbitheplow/open-game-master)**, the
 multiplayer D&amp;D 5e table with an AI (or human) Game Master. Every app carries
 a complete Open Game Master server inside it, so **you do not need a server to
 play**: install the app, open your world, and share a room code with your friends.
 When you do have a server, the app connects to it (or to any number of them) as well.
 
 The rules engines, the AI Game Master and the game screens all come from the
-[server repository](https://github.com/Lebbitheplow/open-dungeon-master); this
+[server repository](https://github.com/Lebbitheplow/open-game-master); this
 repository is the shell around them. It runs the bundled server on your machine or
 phone, opens a public address for it when you share, runs the AI Game Master on
 whatever you already have (a local model it installs for you, an API key, or a CLI
@@ -51,7 +53,7 @@ the game screens natively for whichever host you play on.
 
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/docs/screenshot-phone.png" alt="A table on a phone: GM narration above the hand of cards, the turn order and the table's tab bar" width="240">
+<img src="https://raw.githubusercontent.com/Lebbitheplow/open-game-master/main/docs/screenshot-phone.png" alt="A table on a phone: GM narration above the hand of cards, the turn order and the table's tab bar" width="240">
 
 <sub><i>A live table on a phone. The Android app hosts that world itself.</i></sub>
 
@@ -60,11 +62,11 @@ the game screens natively for whichever host you play on.
 ## Download
 
 The latest stable release is on the
-[Releases page](https://github.com/Lebbitheplow/open-dungeon-master-client/releases/latest).
+[Releases page](https://github.com/Lebbitheplow/open-game-master-client/releases/latest).
 Every build ships first as a beta (marked Pre-release there) and is promoted to stable
 unchanged once it holds up; the desktop app offers the betas too with App settings >
 This app > Beta updates. How the channels work:
-[releases.md](https://github.com/Lebbitheplow/open-dungeon-master/blob/main/docs/releases.md).
+[releases.md](https://github.com/Lebbitheplow/open-game-master/blob/main/docs/releases.md).
 More help lives in the [knowledge base](https://opengamemaster.com/guide/):
 installing on [Windows](https://opengamemaster.com/guide/desktop/install-windows/),
 [macOS](https://opengamemaster.com/guide/desktop/install-macos/),
@@ -75,10 +77,10 @@ installing on [Windows](https://opengamemaster.com/guide/desktop/install-windows
 | Platform | File | Notes |
 | --- | --- | --- |
 | **Windows** (x64) | `Open-Game-Master-Setup-<version>.exe` | Installer; updates itself. Not code signed: when SmartScreen says "Windows protected your PC", choose More info, then Run anyway. |
-| **macOS** (Apple Silicon) | `open-dungeon-master-client-<version>-arm64-mac.dmg` | Not notarized yet: the first time macOS blocks it, open System Settings > Privacy & Security and choose Open Anyway (on macOS 14 and earlier, right-click the app and choose Open). |
-| **macOS** (Intel) | `open-dungeon-master-client-<version>-x64-mac.dmg` | Same as above. |
+| **macOS** (Apple Silicon) | `open-game-master-client-<version>-arm64-mac.dmg` | Not notarized yet: the first time macOS blocks it, open System Settings > Privacy & Security and choose Open Anyway (on macOS 14 and earlier, right-click the app and choose Open). |
+| **macOS** (Intel) | `open-game-master-client-<version>-x64-mac.dmg` | Same as above. |
 | **Linux** (x64) | `.AppImage`, `.deb`, `.rpm`, `.tar.gz`, `.flatpak` | The AppImage carries a static runtime, so it runs on distros that no longer ship libfuse2. |
-| **Android** 8.0+ (arm64) | `open-dungeon-master-client-<version>.apk` | Sideload it: allow installs from your browser or file manager when Android asks. |
+| **Android** 8.0+ (arm64) | `open-game-master-client-<version>.apk` | Sideload it: allow installs from your browser or file manager when Android asks. |
 
 **What your machine needs.** The app wants 4 GB of memory (8 GB recommended);
 measured on Linux it uses about 1.2 GB with its world open, and the installer is
@@ -93,55 +95,55 @@ setup, with the machines it was measured on and what hosting a group needs:
 file; compare it with `sha256sum <file>` (or `Get-FileHash <file>` in PowerShell).
 Releases after 0.17.6 also carry a build attestation, which proves a file came out
 of this repository's release workflow:
-`gh attestation verify <file> --repo Lebbitheplow/open-dungeon-master-client`.
+`gh attestation verify <file> --repo Lebbitheplow/open-game-master-client`.
 
 ## What's in the box
 
 <table>
 <tr>
 <td width="50%" valign="top" align="center">
-<img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/local-data.webp" width="56"><br>
+<img src="https://raw.githubusercontent.com/Lebbitheplow/open-game-master/main/public/sidebar-icons/local-data.webp" width="56"><br>
 <b>A world on your device</b><br>
 <sub>The app runs its own Open Game Master server: enter your world from the title screen and it wakes up, close the app and it sleeps. Campaigns, characters and pictures stay on your computer or phone. No account anywhere else.</sub>
 </td>
 <td width="50%" valign="top" align="center">
-<img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/chats.webp" width="56"><br>
+<img src="https://raw.githubusercontent.com/Lebbitheplow/open-game-master/main/public/sidebar-icons/chats.webp" width="56"><br>
 <b>Share it with one code</b><br>
 <sub>Open a campaign lobby and the app opens a public address for your world through a Cloudflare tunnel, with no port forwarding and no router setup. Friends join with the room code, an invite link, or a QR code. For a table in the same room, share on this Wi-Fi instead and play with no internet at all.</sub>
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top" align="center">
-<img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/support.webp" width="56"><br>
+<img src="https://raw.githubusercontent.com/Lebbitheplow/open-game-master/main/public/sidebar-icons/support.webp" width="56"><br>
 <b>Any server, one app</b><br>
 <sub>Add servers by address and the app remembers each session. A room code finds its table wherever the host is sharing from, even though the host's address changes every time, and <code>odm://</code> invite links open straight into the app.</sub>
 </td>
 <td width="50%" valign="top" align="center">
-<img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/story.webp" width="56"><br>
+<img src="https://raw.githubusercontent.com/Lebbitheplow/open-game-master/main/public/sidebar-icons/story.webp" width="56"><br>
 <b>Native game screens</b><br>
 <sub>The app ships the game's own screens and draws them itself; only game data travels to the host. The controls match everywhere, and a shared world costs far less traffic. Much older hosts open their own pages instead.</sub>
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top" align="center">
-<img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/text-model.webp" width="56"><br>
+<img src="https://raw.githubusercontent.com/Lebbitheplow/open-game-master/main/public/sidebar-icons/text-model.webp" width="56"><br>
 <b>Story AI, your choice</b><br>
 <sub>Decide who narrates your world: a human at the table, an AI Game Master on your own OpenAI API key, or, on desktop, a CLI agent you already pay for (Codex or Grok Build, which paint the pictures too, Claude Code or opencode) narrating on its own subscription, or a local model the app sizes to your hardware, downloads and runs for you: gpt-oss-20b on a 16 GB gaming card.</sub>
 </td>
 <td width="50%" valign="top" align="center">
-<img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/images.webp" width="56"><br>
+<img src="https://raw.githubusercontent.com/Lebbitheplow/open-game-master/main/public/sidebar-icons/images.webp" width="56"><br>
 <b>Local scene art</b><br>
 <sub>Portraits, scene art and location maps from the Codex or Grok Build agent that narrates, your OpenAI key, or, on desktop, a local ComfyUI the app installs with one curated SDXL checkpoint. Text and image stacks install and uninstall separately.</sub>
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top" align="center">
-<img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/chats.webp" width="56"><br>
+<img src="https://raw.githubusercontent.com/Lebbitheplow/open-game-master/main/public/sidebar-icons/chats.webp" width="56"><br>
 <b>Dice, voice and devices</b><br>
 <sub>Pixels Bluetooth dice pair on desktop and Android alike, the 3D dice tray rolls in the app, and App settings holds the microphone, playback device and every volume, reachable over any running table.</sub>
 </td>
 <td width="50%" valign="top" align="center">
-<img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/characters.webp" width="56"><br>
+<img src="https://raw.githubusercontent.com/Lebbitheplow/open-game-master/main/public/sidebar-icons/characters.webp" width="56"><br>
 <b>One home, and a guided first launch</b><br>
 <sub>The app's home is your world's home: the table you were last at fills the screen with its latest scene and a "when last we left" recap, and your other tables sit as save slots grouped by host. A first launch asks your name, who tells the story and how it sounds, and a guided tour shows where everything lives.</sub>
 </td>
@@ -268,7 +270,10 @@ an update or a reinstall never touches it:
 - **Windows:** `%APPDATA%\open-dungeon-master-client`
 - **macOS:** `~/Library/Application Support/open-dungeon-master-client`
 - **Linux:** `~/.config/open-dungeon-master-client` (a flatpak keeps it under
-  `~/.var/app/com.opendungeonmaster.client/config/`)
+  `~/.var/app/com.opengamemaster.client/config/`)
+
+The folder keeps its name from before the rename, so every install still finds
+its data.
 - **Android:** the app's private storage, which uninstalling the app removes.
 
 Inside it, `data/` holds the world's database and its key, and `local-server/`
@@ -323,17 +328,18 @@ deletes anything you made:
 
 - **Node 22+** and npm.
 - **A checkout of the server repository beside this one**, at
-  `../open-dungeon-master`, with its dependencies installed (`npm install` there).
+  `../open-game-master` (or `../open-dungeon-master`, a clone from before the
+  rename), with its dependencies installed (`npm install` there).
   The build bundles the server's page components into the app, and
   `bundle-server` builds the embedded server from it. Point elsewhere with
-  `ODM_SERVER_DIR=/path/to/open-dungeon-master`.
+  `ODM_SERVER_DIR=/path/to/open-game-master`.
 
 ```bash
-git clone https://github.com/Lebbitheplow/open-dungeon-master.git
-git clone https://github.com/Lebbitheplow/open-dungeon-master-client.git
-(cd open-dungeon-master && npm install)
+git clone https://github.com/Lebbitheplow/open-game-master.git
+git clone https://github.com/Lebbitheplow/open-game-master-client.git
+(cd open-game-master && npm install)
 
-cd open-dungeon-master-client
+cd open-game-master-client
 npm install
 npm run bundle-server   # builds vendor/server from a clean worktree at server HEAD
 npm start               # builds and launches the desktop app
@@ -422,7 +428,7 @@ Publish the server release first when a client release depends on server changes
 Promote a beta that held up with
 `gh release edit v<version> --prerelease=false --latest`, together with the server
 release it bundles (its release body names it); the rules are in the server's
-[releases.md](https://github.com/Lebbitheplow/open-dungeon-master/blob/main/docs/releases.md). The Android signing key comes from the
+[releases.md](https://github.com/Lebbitheplow/open-game-master/blob/main/docs/releases.md). The Android signing key comes from the
 `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS`
 repository secrets. Keep `package.json` and `mobile/package.json` on the same version;
 the Android upload refuses a tag that does not match.
@@ -444,7 +450,7 @@ There is no telemetry.
 ## Credits and licenses
 
 The apps are MIT licensed, like the
-[Open Game Master server](https://github.com/Lebbitheplow/open-dungeon-master),
+[Open Game Master server](https://github.com/Lebbitheplow/open-game-master),
 whose README lists the credits and content licenses for the game itself. The desktop
 app is built on [Electron](https://www.electronjs.org/), the Android app on
 [Capacitor](https://capacitorjs.com/); sharing uses

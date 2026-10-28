@@ -1,13 +1,13 @@
 blank_issues_enabled: false
 contact_links:
   - name: A bug in the game, the rules or the server
-    url: https://github.com/Lebbitheplow/open-dungeon-master/issues/new?template=bug_report.yml
-    about: The game screens, the AI Dungeon Master and the server live in the main repository. Report those there.
+    url: https://github.com/Lebbitheplow/open-game-master/issues/new?template=bug_report.yml
+    about: The game screens, the AI Game Master and the server live in the main repository. Report those there.
   - name: An idea for the game or the apps
-    url: https://github.com/Lebbitheplow/open-dungeon-master/issues/new?template=feature_request.yml
+    url: https://github.com/Lebbitheplow/open-game-master/issues/new?template=feature_request.yml
     about: Feature requests for both are kept in the main repository.
   - name: Help installing or setting up
-    url: https://github.com/Lebbitheplow/open-dungeon-master/discussions/categories/q-a
+    url: https://github.com/Lebbitheplow/open-game-master/discussions/categories/q-a
     about: Questions about installing, models, backends and settings. Other players can help there; issues are only for bugs.
   - name: Chat on Discord
     url: https://discord.gg/B2tQFr3TYD

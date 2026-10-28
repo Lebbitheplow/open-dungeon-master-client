@@ -1,4 +1,4 @@
-appId: com.opendungeonmaster.client
+appId: com.opengamemaster.client
 productName: Open Game Master
 directories:
   output: release
@@ -22,6 +22,8 @@ extraResources:
   - from: build/steam
     to: steam
 asar: true
+# A Linux build also answers to its program's old name (scripts/after-pack.mjs).
+afterPack: scripts/after-pack.mjs
 # One 1024px source, rendered from build/icon.svg by scripts/make-icons.mjs;
 # electron-builder converts it to .icns and .ico itself.
 icon: build/icon.png
@@ -34,7 +36,7 @@ icon: build/icon.png
 publish:
   provider: github
   owner: Lebbitheplow
-  repo: open-dungeon-master-client
+  repo: open-game-master-client
 # Registers odm:// on macOS (Info.plist), Windows (installer) and Linux
 # (.desktop MimeType), so invite links open the app.
 protocols:
@@ -48,8 +50,24 @@ toolsets:
 linux:
   target: [AppImage, deb, rpm, tar.gz]
   category: Game
-  synopsis: Multiplayer TTRPG campaigns with an AI or human Dungeon Master
+  synopsis: Multiplayer TTRPG campaigns with an AI or human Game Master
   artifactName: ${name}-${version}-${arch}.${ext}
+# The package from before the rename to Open Game Master was
+# open-dungeon-master-client, in /opt/Open Dungeon Master: this one replaces
+# it instead of installing beside it, and carries its program path as a link
+# to the new program, the path that app's updater restarts once the package
+# manager is done (src/main/updater.ts installPackage). The link is a file,
+# not the old folder: rpm cannot turn a folder into a link.
+deb:
+  fpm:
+    - --replaces=open-dungeon-master-client
+    - --conflicts=open-dungeon-master-client
+    - build/linux/legacy-program=/opt/Open Dungeon Master/open-dungeon-master-client
+rpm:
+  fpm:
+    # fpm writes Obsoletes for an rpm's --replaces.
+    - --replaces=open-dungeon-master-client
+    - build/linux/legacy-program=/opt/Open Dungeon Master/open-dungeon-master-client
 # Built separately in CI via --linux flatpak (needs flatpak-builder plus the
 # freedesktop runtime and Electron base app installed); not part of the
 # default linux target list so dist:linux keeps working without them.
@@ -96,5 +114,9 @@ mac:
 win:
   target: [nsis]
 nsis:
+  # The upgrade key installs from before the rename have: by default it is
+  # derived from appId, and a new key would install a second copy beside the
+  # first instead of replacing it.
+  guid: 4bc32ad9-32d2-546d-bfa7-24ebd14d8fa9
   oneClick: false
   allowToChangeInstallationDirectory: true

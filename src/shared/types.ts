@@ -353,6 +353,9 @@ export interface UpdateStatus {
   releasesUrl: string;
   // The channel the answer came from.
   channel: UpdateChannel;
+  // A flatpak from before the rename to Open Game Master, offered the
+  // renamed app (src/main/updater.ts renamedFlatpak).
+  renamed?: boolean;
 }
 
 // "available" is the once-per-run background check finding something; the

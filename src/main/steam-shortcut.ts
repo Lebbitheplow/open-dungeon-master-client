@@ -16,6 +16,7 @@ import { copyFile, mkdir, readFile, readdir, realpath, rename, stat, writeFile }
 import path from "node:path";
 import { crc32 } from "node:zlib";
 import type { InstallKind, SteamAddResult } from "../shared/types";
+import { APP_ID, LEGACY_APP_ID, LEGACY_PACKAGE_NAME, PACKAGE_NAME } from "./app-names";
 import { versionedAppImageName } from "./updater";
 import {
   findEntry,
@@ -33,7 +34,7 @@ export const SHORTCUT_NAME = "Open Game Master";
 // The name an AppImage takes for its shortcut: no version in it, so the
 // updater replaces the file in place (replaceAppImage) and Steam's
 // shortcut keeps finding it.
-export const STABLE_APPIMAGE_NAME = "OpenDungeonMaster.AppImage";
+export const STABLE_APPIMAGE_NAME = "OpenGameMaster.AppImage";
 
 // Steam installs the shortcut can go into, most trusted first: ~/.steam/steam
 // is the link Steam itself keeps to the install it runs from.
@@ -174,14 +175,32 @@ export interface ShortcutWish {
   gridDir: string;
 }
 
+// Does the entry start this flatpak id?
+function startsFlatpak(fields: readonly VdfEntry[], id: string): boolean {
+  if (stringOf(fields, "FlatpakAppID") === id) return true;
+  const exe = unquoted(stringOf(fields, "Exe"));
+  return path.basename(exe) === "flatpak" && stringOf(fields, "LaunchOptions").split(/\s+/).includes(id);
+}
+
 function startsThisApp(fields: readonly VdfEntry[], wish: ShortcutWish): boolean {
   const exe = unquoted(stringOf(fields, "Exe"));
   const { flatpakId } = wish.target;
-  if (flatpakId) {
-    if (stringOf(fields, "FlatpakAppID") === flatpakId) return true;
-    return path.basename(exe) === "flatpak" && stringOf(fields, "LaunchOptions").split(/\s+/).includes(flatpakId);
-  }
+  // The renamed app also claims a shortcut to its flatpak from before the
+  // rename (app-names.ts), and points it at itself.
+  if (flatpakId) return startsFlatpak(fields, flatpakId) || (flatpakId === APP_ID && startsFlatpak(fields, LEGACY_APP_ID));
   return [unquoted(wish.target.exe), ...wish.formerPaths].includes(exe);
+}
+
+// Launch options written for the flatpak from before the rename, made to
+// start the renamed one: its id, and the program Steam's own dialog names
+// with --command.
+export function renamedLaunchOptions(options: string): string {
+  return options
+    .split(/(\s+)/)
+    .map((token) =>
+      token === LEGACY_APP_ID ? APP_ID : token === `--command=${LEGACY_PACKAGE_NAME}` ? `--command=${PACKAGE_NAME}` : token,
+    )
+    .join("");
 }
 
 const str = (value: string): VdfNode => ({ type: "string", value });
@@ -220,7 +239,9 @@ export function upsertShortcut(root: VdfEntry[], wish: ShortcutWish): { appid: n
     setEntry(fields, "Exe", str(wish.target.exe));
     setEntry(fields, "StartDir", str(wish.target.startDir));
     setEntry(fields, "icon", str(path.join(wish.gridDir, `${appid}_icon.png`)));
-    setEntry(fields, "LaunchOptions", str(mergeLaunchOptions(stringOf(fields, "LaunchOptions"), wish.target.launchOptions, same)));
+    const options = stringOf(fields, "LaunchOptions");
+    const own = wish.target.flatpakId === APP_ID ? renamedLaunchOptions(options) : options;
+    setEntry(fields, "LaunchOptions", str(mergeLaunchOptions(own, wish.target.launchOptions, same)));
     setEntry(fields, "IsHidden", int(0));
     setEntry(fields, "FlatpakAppID", str(wish.target.flatpakId));
     return { appid, added: false };
@@ -346,7 +367,23 @@ export async function steamShortcutState(place: InstallPlace, home: string): Pro
   // An AppImage a previous add renamed is named by its stable path.
   const formerPaths = place.appImagePath ? [place.appImagePath, stableAppImagePath(place.appImagePath)] : [];
   const wish = { name: SHORTCUT_NAME, target, formerPaths, gridDir: "" };
-  return findOurShortcut(shortcuts.node.entries, wish) ? "found" : "missing";
+  const ours = findOurShortcut(shortcuts.node.entries, wish);
+  // One that still starts the flatpak from before the rename starts an app
+  // that is gone: adding again points it here.
+  if (ours && target.flatpakId === APP_ID && !startsFlatpak(ours.node.entries, APP_ID)) return "missing";
+  return ours ? "found" : "missing";
+}
+
+// A flatpak moving to the renamed app takes its Steam shortcut along: the
+// entry that starts the old id is pointed at the new one, Steam closing and
+// opening again for it as for Add to Steam. null when there is none.
+export async function repointRenamedShortcut(
+  request: Pick<AddToSteamRequest, "home" | "artDir">,
+  host: SteamHost,
+): Promise<SteamAddResult | null> {
+  const legacy: InstallPlace = { kind: "flatpak", execPath: "", appImagePath: "", flatpakId: LEGACY_APP_ID };
+  if ((await steamShortcutState(legacy, request.home)) !== "found") return null;
+  return addToSteam({ ...request, place: { ...legacy, flatpakId: APP_ID }, launchedBySteam: false, restart: true }, host);
 }
 
 const BY_HAND = "Add it from Steam instead: Games, then Add a Non-Steam Game to My Library.";

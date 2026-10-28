@@ -8,31 +8,31 @@
 # package) are detected as the "managed" kind and deliberately defer to
 # pacman: the app only announces new versions, it never rewrites files that
 # a package manager owns.
-pkgname=open-dungeon-master-client-bin
+pkgname=open-game-master-client-bin
 pkgver=0.1.0
 pkgrel=1
 pkgdesc="Desktop client for Open Game Master, the self-hostable TTRPG platform"
 arch=('x86_64')
-url="https://opendungeonmaster.com"
+url="https://opengamemaster.com"
 license=('MIT')
 depends=('gtk3' 'nss' 'alsa-lib' 'libxss')
-provides=('open-dungeon-master-client')
+provides=('open-game-master-client')
 options=('!strip')
-source=("open-dungeon-master-client-${pkgver}-x64.tar.gz::https://github.com/Lebbitheplow/open-dungeon-master-client/releases/download/v${pkgver}/open-dungeon-master-client-${pkgver}-x64.tar.gz")
+source=("open-game-master-client-${pkgver}-x64.tar.gz::https://github.com/Lebbitheplow/open-game-master-client/releases/download/v${pkgver}/open-game-master-client-${pkgver}-x64.tar.gz")
 sha256sums=('SKIP')
 
 package() {
-  install -dm755 "$pkgdir/opt/open-dungeon-master"
-  cp -a "$srcdir"/*/. "$pkgdir/opt/open-dungeon-master/"
+  install -dm755 "$pkgdir/opt/open-game-master"
+  cp -a "$srcdir"/*/. "$pkgdir/opt/open-game-master/"
   install -dm755 "$pkgdir/usr/bin"
-  ln -s "/opt/open-dungeon-master/open-dungeon-master-client" \
-    "$pkgdir/usr/bin/open-dungeon-master-client"
+  ln -s "/opt/open-game-master/open-game-master-client" \
+    "$pkgdir/usr/bin/open-game-master-client"
   install -Dm644 /dev/stdin \
-    "$pkgdir/usr/share/applications/open-dungeon-master-client.desktop" <<'EOF'
+    "$pkgdir/usr/share/applications/open-game-master-client.desktop" <<'EOF'
 [Desktop Entry]
 Name=Open Game Master
-Comment=Multiplayer TTRPG campaigns with an AI or human Dungeon Master
-Exec=/opt/open-dungeon-master/open-dungeon-master-client %u
+Comment=Multiplayer TTRPG campaigns with an AI or human Game Master
+Exec=/opt/open-game-master/open-game-master-client %u
 Terminal=false
 Type=Application
 Categories=Game;

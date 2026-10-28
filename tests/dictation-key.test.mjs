@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { serverDir as findServerDir } from "../scripts/server-dir.mjs";
 
 // The hold-to-dictate key (server issue 291) is chosen on the server's
 // screens, which the apps draw, and refused there when it would fight
@@ -12,7 +13,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // added here with a free key fails this until the server keeps it too.
 
 const repo = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const serverDir = path.resolve(process.env.ODM_SERVER_DIR ?? path.join(repo, "..", "open-dungeon-master"));
+const serverDir = findServerDir(repo);
 const rulesFile = path.join(serverDir, "src", "lib", "dictation-shortcut.ts");
 const windowSource = fs.readFileSync(path.join(repo, "src", "main", "window.ts"), "utf8");
 const gamepadSource = fs.readFileSync(path.join(repo, "src", "renderer", "gamepad.ts"), "utf8");
