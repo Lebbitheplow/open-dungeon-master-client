@@ -421,13 +421,15 @@ export function repaintUpdatePopup(): void {
 }
 
 // The legal links and the source, the same three the server's home ends
-// on. Both hosts hand an off-origin link to the system browser.
+// on. GitHub is the main repository, where the issues, the docs and the
+// contributors are, not the apps' own. Both hosts hand an off-origin link to
+// the system browser.
 export function legalLinks(): HTMLElement[] {
   const links: HTMLElement[] = [];
   for (const [label, href] of [
     ["Privacy policy", "https://opengamemaster.com/privacy/"],
     ["Terms of service", "https://opengamemaster.com/terms/"],
-    ["GitHub", "https://github.com/Lebbitheplow/open-game-master-client"],
+    ["GitHub", "https://github.com/Lebbitheplow/open-game-master"],
   ] as const) {
     const link = el("a", "foot-link", label);
     link.href = href;
