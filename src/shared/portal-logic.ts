@@ -132,7 +132,14 @@ export function portalEligible(input: { bundled: string; remote: string }): Port
 // 0.31.0): the console's "Who goes" on Move the party and "Spoke against it"
 // on a deed send fields an older host drops, so a split party would never be
 // split and an objection never heard, with nothing on the screen to say so.
-export const NATIVE_MIN_SERVER = "0.31.0";
+// Raised for the portraits, kept companions and hopes for the story (server
+// PRs 572, 573 and 574, issue 569): a companion's "Paint a portrait" and
+// "Save to my characters" call routes an older host does not have, the
+// companion builder promises a companion kept in the library that an older
+// host never keeps, and "Hopes for this story" (the builder's Hero step and
+// the sheet in play) is a field an older host drops while answering the save
+// as done, so the hopes vanish with nothing on the screen to say so.
+export const NATIVE_MIN_SERVER = "0.31.1";
 
 export function nativeEligible(remote: string): PortalVerdict {
   const version = parseVersion(remote);
