@@ -108,7 +108,7 @@ test("Steam's keyboard link carries a clean rect and the line mode", () => {
 test("the shoulders' lines say what each needs before it talks", () => {
   const line = (control) => PAD_LEGEND.find((entry) => entry.control.startsWith(control)).does;
   assert.match(line("L1"), /, once Audio and dice has the mic on Push to talk$/);
-  assert.match(line("R1"), /^Talk to the Dungeon Master, once the world has speech to text: /);
+  assert.match(line("R1"), /^Talk to the Game Master, once the world has speech to text: /);
   assert.match(NO_TALK_NOTICE, /^This world has no speech to text yet\./);
 });
 

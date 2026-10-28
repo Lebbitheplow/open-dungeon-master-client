@@ -21,22 +21,22 @@
 > [!IMPORTANT]
 > **The main codebase is
 > [Lebbitheplow/open-dungeon-master](https://github.com/Lebbitheplow/open-dungeon-master).**
-> The game itself (rules engines, the AI Dungeon Master, the game screens and the
+> The game itself (rules engines, the AI Game Master, the game screens and the
 > server) lives there, and so do most issues and contributions. This repository only
 > packages that server into the desktop and Android apps. If you are looking to run a
 > server, change how the game plays, or report a bug at the table, start there.
 
 These are the **desktop and Android apps for
 [Open Game Master](https://github.com/Lebbitheplow/open-dungeon-master)**, the
-multiplayer D&amp;D 5e table with an AI (or human) Dungeon Master. Every app carries
+multiplayer D&amp;D 5e table with an AI (or human) Game Master. Every app carries
 a complete Open Game Master server inside it, so **you do not need a server to
 play**: install the app, open your world, and share a room code with your friends.
 When you do have a server, the app connects to it (or to any number of them) as well.
 
-The rules engines, the AI Dungeon Master and the game screens all come from the
+The rules engines, the AI Game Master and the game screens all come from the
 [server repository](https://github.com/Lebbitheplow/open-dungeon-master); this
 repository is the shell around them. It runs the bundled server on your machine or
-phone, opens a public address for it when you share, runs the AI Dungeon Master on
+phone, opens a public address for it when you share, runs the AI Game Master on
 whatever you already have (a local model it installs for you, an API key, or a CLI
 agent subscription like Codex or Grok Build, which also paint the scene art), and draws
 the game screens natively for whichever host you play on.
@@ -51,7 +51,7 @@ the game screens natively for whichever host you play on.
 
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/docs/screenshot-phone.png" alt="A table on a phone: DM narration above the hand of cards, the turn order and the table's tab bar" width="240">
+<img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/docs/screenshot-phone.png" alt="A table on a phone: GM narration above the hand of cards, the turn order and the table's tab bar" width="240">
 
 <sub><i>A live table on a phone. The Android app hosts that world itself.</i></sub>
 
@@ -126,7 +126,7 @@ of this repository's release workflow:
 <td width="50%" valign="top" align="center">
 <img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/text-model.webp" width="56"><br>
 <b>Story AI, your choice</b><br>
-<sub>Decide who narrates your world: a human at the table, an AI Dungeon Master on your own OpenAI API key, or, on desktop, a CLI agent you already pay for (Codex or Grok Build, which paint the pictures too, Claude Code or opencode) narrating on its own subscription, or a local model the app sizes to your hardware, downloads and runs for you: gpt-oss-20b on a 16 GB gaming card.</sub>
+<sub>Decide who narrates your world: a human at the table, an AI Game Master on your own OpenAI API key, or, on desktop, a CLI agent you already pay for (Codex or Grok Build, which paint the pictures too, Claude Code or opencode) narrating on its own subscription, or a local model the app sizes to your hardware, downloads and runs for you: gpt-oss-20b on a 16 GB gaming card.</sub>
 </td>
 <td width="50%" valign="top" align="center">
 <img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/images.webp" width="56"><br>
@@ -178,9 +178,9 @@ decides who narrates the world on your device. The
 [knowledge base](https://opengamemaster.com/guide/desktop/story-ai-on-desktop/)
 walks each door:
 
-- **A human Dungeon Master.** The app keeps the sheets, dice, maps and record; a
+- **A human Game Master.** The app keeps the sheets, dice, maps and record; a
   person narrates. Works everywhere, no model needed.
-- **Your own OpenAI API key.** The AI Dungeon Master and scene images run on OpenAI,
+- **Your own OpenAI API key.** The AI Game Master and scene images run on OpenAI,
   billed to your key.
 - **A local model** (desktop only, and only with at least 16 GB of graphics
   memory: a 16 GB card, or 24 GB of memory on a Mac). The app scans your GPU and
@@ -188,7 +188,7 @@ walks each door:
   downloads) or gpt-oss-20b (12 GB) for a 16 GB card, and adds a small
   Qwen3.5-4B utility model for summaries when there is room. Below 16 GB it
   offers none, since no model that small plays the full rules well; use your
-  OpenAI key, an agent, or a human Dungeon Master there. **On a gaming PC with a
+  OpenAI key, an agent, or a human Game Master there. **On a gaming PC with a
   16 GB card, pick gpt-oss-20b** ("Story model for 16 GB"): it fits on the card
   whole and keeps turns quick. With 32 GB or more of system memory the list may also
   offer the 35B at Q4 on that card, partly in system memory, which plays a little
@@ -213,8 +213,8 @@ Python virtual environment with the SDXL base checkpoint: about 15 GB of disk
 with its Python packages, on Windows or Linux, with Python 3.10 to 3.14 and Git
 installed first, and 8 GB of graphics memory.
 
-To play with an AI Dungeon Master on someone else's server, connect to a server
-whose admin has set one up. Tables run by a human Dungeon Master work on every host.
+To play with an AI Game Master on someone else's server, connect to a server
+whose admin has set one up. Tables run by a human Game Master work on every host.
 
 ## Servers and invites
 

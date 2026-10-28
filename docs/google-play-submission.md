@@ -336,7 +336,7 @@ account and a device-hosted world. Checked 2026-09-06: it answers 200, as do
 
 **Recommended target age group: 18 and over.** Reasoning:
 
-- The AI Dungeon Master is whatever model the server operator pointed at.
+- The AI Game Master is whatever model the server operator pointed at.
   There is no content filter the app can guarantee, and the terms of service
   already say so.
 - Players type free-form text to each other and can talk over voice chat.
@@ -351,7 +351,7 @@ Families entirely, which is the right call here.
 | --- | --- | --- |
 | Violence | Yes, fantasy or cartoon violence, non-graphic | Turn-based 5e combat with hit points, monsters, and character death. No depiction beyond prose and optional generated art. |
 | Blood or gore | Mild, prose only | Dark fantasy and horror genres are selectable. |
-| Sexual content or nudity | No explicit content | The live DM prompt hard-codes fade to black: "Intimacy is available only to partners and always FADES TO BLACK ... No explicit sexual content, ever, however the table asks" (`src/lib/dm/prompt.ts`, `relationshipRules`). Romance is a relationship ladder only. See finding B-1 for dead code that contradicts this. |
+| Sexual content or nudity | No explicit content | The live GM prompt hard-codes fade to black: "Intimacy is available only to partners and always FADES TO BLACK ... No explicit sexual content, ever, however the table asks" (`src/lib/dm/prompt.ts`, `relationshipRules`). Romance is a relationship ladder only. See finding B-1 for dead code that contradicts this. |
 | Profanity | Possible, user-generated | Players type freely; the model may swear. |
 | Controlled substances | Incidental, fantasy setting | Taverns and potions. |
 | Gambling | No | Dice are a game mechanic, no wagering, no simulated gambling. |
@@ -381,7 +381,7 @@ tabletop game rather than lean on someone else's trademark.
 **For the first upload (v0.7.3, versionCode 703), 493 characters:**
 
 ```
-First test build. Open Game Master runs a 5e tabletop campaign with an AI Dungeon Master, on your own phone or on a server you choose.
+First test build. Open Game Master runs a 5e tabletop campaign with an AI Game Master, on your own phone or on a server you choose.
 
 - Host a world on your phone and share it with friends over a private link
 - Join a table by address or QR invite
@@ -683,7 +683,7 @@ its not being there.
 passes.
 
 **Fix.** Delete `DEFAULT_SYSTEM`, `IMAGE_SYSTEM`, `IMAGE_DISABLED_SYSTEM`, and
-`buildStoryMessages` from `story-prompt.ts`. The exported helpers the DM path
+`buildStoryMessages` from `story-prompt.ts`. The exported helpers the GM path
 actually uses (`stripReasoningArtifacts`, `extractStoryText`,
 `parseStoryModelResult`, `createStreamingArtifactFilter`,
 `packStoryHistory`, `dimensionsForImage`) all stay.

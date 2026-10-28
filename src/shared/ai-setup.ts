@@ -179,7 +179,7 @@ export function openAiPatch(setup: AiSetup, saved: SavedAi): { patch: object } |
   const apiKey = setup.apiKey.trim().slice(0, 400);
   if (!apiKey && !saved.keySaved) return { error: "Enter the API key." };
   const model = setup.model.trim().slice(0, 200);
-  if (!model) return { error: "Choose the Dungeon Master model from the ones your key lists." };
+  if (!model) return { error: "Choose the Game Master model from the ones your key lists." };
   const utilityModel = setup.utilityModel.trim().slice(0, 200) || model;
   const key = <K extends string>(field: K) => (apiKey ? { [field]: apiKey } : {});
   return {

@@ -337,7 +337,7 @@ function renderLocalAiTiers(hardware: HardwareInfo, tiers: LocalAiTier[]): void 
       "Pick your storyteller",
       tiers.some((tier) => tier.fits)
         ? `${gpu}: ${memory}. Greyed-out choices need more memory.`
-        : `${gpu}: ${memory}. A local storyteller needs at least ${LOCAL_AI_MINIMUM_GB} GB of graphics memory (24 GB of memory on a Mac), so this machine is below it. Your OpenAI key, an agent you already have or a human Dungeon Master runs the table here instead.`,
+        : `${gpu}: ${memory}. A local storyteller needs at least ${LOCAL_AI_MINIMUM_GB} GB of graphics memory (24 GB of memory on a Mac), so this machine is below it. Your OpenAI key, an agent you already have or a human Game Master runs the table here instead.`,
     ),
     choices,
     needsLine,
@@ -492,10 +492,10 @@ function renderOpenAiForm(saved: SavedAi | null = null): void {
   keyField.placeholder = keySaved ? "Saved on this device. Blank keeps it." : "sk-...";
   // No model is named by the app: both fields offer what the key lists, the
   // storyteller's filled with the catalog's pick once the list arrives.
-  const [modelLabel, modelField] = input("Dungeon Master model", "text", saved?.model || "");
+  const [modelLabel, modelField] = input("Game Master model", "text", saved?.model || "");
   modelField.placeholder = "One of the models your key lists";
   const [utilityLabel, utilityField] = input("Utility model (cheaper, for summaries)", "text", saved?.utilityModel || "");
-  utilityField.placeholder = "Blank uses the Dungeon Master model";
+  utilityField.placeholder = "Blank uses the Game Master model";
   const listed = el("datalist");
   listed.id = "openai-models";
   modelField.setAttribute("list", listed.id);
@@ -504,7 +504,7 @@ function renderOpenAiForm(saved: SavedAi | null = null): void {
   // Fast for each role on its own: OpenAI's API is asked for it for any
   // named model, at the premium price, so a choice for the storyteller does
   // not spend it on every summary too.
-  const speed = speedChoice(saved?.fast === true, { label: "Fast processing for the Dungeon Master (premium price)" });
+  const speed = speedChoice(saved?.fast === true, { label: "Fast processing for the Game Master (premium price)" });
   const utilitySpeed = speedChoice(saved?.utilityFast === true, {
     label: "Fast processing for the utility model (premium price)",
     note: false,
@@ -580,7 +580,7 @@ function renderOpenAiForm(saved: SavedAi | null = null): void {
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     if (!modelField.value.trim()) {
-      error.textContent = "Choose the Dungeon Master model from the ones your key lists.";
+      error.textContent = "Choose the Game Master model from the ones your key lists.";
       modelField.focus();
       return;
     }

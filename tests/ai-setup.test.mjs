@@ -42,9 +42,9 @@ test("one key covers the storyteller, the utility model and the pictures", () =>
 // The server names no model (its PR 298), and neither does the door: the
 // storyteller is the player's pick from what the key lists.
 test("no storyteller model is invented: a blank one is refused", () => {
-  assert.deepEqual(openAiPatch(setup("sk-1", "  "), NO_SAVED_AI), { error: "Choose the Dungeon Master model from the ones your key lists." });
+  assert.deepEqual(openAiPatch(setup("sk-1", "  "), NO_SAVED_AI), { error: "Choose the Game Master model from the ones your key lists." });
   assert.deepEqual(openAiPatch(setup("", ""), { keySaved: true, model: "", utilityModel: "" }), {
-    error: "Choose the Dungeon Master model from the ones your key lists.",
+    error: "Choose the Game Master model from the ones your key lists.",
   });
 });
 
@@ -258,7 +258,7 @@ test("with no obvious pick the field stays blank and the player is told where to
 test("a refused save writes nothing", async () => {
   const fake = fakeWorld({ recommended: { image: "listed-painter" } });
   assert.deepEqual(await saveOpenAiDoor(setup("", "my-storyteller"), fake.world), { error: "Enter the API key." });
-  assert.deepEqual(await saveOpenAiDoor(setup("sk-1", ""), fake.world), { error: "Choose the Dungeon Master model from the ones your key lists." });
+  assert.deepEqual(await saveOpenAiDoor(setup("sk-1", ""), fake.world), { error: "Choose the Game Master model from the ones your key lists." });
   assert.equal(fake.patches.length, 0);
   assert.equal(fake.asked.length, 0);
 });

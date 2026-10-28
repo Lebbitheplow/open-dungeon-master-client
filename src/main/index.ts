@@ -331,7 +331,7 @@ function main(): void {
 // files its key as "<app name> Safe Storage" (the macOS Keychain, the Linux
 // secret service), and every saved sign-in, the device world's included, is
 // sealed with it. Those keys were made while the app was called Open
-// Dungeon Master, so that name stays here, set before anything reads it:
+// Game Master, so that name stays here, set before anything reads it:
 // renaming it would leave every saved sign-in unreadable. What people see
 // (the window, the menus, the installer, the Dock) comes from productName,
 // Open Game Master.

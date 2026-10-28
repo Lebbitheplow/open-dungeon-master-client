@@ -55,11 +55,11 @@ export const APP_TOUR_STEPS: TourStep[] = [
   },
   {
     id: "workshop",
-    title: "The DM workshop",
-    body: "The Workshop is where a Dungeon Master preps: maps, monsters, NPCs, lore and handouts, ready to drop into any campaign.",
+    title: "The GM workshop",
+    body: "The Workshop is where a Game Master preps: maps, monsters, NPCs, lore and handouts, ready to drop into any campaign.",
     anchors: ["tile-workshop", "hero"],
     fallbackBody:
-      "Once your world has begun, a Workshop line appears in this menu: the Dungeon Master's prep bench for maps, monsters, NPCs, lore and handouts.",
+      "Once your world has begun, a Workshop line appears in this menu: the Game Master's prep bench for maps, monsters, NPCs, lore and handouts.",
   },
   {
     id: "characters",
