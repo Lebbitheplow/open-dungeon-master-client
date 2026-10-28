@@ -616,8 +616,10 @@ export class Updater {
   }
 
   // The Mac bundle is replaced whole: the zip unpacks, the old bundle steps
-  // aside, the new one takes its path, and the relaunch starts it from
-  // there. A copy Gatekeeper runs from a read-only random path (never moved
+  // aside, the new one takes its place under its own name, and the relaunch
+  // starts it from there. Its own name, because a bundle named for the
+  // product before a rename (Open Dungeon Master.app) would otherwise keep
+  // that name in Applications forever. A copy Gatekeeper runs from a read-only random path (never moved
   // out of Downloads) or a disk image is not where the app lives, so the
   // new build goes into Applications instead. A folder this account cannot
   // write to takes the move behind the administrator password prompt.
@@ -649,6 +651,7 @@ export class Updater {
     // Beside the bundle, the swap is one rename on the same disk; the
     // elevated move starts from a folder this account can write.
     const staging = pathModule.join(elevated ? pathModule.dirname(file) : parent, `.odm-update-${version}`);
+    let target = bundle;
     await rm(staging, { recursive: true, force: true });
     await mkdir(staging, { recursive: true });
     try {
@@ -657,45 +660,67 @@ export class Updater {
       const unpacked = (await readdir(staging)).find((entry) => entry.endsWith(".app"));
       if (!unpacked) throw new Error(`The download of version ${version} did not contain an app.`);
       const fresh = pathModule.join(staging, unpacked);
-      if (elevated) await this.moveBundleAsAdmin(fresh, bundle, version);
-      else await this.moveBundle(fresh, bundle);
+      target = pathModule.join(parent, unpacked);
+      if (elevated) await this.moveBundleAsAdmin(fresh, bundle, target, version);
+      else await this.moveBundle(fresh, bundle, target);
     } finally {
       await rm(staging, { recursive: true, force: true }).catch(() => undefined);
     }
     await this.discard(file);
     this.installed(version);
-    host.relaunch(adrift ? pathModule.join(bundle, "Contents", "MacOS", pathModule.basename(host.execPath)) : undefined);
+    // A renamed bundle's program carries the new name too (electron-builder
+    // names it after the bundle), so it is started by path.
+    const renamed = target !== bundle;
+    const program = renamed ? pathModule.basename(target, ".app") : pathModule.basename(host.execPath);
+    host.relaunch(adrift || renamed ? pathModule.join(target, "Contents", "MacOS", program) : undefined);
   }
 
   // The old bundle (when there is one) steps aside and comes back if the
-  // new one cannot take its place.
-  private async moveBundle(fresh: string, bundle: string): Promise<void> {
+  // new one cannot take its place. A target under another name (the bundle
+  // was renamed) that is already there, a copy installed by hand, steps
+  // aside the same way.
+  private async moveBundle(fresh: string, bundle: string, target: string): Promise<void> {
     const { rename, rm } = await import("node:fs/promises");
     const retired = `${bundle}.old`;
-    await rm(retired, { recursive: true, force: true });
-    let hadOld = true;
+    const displaced = `${target}.old`;
+    const setAside = async (from: string, to: string): Promise<boolean> => {
+      await rm(to, { recursive: true, force: true });
+      try {
+        await rename(from, to);
+        return true;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+        return false;
+      }
+    };
+    const hadOld = await setAside(bundle, retired);
+    let hadTarget = false;
     try {
-      await rename(bundle, retired);
+      if (target !== bundle) hadTarget = await setAside(target, displaced);
+      await rename(fresh, target);
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-      hadOld = false;
-    }
-    try {
-      await rename(fresh, bundle);
-    } catch (err) {
+      if (hadTarget) await rename(displaced, target).catch(() => undefined);
       if (hadOld) await rename(retired, bundle).catch(() => undefined);
       throw err;
     }
     await rm(retired, { recursive: true, force: true }).catch(() => undefined);
+    if (hadTarget) await rm(displaced, { recursive: true, force: true }).catch(() => undefined);
   }
 
   // The same steps as one shell command run by osascript with
   // administrator privileges, which puts up the Mac's own password prompt.
-  private async moveBundleAsAdmin(fresh: string, bundle: string, version: string): Promise<void> {
+  // Under a new name, the bundle's old copy and anything already at the
+  // target step aside, and both come back if the move fails. With the same
+  // name the target is the bundle itself, already moved aside.
+  private async moveBundleAsAdmin(fresh: string, bundle: string, target: string, version: string): Promise<void> {
     const b = shellQuote(bundle);
     const r = shellQuote(`${bundle}.old`);
+    const t = shellQuote(target);
+    const d = shellQuote(`${target}.old`);
     const f = shellQuote(fresh);
-    const script = `rm -rf ${r} && { [ ! -e ${b} ] || mv ${b} ${r}; } && { mv ${f} ${b} || { [ ! -e ${r} ] || mv ${r} ${b}; exit 1; }; } && rm -rf ${r}`;
+    const script =
+      `rm -rf ${r} ${d} && { [ ! -e ${b} ] || mv ${b} ${r}; } && { [ ! -e ${t} ] || mv ${t} ${d}; } && ` +
+      `{ mv ${f} ${t} || { [ ! -e ${d} ] || mv ${d} ${t}; [ ! -e ${r} ] || mv ${r} ${b}; exit 1; }; } && rm -rf ${r} ${d}`;
     const { code, stderr } = await this.host!.run("osascript", [
       "-e",
       `do shell script ${appleScriptString(script)} with administrator privileges`,

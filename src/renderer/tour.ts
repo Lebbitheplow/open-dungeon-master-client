@@ -29,7 +29,7 @@ const wayBack = isAndroid
 export const APP_TOUR_STEPS: TourStep[] = [
   {
     id: "welcome",
-    title: "Welcome to Open Dungeon Master",
+    title: "Welcome to Open Game Master",
     body: "Your worlds, your servers and your friends' tables all gather here. This short tour shows where everything lives. You can replay it any time from Help.",
     anchors: [],
   },

@@ -86,7 +86,7 @@ public class DictationPlugin extends Plugin {
         if (getPermissionState("microphone") == PermissionState.GRANTED) {
             begin(call);
         } else {
-            call.reject("The microphone permission was refused. Allow it for Open Dungeon Master in the phone's settings.");
+            call.reject("The microphone permission was refused. Allow it for Open Game Master in the phone's settings.");
         }
     }
 
@@ -231,7 +231,7 @@ public class DictationPlugin extends Plugin {
             case SpeechRecognizer.ERROR_AUDIO:
                 return "The microphone stopped (another app may be using it).";
             case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS:
-                return "The microphone permission was refused. Allow it for Open Dungeon Master in the phone's settings.";
+                return "The microphone permission was refused. Allow it for Open Game Master in the phone's settings.";
             default:
                 return "The phone's speech recognizer stopped (error " + code + ").";
         }

@@ -4,7 +4,7 @@ const NIGHT = "#0a0817";
 
 const config: CapacitorConfig = {
   appId: "com.opendungeonmaster.app",
-  appName: "Open Dungeon Master",
+  appName: "Open Game Master",
   webDir: "www",
   backgroundColor: NIGHT,
   android: {

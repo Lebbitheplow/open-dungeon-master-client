@@ -24,7 +24,12 @@ async function setupShutdown() {
   let shareStops = 0;
   let completedQuits = 0;
   const timers = [];
-  app.requestSingleInstanceLock = () => true;
+  const startup = [];
+  app.setName = (name) => void startup.push(`name:${name}`);
+  app.requestSingleInstanceLock = () => {
+    startup.push("lock");
+    return true;
+  };
   app.setPath = () => {};
   app.getPath = () => "C:\\unused-odm-test";
   app.getAppPath = () => "C:\\unused-odm-test";
@@ -76,13 +81,20 @@ async function setupShutdown() {
   });
   await new Promise(setImmediate);
   return {
-    app, share, ai, local, timers,
+    app, share, ai, local, timers, startup,
     get shareStops() { return shareStops; },
     get aiStops() { return aiStops; },
     get localStops() { return localStops; },
     get completedQuits() { return completedQuits; },
   };
 }
+
+// safeStorage keys every saved sign-in under the app's name; the old name
+// must be set before anything (the instance lock, the keychain) reads it.
+test("the app keeps its keychain name and sets it before anything reads it", async () => {
+  const state = await setupShutdown();
+  assert.deepEqual(state.startup.slice(0, 2), ["name:Open Dungeon Master", "lock"]);
+});
 
 test("healthy quit keeps local server available until share cleanup finishes", async () => {
   const state = await setupShutdown();

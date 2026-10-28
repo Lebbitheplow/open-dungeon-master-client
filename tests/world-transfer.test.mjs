@@ -43,11 +43,11 @@ test("a job is followed phase by phase until it is done", async () => {
 test("a job that fails says why, in the server's words", async () => {
   const api = server([
     { status: 202, data: { job: job({}) } },
-    { status: 200, data: { job: job({ done: true, error: "This world was saved by a newer Open Dungeon Master (0.30.0)." }) } },
+    { status: 200, data: { job: job({ done: true, error: "This world was saved by a newer Open Game Master (0.30.0)." }) } },
   ]);
   await assert.rejects(
     runWorldJob(api.request, { action: "check", name: "import-a.tar.gz" }, () => undefined, async () => undefined),
-    /newer Open Dungeon Master/,
+    /newer Open Game Master/,
   );
 });
 

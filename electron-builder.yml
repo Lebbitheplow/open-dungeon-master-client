@@ -1,5 +1,5 @@
 appId: com.opendungeonmaster.client
-productName: Open Dungeon Master
+productName: Open Game Master
 directories:
   output: release
 files:
@@ -38,7 +38,7 @@ publish:
 # Registers odm:// on macOS (Info.plist), Windows (installer) and Linux
 # (.desktop MimeType), so invite links open the app.
 protocols:
-  - name: Open Dungeon Master invite
+  - name: Open Game Master invite
     schemes: [odm]
 # The default AppImage runtime dynamically links libfuse.so.2, which modern
 # distros (Fedora 41+, Ubuntu 24.04+) no longer ship; toolset 1.0.3 packs the

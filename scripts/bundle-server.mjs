@@ -1,4 +1,4 @@
-// Builds the Open Dungeon Master server as a Next.js standalone bundle and
+// Builds the Open Game Master server as a Next.js standalone bundle and
 // stages it under vendor/server, ready to ship inside the desktop app for
 // offline play. Builds from a clean git worktree of the server repo so the
 // server checkout's own .next (often serving a live instance) is untouched.

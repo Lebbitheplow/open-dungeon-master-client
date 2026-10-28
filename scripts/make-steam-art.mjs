@@ -197,7 +197,7 @@ async function main() {
          .title .eyebrow { font-size: 15px; }
          .title .rule { width: 220px; background: linear-gradient(90deg, #b8922a, transparent); }`,
         `<div class="layer stars"></div><div class="layer art"></div><div class="layer scrim"></div><div class="layer grain"></div>
-         <div class="title"><span class="eyebrow">Tabletop adventures</span><h1 class="gilt">Open<br>Dungeon<br>Master</h1><div class="rule"></div></div>
+         <div class="title"><span class="eyebrow">Tabletop adventures</span><h1 class="gilt">Open<br>Game<br>Master</h1><div class="rule"></div></div>
          <span class="corner tl"></span><span class="corner br"></span>`,
         NIGHT,
       ),
@@ -222,7 +222,7 @@ async function main() {
          .title .eyebrow { font-size: 15px; }
          .title .rule { width: 260px; }`,
         `<div class="layer art"></div><div class="layer floor"></div><div class="layer grain"></div>
-         <div class="title"><img src="${glyph}" alt=""><h1 class="gilt">Open<br>Dungeon<br>Master</h1><div class="rule"></div><span class="eyebrow">Tabletop adventures</span></div>
+         <div class="title"><img src="${glyph}" alt=""><h1 class="gilt">Open<br>Game<br>Master</h1><div class="rule"></div><span class="eyebrow">Tabletop adventures</span></div>
          <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>`,
         NIGHT,
       ),
@@ -239,7 +239,7 @@ async function main() {
       `.lockup { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 44px; }
        .lockup img { width: 250px; height: 250px; filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.6)); }
        .lockup .gilt { font-size: 124px; filter: drop-shadow(0 1px 0 rgba(92, 64, 12, 0.9)) drop-shadow(0 3px 0 rgba(58, 40, 8, 0.8)) drop-shadow(0 6px 18px rgba(0, 0, 0, 0.75)); }`,
-      `<div class="lockup"><img src="${glyph}" alt=""><h1 class="gilt">Open<br>Dungeon<br>Master</h1></div>`,
+      `<div class="lockup"><img src="${glyph}" alt=""><h1 class="gilt">Open<br>Game<br>Master</h1></div>`,
       "transparent",
     ),
     { transparent: true },

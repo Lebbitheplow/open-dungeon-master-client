@@ -23,7 +23,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
- * Runs the bundled Open Dungeon Master server on this phone. The APK ships a
+ * Runs the bundled Open Game Master server on this phone. The APK ships a
  * Node runtime as a native library (libnode.so, executable from the app's
  * native library directory) and the server as a zip in assets; the first
  * start unpacks the server into app storage and every start launches

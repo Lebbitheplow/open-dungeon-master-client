@@ -452,8 +452,8 @@ function welcomeBlock(): HTMLElement {
         "p",
         "tt-lede",
         window.odm.scanInvite
-          ? "Connect to a self-hosted Open Dungeon Master, or scan or type an invite a friend sent you."
-          : "Connect to a self-hosted Open Dungeon Master, or paste the room code or invite link a friend sent you.",
+          ? "Connect to a self-hosted Open Game Master, or scan or type an invite a friend sent you."
+          : "Connect to a self-hosted Open Game Master, or paste the room code or invite link a friend sent you.",
       ),
       420,
     ),

@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/docs/banner.png" alt="Open Dungeon Master" width="100%">
+<img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/docs/banner.png" alt="Open Game Master" width="100%">
 
 <br>
 
@@ -13,6 +13,11 @@
 
 </div>
 
+> [!NOTE]
+> Open Game Master was called Open Dungeon Master until October 2026. Installed
+> apps update in place and keep their servers, sign-ins and worlds; only the
+> name and the website ([opengamemaster.com](https://opengamemaster.com)) moved.
+
 > [!IMPORTANT]
 > **The main codebase is
 > [Lebbitheplow/open-dungeon-master](https://github.com/Lebbitheplow/open-dungeon-master).**
@@ -22,9 +27,9 @@
 > server, change how the game plays, or report a bug at the table, start there.
 
 These are the **desktop and Android apps for
-[Open Dungeon Master](https://github.com/Lebbitheplow/open-dungeon-master)**, the
+[Open Game Master](https://github.com/Lebbitheplow/open-dungeon-master)**, the
 multiplayer D&amp;D 5e table with an AI (or human) Dungeon Master. Every app carries
-a complete Open Dungeon Master server inside it, so **you do not need a server to
+a complete Open Game Master server inside it, so **you do not need a server to
 play**: install the app, open your world, and share a room code with your friends.
 When you do have a server, the app connects to it (or to any number of them) as well.
 
@@ -69,7 +74,7 @@ installing on [Windows](https://opengamemaster.com/guide/desktop/install-windows
 
 | Platform | File | Notes |
 | --- | --- | --- |
-| **Windows** (x64) | `Open-Dungeon-Master-Setup-<version>.exe` | Installer; updates itself. Not code signed: when SmartScreen says "Windows protected your PC", choose More info, then Run anyway. |
+| **Windows** (x64) | `Open-Game-Master-Setup-<version>.exe` | Installer; updates itself. Not code signed: when SmartScreen says "Windows protected your PC", choose More info, then Run anyway. |
 | **macOS** (Apple Silicon) | `open-dungeon-master-client-<version>-arm64-mac.dmg` | Not notarized yet: the first time macOS blocks it, open System Settings > Privacy & Security and choose Open Anyway (on macOS 14 and earlier, right-click the app and choose Open). |
 | **macOS** (Intel) | `open-dungeon-master-client-<version>-x64-mac.dmg` | Same as above. |
 | **Linux** (x64) | `.AppImage`, `.deb`, `.rpm`, `.tar.gz`, `.flatpak` | The AppImage carries a static runtime, so it runs on distros that no longer ship libfuse2. |
@@ -97,7 +102,7 @@ of this repository's release workflow:
 <td width="50%" valign="top" align="center">
 <img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/local-data.webp" width="56"><br>
 <b>A world on your device</b><br>
-<sub>The app runs its own Open Dungeon Master server: enter your world from the title screen and it wakes up, close the app and it sleeps. Campaigns, characters and pictures stay on your computer or phone. No account anywhere else.</sub>
+<sub>The app runs its own Open Game Master server: enter your world from the title screen and it wakes up, close the app and it sleeps. Campaigns, characters and pictures stay on your computer or phone. No account anywhere else.</sub>
 </td>
 <td width="50%" valign="top" align="center">
 <img src="https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/public/sidebar-icons/chats.webp" width="56"><br>
@@ -145,7 +150,7 @@ of this repository's release workflow:
 
 ## A world on your device
 
-Every build carries the Open Dungeon Master server, built from the server repository
+Every build carries the Open Game Master server, built from the server repository
 at release time, and runs it privately on your device:
 
 - **Desktop** starts it as a child process from the app's data folder the first time
@@ -157,7 +162,7 @@ at release time, and runs it privately on your device:
   shared, and **Stop hosting** in that notification ends the share.
 
 Your world stays offline until you share it. Opening a campaign lobby starts sharing
-automatically: the app asks the Open Dungeon Master broker for a public
+automatically: the app asks the Open Game Master broker for a public
 `play-CODE.opengamemaster.com` address, runs `cloudflared` to it, and hands out a
 room code. The code never changes for that table; it only works while you are
 sharing. Voice chat relays through Cloudflare TURN, so it works across networks
@@ -439,7 +444,7 @@ There is no telemetry.
 ## Credits and licenses
 
 The apps are MIT licensed, like the
-[Open Dungeon Master server](https://github.com/Lebbitheplow/open-dungeon-master),
+[Open Game Master server](https://github.com/Lebbitheplow/open-dungeon-master),
 whose README lists the credits and content licenses for the game itself. The desktop
 app is built on [Electron](https://www.electronjs.org/), the Android app on
 [Capacitor](https://capacitorjs.com/); sharing uses

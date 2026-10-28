@@ -160,7 +160,7 @@ function showSteamOffer(): void {
     el(
       "p",
       "sub",
-      "Add Open Dungeon Master to your Steam library, with its artwork, and it starts from Game Mode like any other game. Settings keeps this button if you would rather wait.",
+      "Add Open Game Master to your Steam library, with its artwork, and it starts from Game Mode like any other game. Settings keeps this button if you would rather wait.",
     ),
     status,
     actions,

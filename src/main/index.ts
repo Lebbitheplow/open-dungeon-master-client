@@ -16,6 +16,9 @@ import { ShellWindow } from "./window";
 import { wireContextMenus } from "./edit-menu";
 import { isolateShellPages } from "./isolation";
 
+// The app's name as the keychain knows it; see app.setName at the bottom.
+const KEYCHAIN_NAME = "Open Dungeon Master";
+
 // Session tokens go through the OS keychain when one is available. The
 // "plain:" fallback (headless Linux without a keyring) is marked so tokens
 // encrypted one way are never misread the other. On Linux with no keyring,
@@ -323,6 +326,16 @@ function main(): void {
     }
   });
 }
+
+// The name the operating system's keychain knows this app by. safeStorage
+// files its key as "<app name> Safe Storage" (the macOS Keychain, the Linux
+// secret service), and every saved sign-in, the device world's included, is
+// sealed with it. Those keys were made while the app was called Open
+// Dungeon Master, so that name stays here, set before anything reads it:
+// renaming it would leave every saved sign-in unreadable. What people see
+// (the window, the menus, the installer, the Dock) comes from productName,
+// Open Game Master.
+app.setName(KEYCHAIN_NAME);
 
 if (app.requestSingleInstanceLock()) {
   main();

@@ -4,8 +4,11 @@
 // LocalServer (its app.asar, the Electron binary in Node mode, the payload
 // it ships), so each version is checked with the code it shipped.
 //
-//   node scripts/smoke-installed.mjs install <Setup.exe> <dir>
-//       Installs (or upgrades) an NSIS build silently into <dir>.
+//   node scripts/smoke-installed.mjs install <Setup.exe> <dir> [program]
+//       Installs (or upgrades) an NSIS build silently into <dir>, and waits
+//       for [program] (by default either name below) to land there.
+//   node scripts/smoke-installed.mjs exe <dir>
+//       Prints the installed program's path, whichever name it has.
 //   node scripts/smoke-installed.mjs world <app binary> seed|verify|start <work dir>
 //       seed:   starts the world in <work dir>, notes its id and leaves a
 //               mark in the run tree's data folder (where installed world
@@ -28,6 +31,14 @@ import { fileURLToPath } from "node:url";
 const self = fileURLToPath(import.meta.url);
 const [mode, ...args] = process.argv.slice(2);
 const MARKER = "ci-upgrade-marker.txt";
+// The installed program, newest name first: releases from before the
+// rename to Open Game Master install Open Dungeon Master.exe, and the
+// upgrade check starts from one of them.
+const PROGRAMS = ["Open Game Master.exe", "Open Dungeon Master.exe"];
+
+function installedProgram(dir, names = PROGRAMS) {
+  return names.map((name) => path.join(dir, name)).find((file) => fs.existsSync(file)) ?? null;
+}
 
 function fail(message) {
   console.error(`[smoke-installed] ${message}`);
@@ -42,16 +53,16 @@ function refuse(message) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function install(setup, dir) {
-  if (!setup || !dir) fail("usage: install <Setup.exe> <dir>");
+async function install(setup, dir, program) {
+  if (!setup || !dir) fail("usage: install <Setup.exe> <dir> [program]");
   const result = spawnSync(path.resolve(setup), ["/S", `/D=${path.resolve(dir)}`], { stdio: "inherit" });
   if (result.status !== 0) fail(`${setup} exited with ${result.status ?? result.error?.message}`);
-  const exe = path.join(dir, "Open Dungeon Master.exe");
-  for (let waited = 0; !fs.existsSync(exe); waited += 1000) {
-    if (waited > 120_000) fail(`${exe} did not appear after the install`);
+  const names = program ? [program] : PROGRAMS;
+  for (let waited = 0; !installedProgram(dir, names); waited += 1000) {
+    if (waited > 120_000) fail(`${names.join(" or ")} did not appear in ${dir} after the install`);
     await sleep(1000);
   }
-  console.log(`installed ${setup} into ${dir}`);
+  console.log(`installed ${setup} into ${dir}: ${path.basename(installedProgram(dir, names))}`);
 }
 
 function world(binary, phase, work) {
@@ -156,7 +167,12 @@ async function inside(phase, work) {
 if (mode === "--inside") {
   await inside(args[0], args[1]).catch((error) => fail(error instanceof Error ? error.message : String(error)));
 }
-else if (mode === "install") await install(args[0], args[1]);
+else if (mode === "install") await install(args[0], args[1], args[2]);
+else if (mode === "exe") {
+  const program = args[0] ? installedProgram(args[0]) : null;
+  if (!program) fail(`no installed program in ${args[0] ?? "(no dir given)"}`);
+  console.log(program);
+}
 else if (mode === "world") world(args[0], args[1], args[2]);
 else if (mode === "launch") await launch(args[0]);
-else fail("usage: install | world | launch (see the top of this file)");
+else fail("usage: install | exe | world | launch (see the top of this file)");

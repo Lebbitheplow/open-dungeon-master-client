@@ -54,7 +54,7 @@ against Play policy, ordered by how hard it blocks a submission.
 
 ### What the app actually does, in reviewer terms
 
-Open Dungeon Master is a tabletop roleplaying client for Dungeons and Dragons
+Open Game Master is a tabletop roleplaying client for Dungeons and Dragons
 5th Edition campaigns. The Android app can work in three modes:
 
 1. **Host on the phone.** The APK carries a full Node.js runtime plus the
@@ -84,7 +84,7 @@ from the app's own WebView rather than from a remote page, and that the
 report and block affordances in B-3 ship inside the APK instead of arriving
 from whichever host the player joined.
 
-There is no Open Dungeon Master account, no developer-run game backend, and
+There is no Open Game Master account, no developer-run game backend, and
 no hosted service. The one piece of developer-run infrastructure is a
 Cloudflare Worker: it mints tunnel hostnames, and it hands out short-lived
 Cloudflare TURN credentials for voice chat (see Data safety, below).
@@ -159,7 +159,7 @@ since none of the preset ones describes a game server.
 **Functionality**
 
 > The user's phone hosts the tabletop game session other players are
-> connected to. Open Dungeon Master runs a small game server on the device;
+> connected to. Open Game Master runs a small game server on the device;
 > when the user taps "Share online", an outbound tunnel publishes that server
 > so invited friends can join from their own devices. The foreground service
 > keeps that server and tunnel alive while the user switches to another app
@@ -381,7 +381,7 @@ tabletop game rather than lean on someone else's trademark.
 **For the first upload (v0.7.3, versionCode 703), 493 characters:**
 
 ```
-First test build. Open Dungeon Master runs a 5e tabletop campaign with an AI Dungeon Master, on your own phone or on a server you choose.
+First test build. Open Game Master runs a 5e tabletop campaign with an AI Dungeon Master, on your own phone or on a server you choose.
 
 - Host a world on your phone and share it with friends over a private link
 - Join a table by address or QR invite
@@ -566,7 +566,7 @@ form `ip:<cf-connecting-ip>:<date>` and `turn:<ip>:<date>`, with TTLs of
 developer-run infrastructure, so it is not covered by Play's "processed
 ephemerally" exemption, and it contradicts the current privacy policy's flat
 claim of "No data is sold, shared, or transmitted to any third party,
-including the creator of Open Dungeon Master."
+including the creator of Open Game Master."
 
 **Done 2026-09-05, deployed.** `rateLimited()` keys on
 `sha256(RATE_LIMIT_SALT + ":" + ip)`; unsalted if the secret is missing, so

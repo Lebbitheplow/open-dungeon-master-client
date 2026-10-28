@@ -76,7 +76,7 @@ export function diagnosticSummary(facts: DiagnosticFacts, now = new Date()): str
   const { app, payload, runTree, world, verify } = facts;
   const stale = payload && runTree && payload.builtAt !== runTree.builtAt;
   const lines = [
-    `Open Dungeon Master ${app.version} (${app.installKind}) on ${app.platform} ${app.arch}, ${app.os}, ${app.runtime}`,
+    `Open Game Master ${app.version} (${app.installKind}) on ${app.platform} ${app.arch}, ${app.os}, ${app.runtime}`,
     `Written ${now.toISOString()}`,
     `Bundled server: ${payload ? `${payload.serverVersion} built ${payload.builtAt}` : "none"}`,
     `Unpacked server: ${runTree ? `${runTree.serverVersion} built ${runTree.builtAt}` : "not unpacked yet"}${stale ? " (not the bundled build; the next start replaces it)" : ""}`,
