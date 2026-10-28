@@ -15,6 +15,14 @@ test("a complete broker reply on the official domain is accepted", () => {
   assert.equal(session.url, "https://play-abcd1234.opendungeonmaster.com");
 });
 
+test("a reply on the new domain is accepted, as the old one is until it lapses", () => {
+  const session = parseBrokerSession({ ...good, hostname: "play-abcd1234.opengamemaster.com" }, true);
+  assert.equal(session.url, "https://play-abcd1234.opengamemaster.com");
+  for (const hostname of ["play-abcd1234.opengamemaster.com.evil.example", "play-abcd1234.evil.opengamemaster.com"]) {
+    assert.equal(parseBrokerSession({ ...good, hostname }, true), null, hostname);
+  }
+});
+
 test("the url is derived from the hostname, never trusted from the reply", () => {
   const session = parseBrokerSession({ ...good, url: "https://evil.example" }, true);
   assert.equal(session.url, "https://play-abcd1234.opendungeonmaster.com");

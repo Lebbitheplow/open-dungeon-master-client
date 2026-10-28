@@ -415,8 +415,8 @@ export function repaintUpdatePopup(): void {
 export function legalLinks(): HTMLElement[] {
   const links: HTMLElement[] = [];
   for (const [label, href] of [
-    ["Privacy policy", "https://opendungeonmaster.com/privacy/"],
-    ["Terms of service", "https://opendungeonmaster.com/terms/"],
+    ["Privacy policy", "https://opengamemaster.com/privacy/"],
+    ["Terms of service", "https://opengamemaster.com/terms/"],
     ["GitHub", "https://github.com/Lebbitheplow/open-dungeon-master-client"],
   ] as const) {
     const link = el("a", "foot-link", label);

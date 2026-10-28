@@ -84,6 +84,8 @@ function campaign(overrides = {}) {
 
 test("tunnel hosts are the play-CODE and trycloudflare addresses", () => {
   assert.equal(isTunnelOrigin("https://play-abcd1234.opendungeonmaster.com"), true);
+  assert.equal(isTunnelOrigin("https://play-abcd1234.opengamemaster.com"), true);
+  assert.equal(isTunnelOrigin("https://play-abcd.opengamemaster.com.evil.example"), false);
   assert.equal(isTunnelOrigin("https://PLAY-ABCD1234.opendungeonmaster.com"), true);
   assert.equal(isTunnelOrigin("https://quiet-owl-42.trycloudflare.com"), true);
   assert.equal(isTunnelOrigin("https://dungeon.example.org"), false);

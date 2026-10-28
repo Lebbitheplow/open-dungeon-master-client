@@ -286,8 +286,8 @@ The honest headline is that the developer runs almost no infrastructure, but
 
 | Recipient | Trigger | What is sent |
 | --- | --- | --- |
-| Cloudflare (`broker.opendungeonmaster.com`, developer-operated Worker; older builds use `odm-tunnel-broker.tunnel-broker.workers.dev`, the same Worker) | User taps Share to publish their world | The local port number, plus the IP address Cloudflare attaches to the request. The Worker keeps a per-address rate-limit counter in its own SQLite store keyed by a salted SHA-256 of the address (24 hour TTL), never the address itself, plus a session record. See finding B-6. |
-| Cloudflare (tunnel edge, `trycloudflare.com` or `play-CODE.opendungeonmaster.com`) | same | All game traffic between remote players and the phone transits the tunnel. |
+| Cloudflare (`broker.opengamemaster.com`, `broker.opendungeonmaster.com` until that domain lapses, developer-operated Worker; older builds use `odm-tunnel-broker.tunnel-broker.workers.dev`, the same Worker) | User taps Share to publish their world | The local port number, plus the IP address Cloudflare attaches to the request. The Worker keeps a per-address rate-limit counter in its own SQLite store keyed by a salted SHA-256 of the address (24 hour TTL), never the address itself, plus a session record. See finding B-6. |
+| Cloudflare (tunnel edge, `trycloudflare.com` or `play-CODE.opengamemaster.com`) | same | All game traffic between remote players and the phone transits the tunnel. |
 | Cloudflare DoH (`cloudflare-dns.com/dns-query`) | same | A DNS lookup for the new tunnel hostname, to confirm it resolved. |
 | The same Worker, at `/turn` | **A table starts voice chat**, not only on Share | The host asks for short-lived Cloudflare Realtime TURN credentials and caches them for 30 minutes. The request carries no game content; Cloudflare sees the asking address. An operator can set `ODM_ICE_BROKER_URL=off` to opt out, and a phone-hosted world asks for itself. |
 | Cloudflare STUN and TURN (`stun.cloudflare.com`, `turn.cloudflare.com`) | Voice chat, from each player's device | The device's public address, so peers can find each other, and the audio itself whenever a direct peer connection cannot be made and the call has to be relayed. Nothing is stored there. |
@@ -327,7 +327,7 @@ is immediate or delayed, and the honest answer is "delayed by up to the
 server's grace period, default 14 days, undoable until then".
 
 For the console's "Data deletion" URL requirement the site now has
-`https://opendungeonmaster.com/delete-account/` (site repo,
+`https://opengamemaster.com/delete-account/` (site repo,
 `src/pages/delete-account.html`), which walks through both the per-server
 account and a device-hosted world. Checked 2026-09-06: it answers 200, as do
 `/privacy/` and `/terms/` (B-7).

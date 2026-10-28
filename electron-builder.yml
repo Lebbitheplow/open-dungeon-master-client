@@ -30,7 +30,7 @@ icon: build/icon.png
 # assets, no token needed once the repo is public. The other installs (deb,
 # rpm, tar.gz, flatpak, the Mac zip) fetch their own asset from the release
 # and apply it (src/main/updater.ts).
-# opendungeonmaster.com links here rather than hosting binaries itself.
+# opengamemaster.com links here rather than hosting binaries itself.
 publish:
   provider: github
   owner: Lebbitheplow

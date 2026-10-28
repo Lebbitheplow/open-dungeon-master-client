@@ -1440,7 +1440,7 @@ function cleanCode(value: unknown): string {
   return CODE_SHAPE.test(code) ? code : "";
 }
 
-// ---------- deep links (odm:// and https://opendungeonmaster.com/j) ----------
+// ---------- deep links (odm:// and https://opengamemaster.com/j and the old domain) ----------
 
 async function handleJoinLink(link: JoinLink): Promise<void> {
   const servers = await loadServers();

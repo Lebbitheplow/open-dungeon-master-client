@@ -862,8 +862,8 @@ function legalSection(): HTMLElement {
   const { card, body } = section("link", "Links", "");
   for (const [label, href] of [
     ["User guide online", GUIDE_URL],
-    ["Privacy policy", "https://opendungeonmaster.com/privacy/"],
-    ["Terms of service", "https://opendungeonmaster.com/terms/"],
+    ["Privacy policy", "https://opengamemaster.com/privacy/"],
+    ["Terms of service", "https://opengamemaster.com/terms/"],
   ] as const) {
     const link = el("a", "settings-link", label);
     link.href = href;

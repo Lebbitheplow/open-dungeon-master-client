@@ -16,7 +16,7 @@ export const OPENAI_BASE_URL = "https://api.openai.com/v1";
 export const LOCAL_AI_MINIMUM_GB = 16;
 // Every setup's needs, the local storyteller's with the machines it was
 // measured on, on the site's guide.
-export const REQUIREMENTS_URL = "https://opendungeonmaster.com/guide/start/system-requirements/";
+export const REQUIREMENTS_URL = "https://opengamemaster.com/guide/start/system-requirements/";
 
 export const NO_SAVED_AI: SavedAi = { keySaved: false, model: "", utilityModel: "" };
 

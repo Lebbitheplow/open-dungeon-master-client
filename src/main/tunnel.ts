@@ -16,7 +16,7 @@ import { rotateLog } from "./log-files";
 // Hosts an offline world on the public internet through a Cloudflare quick
 // tunnel: no account, no port forwarding, a random https address on
 // trycloudflare.com. Friends join in any browser; the session lives as long
-// as the app keeps the tunnel up. The pretty play-CODE.opendungeonmaster.com
+// as the app keeps the tunnel up. The pretty play-CODE.opengamemaster.com
 // names come from the broker Worker; the plumbing here is the same.
 
 const URL_WAIT_MS = 45_000;
