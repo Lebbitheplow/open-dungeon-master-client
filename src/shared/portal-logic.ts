@@ -128,7 +128,11 @@ export function portalEligible(input: { bundled: string; remote: string }): Port
 // host does not have (/api/workshops/:id/test-fight) and opens a test table
 // whose way back an older host never sends, so the button would fail with
 // the Deploy it replaced already gone.
-export const NATIVE_MIN_SERVER = "0.30.3";
+// Raised for the companion conscience follow-ups (server issue 563): the
+// console's "Who goes" on Move the party and "Spoke against it" on a deed
+// send fields an older host drops, so a split party would never be split and
+// an objection never heard, with nothing on the screen to say so.
+export const NATIVE_MIN_SERVER = "0.30.4";
 
 export function nativeEligible(remote: string): PortalVerdict {
   const version = parseVersion(remote);
