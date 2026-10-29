@@ -31,7 +31,7 @@ function deadline<T>(work: Promise<T>, ms: number): Promise<T> {
     .finally(()=>clearTimeout(timer));
 }
 
-type Active = {id:string; owner:number; child:ChildProcessWithoutNullStreams; exited:Promise<void>; closing:boolean; closed?:Promise<void>; layout?:unknown};
+type Active = {id:string; owner:number; child:ChildProcessWithoutNullStreams; exited:Promise<void>; stopped:boolean; closing:boolean; closed?:Promise<void>; layout?:unknown};
 export class NativeBoard {
   private active: Active | null = null;
   constructor(private registration: Registration | null, private options: {
@@ -49,9 +49,15 @@ export class NativeBoard {
     const child=spawn(this.options.node,[r.entry],{cwd:r.root,env,windowsHide:true,stdio:'pipe'});
     let resolveReady:()=>void, rejectReady:(error:Error)=>void;
     const ready=new Promise<void>((resolve,reject)=>{resolveReady=resolve;rejectReady=reject;});
-    const exited=new Promise<void>(resolve=>child.once('close',()=>resolve()));
-    const active:Active={id:randomUUID(),owner,child,exited,closing:false};
+    let resolveExited:()=>void;
+    const exited=new Promise<void>(resolve=>{resolveExited=resolve;});
+    const active:Active={id:randomUUID(),owner,child,exited,stopped:false,closing:false};
     this.active=active;
+    child.once('close',()=>{
+      active.stopped=true;
+      resolveExited();
+      if(active.closing && this.active===active) this.active=null;
+    });
     const fail=()=> {
       rejectReady(Error('Native view stopped.'));
       if(!active.closing) this.options.emit(owner,active.id,{odm:1,type:'error',message:'Native view stopped.'});
@@ -126,9 +132,14 @@ export class NativeBoard {
         } else active.child.kill('SIGKILL');
         await deadline(active.exited,5000);
       }
-    } finally { if(this.active===active) this.active=null; }
+    } finally { if(active.stopped && this.active===active) this.active=null; }
     })();
-    await active.closed;
+    try { await active.closed; }
+    catch(error) {
+      // A failed force kill must not release a still-running child or cache a rejected close.
+      if(!active.stopped) active.closed=undefined;
+      throw error;
+    }
   }
   async dispose():Promise<void> { if(this.active) await this.close(this.active.owner,this.active.id); }
 }
