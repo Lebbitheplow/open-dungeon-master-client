@@ -21,8 +21,10 @@ import {
   reconcileLocal,
   recapText,
   seatLine,
+  nextSessionLine,
   slotLine,
   slotMeta,
+  statusLabel,
   titleEyebrow,
   agoLabel,
 } from "../shared/home-view-logic.js";
@@ -601,8 +603,9 @@ function recapPanel(pick: ContinuePick): HTMLElement {
   if (quiet) body.textContent = text;
   else body.append(el("span", "tt-dropcap", text.charAt(0)), document.createTextNode(text.slice(1)));
   panel.append(body);
-  const ago = agoLabel(campaign.glance?.recapAt ?? campaign.updatedAt);
-  if (ago) panel.append(el("span", "tt-mono", ago));
+  // When it was, and when the table meets next (server issue 586).
+  const bits = [agoLabel(campaign.glance?.recapAt ?? campaign.updatedAt), nextSessionLine(campaign)].filter(Boolean);
+  if (bits.length) panel.append(el("span", "tt-mono", bits.join(" · ")));
   return reveal(panel, 720);
 }
 
@@ -680,7 +683,7 @@ function slot(group: HostGroup, row: CampaignRow): HTMLElement {
   door.type = "button";
   if (host.stale) door.classList.add("tt-slot-stale");
   const art = slotArt(host, campaign);
-  const status = el("span", `tt-slot-badge tt-slot-badge-${campaign.status}`, campaign.status);
+  const status = el("span", `tt-slot-badge tt-slot-badge-${campaign.status}`, statusLabel(campaign));
   art.append(status);
   door.append(art, el("span", "tt-slot-title", campaign.title));
   if (row.action === "blocked") {

@@ -395,6 +395,16 @@ export interface HomeGlance {
   // Absolute on the host, under /generated (behind the login), or null.
   sceneImage: string | null;
   faces: HomeGlanceFace[];
+  // Between sessions, and when the table meets next (server issue 586):
+  // the slot says "between sessions" and the date rather than "active" all
+  // week. Absent from a host without sessions.
+  session?: HomeSession;
+}
+
+export interface HomeSession {
+  between: boolean;
+  // startsAt is ISO UTC; the shell renders it in the device's own time.
+  next: { startsAt: string; title: string; coming: number } | null;
 }
 
 export interface HomeCampaign {

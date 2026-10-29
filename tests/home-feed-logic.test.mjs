@@ -559,3 +559,19 @@ test("a typed code is asked of signed-in servers only, never a friend's world, n
   ]);
   assert.deepEqual(origins, ["https://new.example.com", "https://old.example.com"]);
 });
+
+test("the glance carries the session state when the host sends it, and keeps its old shape when it does not (server issue 586)", () => {
+  const parsed = parseCampaigns(
+    {
+      campaigns: [
+        { id: "s1", title: "Weekly", status: "active", role: "player", ownerUserId: "x", glance: { faces: [], session: { between: true, next: { startsAt: "2026-11-06T19:00:00.000Z", title: "Friday", coming: 2 } } } },
+        { id: "s2", title: "Bad date", status: "active", role: "player", ownerUserId: "x", glance: { faces: [], session: { between: false, next: { startsAt: "soon", coming: "lots" } } } },
+        { id: "s3", title: "Older host", status: "active", role: "player", ownerUserId: "x", glance: { faces: [] } },
+      ],
+    },
+    origin,
+  );
+  assert.deepEqual(parsed[0].glance.session, { between: true, next: { startsAt: "2026-11-06T19:00:00.000Z", title: "Friday", coming: 2 } });
+  assert.deepEqual(parsed[1].glance.session, { between: false, next: null });
+  assert.equal("session" in parsed[2].glance, false);
+});

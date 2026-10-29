@@ -1,5 +1,5 @@
 import { BROKER_HOST_SHAPE } from "./broker";
-import type { HomeCampaign, HomeFeed, HomeGlance, HomeGlanceFace, HomeHost, LocalStatus, ShellEvent } from "./types";
+import type { HomeCampaign, HomeFeed, HomeGlance, HomeGlanceFace, HomeHost, HomeSession, LocalStatus, ShellEvent } from "./types";
 
 // The home screen's campaign feed: every host the player uses (the device
 // world, saved servers, friends' apps reached through a tunnel), each with
@@ -222,6 +222,22 @@ function parseGlance(raw: unknown, origin: string): HomeGlance | null {
     recapAt: str(glance.recapAt) || null,
     sceneImage: absoluteUrl(str(glance.sceneImage), origin),
     faces,
+    ...sessionOf(glance.session),
+  };
+}
+
+// Between sessions and the next meeting (server issue 586), only when the
+// host sends them, so a glance from an older host keeps its old shape.
+function sessionOf(raw: unknown): { session?: HomeSession } {
+  if (!raw || typeof raw !== "object") return {};
+  const value = raw as { between?: unknown; next?: unknown };
+  const next = value.next as { startsAt?: unknown; title?: unknown; coming?: unknown } | null | undefined;
+  const startsAt = next && typeof next === "object" ? str(next.startsAt) : "";
+  return {
+    session: {
+      between: value.between === true,
+      next: startsAt && Number.isFinite(Date.parse(startsAt)) ? { startsAt, title: str(next?.title), coming: Math.max(0, num(next?.coming)) } : null,
+    },
   };
 }
 
