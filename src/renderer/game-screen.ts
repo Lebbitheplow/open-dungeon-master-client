@@ -9,6 +9,7 @@ import { landingPath } from "../shared/open-path.js";
 import { nativeEligible } from "../shared/portal-logic.js";
 import { reportAppFacts, type ReportAppFacts } from "../shared/diagnostics.js";
 import type { ReportSaveResult, ShellShareStatus } from "../shared/types.js";
+import type { NativeBoardApi } from "../shared/native-board.js";
 import { show } from "./chrome.js";
 import { el } from "./dom.js";
 import { renderHelp } from "./help.js";
@@ -45,6 +46,7 @@ interface GameModule {
 // The window.odmShell contract the host's pages rely on inside the apps
 // (the server's src/lib/shell-host.ts), served here by the shell itself.
 interface ShellHostApi {
+  nativeBoard?: NativeBoardApi;
   platform: "desktop" | "android";
   showServers(): void;
   share: {
@@ -231,6 +233,7 @@ function shellHostApi(hostId: string, origin: string, current: () => GameMount |
     api.reportFacts = async () => reportAppFacts(await reportFacts(), hostId === LOCAL);
     api.saveReport = (input) => saveReport(input);
   }
+  if (hostId === LOCAL && window.odm.nativeBoard) api.nativeBoard = window.odm.nativeBoard;
   return api;
 }
 

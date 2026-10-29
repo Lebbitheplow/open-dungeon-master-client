@@ -102,6 +102,7 @@ import {
 } from "../shared/story-memory";
 import type { Updater } from "./updater";
 import type { ShellWindow } from "./window";
+import { NativeBoard, readNativeRegistration } from "./native-board";
 
 
 export interface ShellContext {
@@ -122,6 +123,7 @@ export interface ShellContext {
 }
 
 export interface ShellIpc {
+  shutdownNative(): Promise<void>;
   handleJoinLink(link: JoinLink): Promise<void>;
   // Stops the share tunnel and takes the room codes and publicUrl down
   // with it; awaited on the way out of the app.
@@ -258,8 +260,42 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
   // system browser without the session, and the screens' own origin has no
   // such file. Only a PDF the host stores for its players, size-capped.
   const mountedHosts = new Map<number, string>();
+  let nativeRegistration: ReturnType<typeof readNativeRegistration> = null;
+  if (process.platform === "win32") {
+    try { nativeRegistration = readNativeRegistration(process.env.ODM_NATIVE_BOARD_DEV_CONFIG); }
+    catch { console.warn("Native board development registration was refused."); }
+  }
+  const parent = win.dialogParent();
+  const handle = parent?.getNativeWindowHandle();
+  const nativeBoard = new NativeBoard(nativeRegistration, {
+    node: process.execPath,
+    parentWindow: handle ? (handle.length === 8 ? handle.readBigUInt64LE().toString() : handle.readUInt32LE().toString()) : "0",
+    emit(owner, id, packet) {
+      if (parent && !parent.isDestroyed() && parent.webContents.id === owner) parent.webContents.send("native-board:message", { id, packet });
+    },
+  });
+  if (nativeRegistration && parent) {
+    parent.on("move", () => nativeBoard.refreshLayout());
+    parent.on("moved", () => nativeBoard.refreshLayout());
+    parent.on("resized", () => nativeBoard.refreshLayout());
+    let closing = false;
+    parent.on("close", (event) => {
+      if (closing) return;
+      event.preventDefault(); closing = true;
+      void nativeBoard.dispose().catch(() => {}).finally(() => parent.close());
+    });
+  }
+  const nativeOwner = (event: IpcMainInvokeEvent): number => {
+    if (!win.isMainSender(event.sender) || mountedHosts.get(event.sender.id) !== LOCAL_SERVER_ID) throw new Error("Refused.");
+    return event.sender.id;
+  };
+  shellIpc.handle("native-board:open", (event, key) => nativeBoard.open(nativeOwner(event), key));
+  shellIpc.handle("native-board:send", (event, id, packet) => nativeBoard.send(nativeOwner(event), id, packet));
+  shellIpc.handle("native-board:layout", (event, id, layout) => nativeBoard.layout(nativeOwner(event), id, layout));
+  shellIpc.handle("native-board:close", (event, id) => nativeBoard.close(nativeOwner(event), id));
   shellIpc.on("game:mounted", (event, hostId: unknown) => {
     mountedHosts.set(event.sender.id, str(hostId, 64));
+    if (win.isMainSender(event.sender) && hostId !== LOCAL_SERVER_ID) void nativeBoard.dispose().catch(() => {});
   });
   // An offer only this player may answer (src/main/offer-notices.ts). Only
   // the main window's screens are heard: the table screen streams the same
@@ -1619,5 +1655,5 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
     }
   });
 
-  return { handleJoinLink, shutdownShare };
+  return { handleJoinLink, shutdownShare, shutdownNative: () => nativeBoard.dispose() };
 }
