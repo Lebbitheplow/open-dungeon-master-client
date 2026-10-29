@@ -78,6 +78,9 @@ interface RegistryFile {
   // Sign-ins to hosts where the player typed their own password are kept
   // in memory only and gone when the app closes (Settings).
   forgetSignInsOnClose?: true;
+  // What 0.22.0 sealed under its own key was looked for and sealed again
+  // (src/main/renamed-key.ts); done once.
+  renamedKeyTried?: true;
 }
 
 const emptyRegistry = (): RegistryFile => ({ version: 1, servers: [] });
@@ -245,6 +248,50 @@ export class ServerStore {
     if (held) return held;
     if (!server.tokenCipher) return null;
     return this.crypt.decrypt(server.tokenCipher);
+  }
+
+  // Sealed values this run's key cannot open, each once: sealed under
+  // another key (0.22.0's, src/main/renamed-key.ts). An expired token is
+  // left out, since nothing would use it.
+  unopened(): string[] {
+    const ciphers = new Set<string>();
+    for (const server of this.load().servers) {
+      const live = !server.tokenExpiresAt || Date.parse(server.tokenExpiresAt) > Date.now();
+      if (live && server.tokenCipher && this.crypt.decrypt(server.tokenCipher) === null) ciphers.add(server.tokenCipher);
+      if (server.secretCipher && this.crypt.decrypt(server.secretCipher) === null) ciphers.add(server.secretCipher);
+    }
+    return [...ciphers];
+  }
+
+  // Seals again under this run's key what another key opened, by the old
+  // cipher; returns how many values changed.
+  reseal(opened: ReadonlyMap<string, string>): number {
+    const registry = this.load();
+    let count = 0;
+    for (const server of registry.servers) {
+      const token = server.tokenCipher ? opened.get(server.tokenCipher) : undefined;
+      if (token !== undefined) {
+        server.tokenCipher = this.crypt.encrypt(token);
+        count += 1;
+      }
+      const secret = server.secretCipher ? opened.get(server.secretCipher) : undefined;
+      if (secret !== undefined) {
+        server.secretCipher = this.crypt.encrypt(secret);
+        count += 1;
+      }
+    }
+    if (count > 0) this.save(registry);
+    return count;
+  }
+
+  renamedKeyTried(): boolean {
+    return !!this.load().renamedKeyTried;
+  }
+
+  markRenamedKeyTried(): void {
+    const registry = this.load();
+    registry.renamedKeyTried = true;
+    this.save(registry);
   }
 
   // How saved sign-ins are kept, for Settings.

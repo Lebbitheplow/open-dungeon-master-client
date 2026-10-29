@@ -467,3 +467,33 @@ test("the first-launch offer to add the app to Steam is answered once and stays 
   const again = new ServerStore(path.join(dir, "servers.json"), crypt);
   assert.equal(again.steamOfferAnswered(), true, "a later start reads the answer back");
 });
+
+// 0.22.0 sealed under a key of its own (src/main/renamed-key.ts): what this
+// run's key cannot open is listed once, and what the helper opened is sealed
+// again under this run's key while the rest stays as it was.
+test("values another key sealed are listed and sealed again", () => {
+  const { store, dir } = freshStore();
+  const file = path.join(dir, "servers.json");
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      version: 1,
+      servers: [
+        { id: LOCAL_SERVER_ID, origin: "local", name: "This computer", username: "kaleb", lastUsedAt: "", tokenCipher: "old:tok", tokenExpiresAt: future, secretCipher: "old:pw" },
+        { id: "r1", origin: "https://r.example", name: "R", username: "kaleb", lastUsedAt: "", tokenCipher: "enc:fine", tokenExpiresAt: future },
+        { id: "r2", origin: "https://s.example", name: "S", username: "kaleb", lastUsedAt: "", tokenCipher: "old:stale", tokenExpiresAt: past },
+        { id: "r3", origin: "https://t.example", name: "T", username: "kaleb", lastUsedAt: "", tokenCipher: "old:lost", tokenExpiresAt: future },
+      ],
+    }),
+  );
+  assert.deepEqual(store.unopened().sort(), ["old:lost", "old:pw", "old:tok"]);
+  assert.equal(store.reseal(new Map([["old:tok", "tok"], ["old:pw", "pw"]])), 2);
+  assert.equal(store.token(LOCAL_SERVER_ID), "tok");
+  assert.equal(store.secret(LOCAL_SERVER_ID), "pw");
+  assert.equal(store.get("r1").tokenCipher, "enc:fine");
+  assert.equal(store.get("r3").tokenCipher, "old:lost");
+  assert.deepEqual(store.unopened(), ["old:lost"]);
+  assert.equal(store.renamedKeyTried(), false);
+  store.markRenamedKeyTried();
+  assert.equal(store.renamedKeyTried(), true);
+});

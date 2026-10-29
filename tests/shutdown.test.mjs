@@ -14,7 +14,7 @@ function deferred() {
   return { promise, resolve };
 }
 
-async function setupShutdown() {
+async function setupShutdown({ argv = [] } = {}) {
   const share = deferred();
   const ai = deferred();
   const local = deferred();
@@ -44,7 +44,14 @@ async function setupShutdown() {
   };
 
   const dependencies = {
-    electron: { app, safeStorage: {}, shell: {}, session: { defaultSession: {} } },
+    // A run whose safeStorage cannot seal has nothing to seal again.
+    electron: { app, safeStorage: { isEncryptionAvailable: () => false }, shell: {}, session: { defaultSession: {} } },
+    // The helper that opens what 0.22.0 sealed (src/main/renamed-key.ts).
+    "./renamed-key": {
+      ...nativeRequire("../dist/main/renamed-key.js"),
+      runUnsealHelper: () => void startup.push("unseal"),
+      recoverRenamedSeals: async () => 0,
+    },
     // The shell's pages are isolated at start (src/main/isolation.ts): nothing to do here.
     "./isolation": { isolateShellPages: () => {} },
     "../shared/deck": { detectDeck: () => ({ gameMode: false, active: false, device: false }), steamLaunched: () => false },
@@ -76,7 +83,7 @@ async function setupShutdown() {
   vm.runInNewContext(source, {
     exports: {},
     require: (id) => dependencies[id] ?? nativeRequire(id),
-    process: { ...process, argv: [], env: {}, defaultApp: false },
+    process: { ...process, argv, env: {}, defaultApp: false },
     __dirname: path.dirname(new URL("../dist/main/index.js", import.meta.url).pathname),
     Buffer,
     setTimeout: (callback, ms) => { timers.push({ callback, ms }); return timers.length; },
@@ -92,11 +99,20 @@ async function setupShutdown() {
   };
 }
 
-// safeStorage keys every saved sign-in under the app's name; the old name
-// must be set before anything (the instance lock, the keychain) reads it.
+// safeStorage keys every saved sign-in under the app's name. Every release
+// before 0.22.0 ran as the package's name (the packaged package.json has no
+// productName), and that name must be set before anything (the instance
+// lock, the keychain) reads it (client issue 100).
 test("the app keeps its keychain name and sets it before anything reads it", async () => {
   const state = await setupShutdown();
-  assert.deepEqual(state.startup.slice(0, 2), ["name:Open Dungeon Master", "lock"]);
+  assert.deepEqual(state.startup.slice(0, 2), ["name:open-dungeon-master-client", "lock"]);
+});
+
+// The helper started to open what 0.22.0 sealed takes that release's name
+// itself, and is no second copy of the app: no instance lock, no window.
+test("the unseal helper runs instead of the app", async () => {
+  const state = await setupShutdown({ argv: ["electron", "--unseal-renamed-key=/tmp/odm-unseal-test"] });
+  assert.deepEqual(state.startup, ["unseal"]);
 });
 
 test("healthy quit keeps local server available until share cleanup finishes", async () => {

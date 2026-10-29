@@ -26,9 +26,10 @@ import {
 import { ShellWindow } from "./window";
 import { wireContextMenus } from "./edit-menu";
 import { isolateShellPages } from "./isolation";
+import { isUnsealHelper, recoverRenamedSeals, runUnsealHelper, unsealWithRenamedKey } from "./renamed-key";
 
 // The app's name as the keychain knows it; see app.setName at the bottom.
-const KEYCHAIN_NAME = "Open Dungeon Master";
+const KEYCHAIN_NAME = "open-dungeon-master-client";
 
 // Session tokens go through the OS keychain when one is available. The
 // "plain:" fallback (headless Linux without a keyring) is marked so tokens
@@ -118,6 +119,18 @@ function main(): void {
       return null;
     });
     const store = new ServerStore(path.join(app.getPath("userData"), "servers.json"), makeCrypt());
+    // What 0.22.0 sealed under the name it alone ran as is opened by a
+    // helper under that name and sealed again under this one, once, before
+    // anything signs in (src/main/renamed-key.ts). Windows seals with no
+    // name, and a run that cannot seal has nothing to seal it again with.
+    if (process.platform !== "win32" && safeStorage.isEncryptionAvailable()) {
+      await recoverRenamedSeals(store, (ciphers) =>
+        unsealWithRenamedKey(ciphers, {
+          execPath: process.execPath,
+          appPath: process.defaultApp ? app.getAppPath() : null,
+        }),
+      ).catch((err: unknown) => console.error("[keychain] the sign-ins 0.22.0 sealed could not be opened", err));
+    }
     const payloadDir = app.isPackaged
       ? path.join(process.resourcesPath, "server")
       : path.join(app.getAppPath(), "vendor", "server");
@@ -361,15 +374,21 @@ function main(): void {
 // The name the operating system's keychain knows this app by. safeStorage
 // files its key as "<app name> Safe Storage" (the macOS Keychain, the Linux
 // secret service), and every saved sign-in, the device world's included, is
-// sealed with it. Those keys were made while the app was called Open
-// Game Master, so that name stays here, set before anything reads it:
-// renaming it would leave every saved sign-in unreadable. What people see
-// (the window, the menus, the installer, the Dock) comes from productName,
-// Open Game Master.
-app.setName(KEYCHAIN_NAME);
-
-if (app.requestSingleInstanceLock()) {
-  main();
+// sealed with it. Those keys were made under the package's name,
+// open-dungeon-master-client: Electron names an app after package.json's
+// productName, and the packaged package.json has none, only "name". So that
+// name stays here, set before anything reads it: any other leaves every
+// saved sign-in unreadable, as "Open Dungeon Master" did in 0.22.0 (client
+// issue 100). What people see (the window, the menus, the installer, the
+// Dock) comes from productName, Open Game Master. The one-shot helper that
+// opens what 0.22.0 sealed runs under that release's name instead.
+if (isUnsealHelper(process.argv)) {
+  runUnsealHelper(app, safeStorage, process.argv);
 } else {
-  app.quit();
+  app.setName(KEYCHAIN_NAME);
+  if (app.requestSingleInstanceLock()) {
+    main();
+  } else {
+    app.quit();
+  }
 }
