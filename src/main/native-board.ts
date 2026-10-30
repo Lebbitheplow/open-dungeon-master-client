@@ -114,7 +114,11 @@ export class NativeBoard {
   }
   refreshLayout():void {
     const active=this.active;
-    if(active?.layout && !active.closing) this.layout(active.owner,active.id,active.layout);
+    // Called from window move and resize listeners, where a throw is an
+    // uncaught main-process error: a child that stopped reading keeps its
+    // last layout instead.
+    try { if(active?.layout && !active.closing) this.layout(active.owner,active.id,active.layout); }
+    catch { /* The page's next layout or close reaches the same refusal. */ }
   }
   async close(owner:number,id:string):Promise<void> {
     const active=this.active;

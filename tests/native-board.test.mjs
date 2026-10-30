@@ -46,6 +46,13 @@ test('native view only launches its local registration; private pipes omit paren
     manager.send(7,opened.id,{odm:1,type:'snapshot',snapshot:{width:4,height:4}});
     for(let i=0;i<100&&!packets.length;i++) await new Promise(r=>setTimeout(r,10));
     assert.deepEqual(packets[0],{odm:1,type:'tile',x:2,y:3,secretPresent:false});
+    const layout={bounds:{x:0,y:0,width:100,height:80},occlusions:[],visible:true,scale:1};
+    manager.layout(7,opened.id,layout);
+    const stdin=manager.active.child.stdin;
+    Object.defineProperty(stdin,'writableLength',{configurable:true,get:()=>5*1024*1024});
+    assert.throws(()=>manager.layout(7,opened.id,layout),/not reading/);
+    assert.doesNotThrow(()=>manager.refreshLayout(),'a window move must not throw in the main process');
+    delete stdin.writableLength;
     await assert.rejects(manager.close(8,opened.id),/Refused/);
     await Promise.all([manager.close(7,opened.id),manager.close(7,opened.id)]);
     assert.equal(fs.readFileSync(path.join(root,'closed'),'utf8'),'closed');
