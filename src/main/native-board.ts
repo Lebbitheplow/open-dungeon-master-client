@@ -3,6 +3,7 @@ import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {spawn, execFile, type ChildProcessWithoutNullStreams} from 'node:child_process';
 import {StringDecoder} from 'node:string_decoder';
+import type {BrowserWindow} from 'electron';
 import {nativeLayout} from '../shared/native-board';
 
 const MAX_PACKET = 4 * 1024 * 1024;
@@ -142,4 +143,24 @@ export class NativeBoard {
     }
   }
   async dispose():Promise<void> { if(this.active) await this.close(this.active.owner,this.active.id); }
+}
+
+// Ties the board to the window it draws in. A reload (View > Reload) or a
+// crashed page drops the only copy of the session id, so nothing could close
+// the child: its window stayed drawn over the shell and every later open was
+// refused as already open. The window's own navigation and crash end it.
+export function bindNativeBoardWindow(parent: BrowserWindow, board: Pick<NativeBoard,'refreshLayout'|'dispose'>): void {
+  const refresh = () => board.refreshLayout();
+  parent.on('move', refresh);
+  parent.on('moved', refresh);
+  parent.on('resized', refresh);
+  let closing = false;
+  parent.on('close', (event) => {
+    if (closing) return;
+    event.preventDefault(); closing = true;
+    void board.dispose().catch(() => {}).finally(() => parent.close());
+  });
+  const end = () => { void board.dispose().catch(() => {}); };
+  parent.webContents.on('did-navigate', end);
+  parent.webContents.on('render-process-gone', end);
 }

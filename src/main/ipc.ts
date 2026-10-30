@@ -102,7 +102,7 @@ import {
 } from "../shared/story-memory";
 import type { Updater } from "./updater";
 import type { ShellWindow } from "./window";
-import { NativeBoard, readNativeRegistration } from "./native-board";
+import { NativeBoard, bindNativeBoardWindow, readNativeRegistration } from "./native-board";
 
 
 export interface ShellContext {
@@ -274,17 +274,7 @@ export function registerIpc(ctx: ShellContext): ShellIpc {
       if (parent && !parent.isDestroyed() && parent.webContents.id === owner) parent.webContents.send("native-board:message", { id, packet });
     },
   });
-  if (nativeRegistration && parent) {
-    parent.on("move", () => nativeBoard.refreshLayout());
-    parent.on("moved", () => nativeBoard.refreshLayout());
-    parent.on("resized", () => nativeBoard.refreshLayout());
-    let closing = false;
-    parent.on("close", (event) => {
-      if (closing) return;
-      event.preventDefault(); closing = true;
-      void nativeBoard.dispose().catch(() => {}).finally(() => parent.close());
-    });
-  }
+  if (nativeRegistration && parent) bindNativeBoardWindow(parent, nativeBoard);
   const nativeOwner = (event: IpcMainInvokeEvent): number => {
     if (!win.isMainSender(event.sender) || mountedHosts.get(event.sender.id) !== LOCAL_SERVER_ID) throw new Error("Refused.");
     return event.sender.id;

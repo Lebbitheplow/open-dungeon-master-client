@@ -4,7 +4,23 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import childProcess from 'node:child_process';
-import { NativeBoard, readNativeRegistration } from '../dist/main/native-board.js';
+import { EventEmitter } from 'node:events';
+import { NativeBoard, bindNativeBoardWindow, readNativeRegistration } from '../dist/main/native-board.js';
+
+test('a reloaded or crashed page ends the native view it can no longer close', () => {
+  const contents = new EventEmitter();
+  let closed = 0;
+  const parent = Object.assign(new EventEmitter(), { webContents: contents, close: () => { closed++; } });
+  let disposed = 0, refreshed = 0;
+  bindNativeBoardWindow(parent, { refreshLayout: () => { refreshed++; }, dispose: async () => { disposed++; } });
+  parent.emit('moved');
+  assert.equal(refreshed, 1);
+  contents.emit('did-navigate', {}, 'file:///index.html');
+  assert.equal(disposed, 1, 'a reload must not leave the child running behind a new page');
+  contents.emit('render-process-gone', {}, { reason: 'crashed' });
+  assert.equal(disposed, 2, 'a crashed page must not leave the child running');
+  assert.equal(closed, 0);
+});
 
 test('native view only launches its local registration; private pipes omit parent secrets and close cleanly', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'odm-native-test-'));
