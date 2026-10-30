@@ -18,8 +18,11 @@ import {
   romanNumeral,
   rowAction,
   seatLine,
+  nextSessionLine,
+  sessionWhen,
   slotLine,
   slotMeta,
+  statusLabel,
   titleEyebrow,
 } from "../dist/shared/home-view-logic.js";
 
@@ -329,4 +332,22 @@ test("the status line lights its lamp for the device world and names the build",
   assert.deepEqual(deviceStatusLine({ ...base, state: "stopped" }, "1.0.0"), { tone: "off", text: "Your world is asleep · v1.0.0" });
   assert.deepEqual(deviceStatusLine({ ...base, state: "stopped", firstRun: true }, ""), { tone: "off", text: "Your world has not begun" });
   assert.deepEqual(deviceStatusLine({ ...base, state: "unavailable" }, "1.0.0"), { tone: "off", text: "No world on this device · play on a server · v1.0.0" });
+});
+
+test("a table between sessions says so, and when it meets next, instead of a bare active (server issue 586)", () => {
+  const friday = "2026-11-06T19:00:00.000Z";
+  const between = campaign({ glance: { chapter: null, recap: "", recapAt: null, sceneImage: null, faces: [], session: { between: true, next: null } } });
+  assert.equal(statusLabel(between), "between sessions");
+  assert.equal(titleEyebrow(between), "Between sessions");
+  assert.equal(slotLine(between, NOW), "Between sessions");
+  const booked = campaign({ glance: { chapter: null, recap: "", recapAt: null, sceneImage: null, faces: [], session: { between: true, next: { startsAt: friday, title: "", coming: 3 } } } });
+  assert.equal(nextSessionLine(booked, "en-US"), `Next session ${sessionWhen(friday, "en-US")}`);
+  assert.match(slotLine(booked, NOW), /^Next session /);
+  // Playing now, the badge stays as it was; a finished tale meets no more.
+  assert.equal(statusLabel(campaign()), "active");
+  assert.equal(nextSessionLine({ ...booked, status: "ended" }), "");
+  // An older host sends no session: everything reads as before.
+  assert.equal(titleEyebrow(campaign()), "Continue your tale");
+  assert.equal(nextSessionLine(campaign()), "");
+  assert.equal(sessionWhen("not a date"), "");
 });

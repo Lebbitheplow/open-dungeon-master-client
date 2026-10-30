@@ -287,7 +287,31 @@ export function romanNumeral(value: number): string {
 export function titleEyebrow(campaign: HomeCampaign): string {
   if (campaign.status === "ended") return "A finished tale";
   if (campaign.status === "lobby") return "The table is set";
+  if (campaign.glance?.session?.between) return "Between sessions";
   return "Continue your tale";
+}
+
+// The slot's badge: where the table stands. A campaign in play between
+// sessions (server issue 586) says so, rather than "active" all week.
+export function statusLabel(campaign: HomeCampaign): string {
+  if (campaign.status === "active" && campaign.glance?.session?.between) return "between sessions";
+  return campaign.status;
+}
+
+// "Fri, Nov 6, 7:00 PM" in the device's own locale and time zone; hosts
+// send UTC and never format a time for a person.
+export function sessionWhen(startsAt: string, locale?: string): string {
+  const date = new Date(startsAt);
+  if (!Number.isFinite(date.getTime())) return "";
+  return date.toLocaleString(locale, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+// When the table meets next: "Next session Fri, Nov 6, 7:00 PM", or "" when
+// nothing is set, the tale is finished, or the host does not say.
+export function nextSessionLine(campaign: HomeCampaign, locale?: string): string {
+  const next = campaign.status === "ended" ? null : campaign.glance?.session?.next;
+  const when = next ? sessionWhen(next.startsAt, locale) : "";
+  return when ? `Next session ${when}` : "";
 }
 
 // The door in.
@@ -337,6 +361,9 @@ export function slotLine(campaign: HomeCampaign, now = Date.now()): string {
     const ago = agoLabel(campaign.updatedAt, now);
     return ago ? `Finished ${ago}` : "Finished";
   }
+  const next = nextSessionLine(campaign);
+  if (next) return next;
+  if (campaign.glance?.session?.between) return "Between sessions";
   if (campaign.dmSeat) return "Running the table";
   const ago = agoLabel(campaign.glance?.recapAt ?? campaign.updatedAt, now);
   return ago ? `Last played ${ago}` : "In play";
