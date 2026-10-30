@@ -364,6 +364,58 @@ the desktop build and tests, the mobile type check and tests, the main process's
 file-handling tests on Windows, and the Android unit tests. The smoke runs above are
 not part of it, so run them before opening a pull request.
 
+### Local native board development (Windows)
+
+The desktop app can run one explicitly registered native board for a **local
+world**. This is a development bridge, not an addon installer or a bundled
+native renderer. Remote servers, browsers and other platforms keep the
+sandboxed web board. Install and trust the native program yourself before
+registering it.
+
+Create a local JSON file with the addon's manifest addonId and board view
+viewId (the id under contributes.boardViews):
+
+~~~json
+{
+  "addonId": "sample-board",
+  "viewId": "tabletop",
+  "root": "C:\\addons\\sample-board",
+  "entry": "native\\main.mjs",
+  "settings": {}
+}
+~~~
+
+The root must be an absolute directory; entry must be a relative .mjs file
+that resolves inside it. The registration file is limited to 16 KiB and the
+settings JSON to 4096 characters. The app reads the file once at startup. For
+example, in PowerShell:
+
+~~~powershell
+$env:ODM_NATIVE_BOARD_DEV_CONFIG = 'C:\addons\sample-board\native-registration.json'
+npm start
+~~~
+
+The matching addon and board view must also be installed and offered by the
+local world. The native program receives newline-delimited JSON on stdin:
+{ "native": 1, "type": "init", "parentWindow": "<decimal HWND>",
+"settings": {} }, then message packets containing the same host-to-view
+board messages as the [server board bridge](https://github.com/Lebbitheplow/open-game-master/blob/main/docs/addons/extension-points.md).
+It also receives layout packets with CSS-pixel bounds, occlusions,
+visible and scale, and a close packet on shutdown. It must answer
+{ "native": 1, "type": "ready" } on stdout within 15 seconds and send
+view-to-host packets as { "native": 1, "type": "message", "message": {
+"odm": 1, "type": "ready" } } (or another documented board message). Send
+the board ready message after receiving the first snapshot: the shell
+subscribes to view messages after the transport ready response.
+Each JSON packet is one line and at most 4 MiB. Standard error is drained
+without being saved; only an allowlist of ordinary Windows environment
+variables reaches the child.
+
+After changing the bridge, repeat npm run build,
+node --test tests/native-board.test.mjs tests/native-dice-overlay.test.mjs,
+and npm run lint from this repository. The native board and dice tests run
+their Windows cases on Windows.
+
 ### Desktop packages
 
 ```bash
