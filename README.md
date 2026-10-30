@@ -401,7 +401,10 @@ local world. The native program receives newline-delimited JSON on stdin:
 "settings": {} }, then message packets containing the same host-to-view
 board messages as the [server board bridge](https://github.com/Lebbitheplow/open-game-master/blob/main/docs/addons/extension-points.md).
 It also receives layout packets with CSS-pixel bounds, occlusions,
-visible and scale, and a close packet on shutdown. It must answer
+visible and scale, and a close packet on shutdown. It must exit when its
+stdin closes: if the app itself is killed or crashes it sends no close
+packet, and a renderer that keeps running would stay drawn over the
+desktop with nothing left to stop it. It must answer
 { "native": 1, "type": "ready" } on stdout within 15 seconds and send
 view-to-host packets as { "native": 1, "type": "message", "message": {
 "odm": 1, "type": "ready" } } (or another documented board message). Send
